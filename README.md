@@ -51,6 +51,8 @@ LC_ALL=en_US.UTF-8 /opt/homebrew/opt/postgresql@17/bin/pg_ctl -D /opt/homebrew/v
 - **Enrich**: motivo dei revert via `eth_call` al blocco padre; hash/size del bytecode dei deploy.
 - **Startup guard**: ogni endpoint deve rispondere il chain id atteso e lo stesso hash di genesi; il DB
   si lega alla genesi e rifiuta chain diverse.
+- **Modalità**: `COLLECTOR_MODE=light` (default consigliato: blocchi, statistiche per blocco per tipo di operazione,
+  deploy, osservazioni RPC; ~0,4 GB/giorno) o `full` (anche tx, receipt, log e revert; 12-16 GB/giorno).
 - **Health**: `GET :8790/health` (JSON, 503 se in ritardo/stallo), `GET :8790/metrics` (Prometheus).
 - **Alert**: log + Telegram (opzionale) su lag > N blocchi, stallo, tutti gli RPC giù, troppi gap.
 

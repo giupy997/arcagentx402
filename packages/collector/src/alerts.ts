@@ -1,7 +1,7 @@
 import type { CollectorConfig } from "./config.js";
 import type { Logger } from "./log.js";
 
-export type AlertKey = "lag" | "stall" | "rpc_down" | "db_error" | "chain_mismatch" | "gaps";
+export type AlertKey = "lag" | "stall" | "rpc_down" | "db_error" | "chain_mismatch" | "gaps" | "disk";
 
 /**
  * Throttled alerting: log always, Telegram when configured. One message per key per state change

@@ -136,6 +136,7 @@ export class BackfillWorker {
       }
       for (const fb of res.ok) {
         const r = await writeBundle(this.db, fb.bundle, {
+          mode: this.cfg.mode,
           sourceRpc: this.pool.endpoints.find((e) => e.url === fb.endpoint)?.name ?? fb.endpoint,
           fetchMs: fb.fetchMs,
           observedAt: null,

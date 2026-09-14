@@ -16,7 +16,7 @@ import { ScannerWorker } from "./workers/scanner.js";
 async function main(): Promise<void> {
   const cfg = loadConfig();
   log.level = cfg.logLevel;
-  log.info({ network: cfg.network, chainId: cfg.chainId, rpcs: cfg.rpcUrls.map(redactUrl), startBlock: cfg.startBlock, concurrency: cfg.concurrency, batchBlocks: cfg.batchBlocks }, "cra-agent collector starting");
+  log.info({ network: cfg.network, chainId: cfg.chainId, mode: cfg.mode, rpcs: cfg.rpcUrls.map(redactUrl), startBlock: cfg.startBlock, concurrency: cfg.concurrency, batchBlocks: cfg.batchBlocks }, "cra-agent collector starting");
 
   const db = createDb(cfg.databaseUrl, log);
   await migrate(db, cfg.network);

@@ -1,7 +1,11 @@
 import { withTx, type Db, type Tx } from "../db/index.js";
 import type { ParsedBlockBundle } from "./parse.js";
 
+export type CollectorMode = "full" | "light";
+
 export interface WriteMeta {
+  /** light: blocks + stats + deploys only. */
+  mode: CollectorMode;
   sourceRpc: string;
   fetchMs: number;
   /** Set when the block was fetched at (or right behind) the live head. */
@@ -26,10 +30,12 @@ export async function writeBundle(db: Db, bundle: ParsedBlockBundle, meta: Write
       ],
     );
     if (ins.rowCount === 0) return { inserted: false };
+    await writeStats(tx, bundle);
+    await writeDeploys(tx, bundle);
+    if (meta.mode === "light") return { inserted: true };
     await writeTxs(tx, bundle);
     await writeReceipts(tx, bundle);
     await writeLogs(tx, bundle);
-    await writeDeploys(tx, bundle);
     if (bundle.failedTxHashes.length > 0) {
       await tx.query(
         `INSERT INTO tx_reverts (tx_hash, block_number, replay_status)
@@ -39,6 +45,16 @@ export async function writeBundle(db: Db, bundle: ParsedBlockBundle, meta: Write
     }
     return { inserted: true };
   });
+}
+
+async function writeStats(tx: Tx, { stats: s }: ParsedBlockBundle): Promise<void> {
+  await tx.query(
+    `INSERT INTO block_stats (block_number, "timestamp", tx_count, failed, native_transfers, erc20_transfers, contract_calls, deploys,
+       fee_native, fee_erc20, fee_calls, fee_deploys, fee_total, gas_used)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT DO NOTHING`,
+    [s.blockNumber, s.timestamp, s.txCount, s.failed, s.counts.native_transfer, s.counts.erc20_transfer, s.counts.contract_call, s.counts.deploy,
+     s.fees.native_transfer.toString(), s.fees.erc20_transfer.toString(), s.fees.contract_call.toString(), s.fees.deploy.toString(), s.feeTotal.toString(), s.gasUsed],
+  );
 }
 
 async function writeTxs(tx: Tx, { txs }: ParsedBlockBundle): Promise<void> {

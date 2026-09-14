@@ -97,7 +97,7 @@ export class EnrichWorker {
           continue;
         }
         let did = 0;
-        if (this.cfg.enrichReverts) did += await this.replayReverts(10);
+        if (this.cfg.enrichReverts && this.cfg.mode === "full") did += await this.replayReverts(10);
         if (this.cfg.enrichCode) did += await this.fetchCodes(10);
         if (did === 0) await sleep(3000);
       } catch (err) {

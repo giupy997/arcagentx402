@@ -144,3 +144,20 @@ describe("parseBundle", () => {
     expect(out.block.gasUsedRatio).toBe(0);
   });
 });
+
+describe("block stats (light mode data)", () => {
+  it("classifies and sums fees per operation", () => {
+    const t1 = tx();
+    const t2 = tx({ hash: hx("0x" + "22".repeat(32)), transactionIndex: "0x1", input: "0x", to: "0x1c712af543789f3673c7cd4b9ffed00c29efaec1" });
+    const t3 = tx({ hash: hx("0x" + "33".repeat(32)), transactionIndex: "0x2", to: null, input: "0x6080" });
+    const r1 = receipt();
+    const r2 = receipt({ transactionHash: hx("0x" + "22".repeat(32)), transactionIndex: "0x1", gasUsed: "0x5208", logs: [] });
+    const r3 = receipt({ transactionHash: hx("0x" + "33".repeat(32)), transactionIndex: "0x2", to: null, contractAddress: "0xb54e5c1a4e03fe98a896bbb264118d08fded97a0", status: "0x0", logs: [] });
+    const out = parseBundle(block([t1, t2, t3]), [r1, r2, r3]);
+    expect(out.stats.txCount).toBe(3);
+    expect(out.stats.failed).toBe(1);
+    expect(out.stats.counts).toEqual({ native_transfer: 1, erc20_transfer: 1, contract_call: 0, deploy: 1 });
+    expect(out.stats.fees.native_transfer).toBe(0x5208n * 0x13122641acn);
+    expect(out.stats.feeTotal).toBe(out.stats.fees.native_transfer + out.stats.fees.erc20_transfer + out.stats.fees.deploy);
+  });
+});

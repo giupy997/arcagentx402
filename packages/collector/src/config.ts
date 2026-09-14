@@ -59,6 +59,9 @@ const EnvSchema = z.object({
   COLLECTOR_ENRICH_REVERTS: boolEnv(true),
   COLLECTOR_ENRICH_CODE: boolEnv(true),
   COLLECTOR_RAW_MODE: z.enum(["full", "compact"]).default("compact"),
+  COLLECTOR_MODE: z.enum(["full", "light"]).default("full"),
+  COLLECTOR_DISK_PATH: z.string().default("/"),
+  COLLECTOR_DISK_ALERT_GB: intEnv(40),
   COLLECTOR_RPC_TIMEOUT_MS: intEnv(15_000),
   COLLECTOR_ENDPOINT_LAG_TOLERANCE: intEnv(20),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
@@ -91,6 +94,14 @@ export interface CollectorConfig {
    * Both are lossless; compact is ~2x smaller on disk.
    */
   readonly rawMode: "full" | "compact";
+  /**
+   * full: blocks + transactions + receipts + logs + deploys + reverts (~12-16 GB/day at testnet density).
+   * light: blocks, per-block stats by operation, deploys, head observations (~0.4 GB/day). No tx/receipt/log rows.
+   */
+  readonly mode: "full" | "light";
+  /** Filesystem path whose free space is watched (the Postgres data volume). */
+  readonly diskPath: string;
+  readonly diskAlertGb: number;
   readonly rpcTimeoutMs: number;
   readonly endpointLagTolerance: number;
   readonly telegram: { botToken: string; chatId: string } | null;
@@ -133,6 +144,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
     enrichReverts: e.COLLECTOR_ENRICH_REVERTS,
     enrichCode: e.COLLECTOR_ENRICH_CODE,
     rawMode: e.COLLECTOR_RAW_MODE,
+    mode: e.COLLECTOR_MODE,
+    diskPath: e.COLLECTOR_DISK_PATH,
+    diskAlertGb: e.COLLECTOR_DISK_ALERT_GB,
     rpcTimeoutMs: e.COLLECTOR_RPC_TIMEOUT_MS,
     endpointLagTolerance: e.COLLECTOR_ENDPOINT_LAG_TOLERANCE,
     telegram: e.TELEGRAM_BOT_TOKEN && e.TELEGRAM_CHAT_ID ? { botToken: e.TELEGRAM_BOT_TOKEN, chatId: e.TELEGRAM_CHAT_ID } : null,

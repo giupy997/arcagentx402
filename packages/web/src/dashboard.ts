@@ -92,12 +92,12 @@ function renderTpm(a: Activity): void {
 }
 
 function renderOps(f: Fees): void {
-  const rows = f.byOperation.filter((o) => o.medianFeeUsdc !== null);
+  const rows = f.byOperation.filter((o) => o.avgFeeUsdc !== null);
   barChart(viz("c-ops"), {
-    bars: rows.map((o) => ({ label: OP_LABEL[o.op] ?? o.op, value: Number(o.medianFeeUsdc), sub: `${fmtInt(o.count)} tx · p90 ${fmtUsdc(o.p90FeeUsdc)}` })),
+    bars: rows.map((o) => ({ label: OP_LABEL[o.op] ?? o.op, value: Number(o.avgFeeUsdc), sub: `${fmtInt(o.count)} tx` })),
     format: (v) => fmtUsdc(String(v)),
   });
-  tableTwin($("c-ops"), ["Operation", "Transactions", "Median fee", "p90 fee", "Failed"], rows.map((o) => [OP_LABEL[o.op] ?? o.op, o.count, fmtUsdc(o.medianFeeUsdc), fmtUsdc(o.p90FeeUsdc), o.failed]), [1, 2, 3, 4]);
+  tableTwin($("c-ops"), ["Operation", "Transactions", "Average fee"], rows.map((o) => [OP_LABEL[o.op] ?? o.op, o.count, fmtUsdc(o.avgFeeUsdc)]), [1, 2]);
 }
 
 function renderRpc(r: Rpc, n: Network): void {

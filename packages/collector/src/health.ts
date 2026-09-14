@@ -12,6 +12,8 @@ export function buildStatus(cfg: CollectorConfig, state: RuntimeState, alerts: A
     ok,
     network: cfg.network,
     chainId: cfg.chainId,
+    mode: cfg.mode,
+    diskFreeGb: state.diskFreeGb,
     genesisHash: state.genesisHash,
     uptimeSeconds: Math.round((Date.now() - state.startedAt) / 1000),
     head: { chain: state.chainHead, ingested: state.headCursor, lag, start: state.headStart, chainHeadAgeMs: state.chainHeadAt ? Date.now() - state.chainHeadAt : null },
@@ -37,6 +39,7 @@ function metricsText(cfg: CollectorConfig, state: RuntimeState): string {
   g("arc_collector_blocks_ingested_total", state.blocksIngested);
   g("arc_collector_txs_ingested_total", state.txsIngested);
   g("arc_collector_gaps_open", state.gapsOpen);
+  g("arc_collector_disk_free_gb", state.diskFreeGb);
   g("arc_collector_reverts_pending", state.revertsPending);
   g("arc_collector_backfill_cursor", state.backfill?.cursor ?? null);
   g("arc_collector_backfill_target", state.backfill?.target ?? null);

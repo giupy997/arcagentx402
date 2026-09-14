@@ -15,6 +15,7 @@ export class RuntimeState {
   startedAt = Date.now();
   genesisHash: string | null = null;
   errors = 0;
+  diskFreeGb: number | null = null;
 
   constructor(readonly pool: RpcPool) {}
 

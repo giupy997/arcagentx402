@@ -77,7 +77,8 @@ export interface FeeSummary {
   costNow: { nativeTransferUsdc: string; erc20TransferUsdc: string } | null;
   last24h: { minGwei: number | null; maxGwei: number | null; avgUtilization: number | null } | null;
   series: FeePoint[];
-  byOperation: Array<{ op: string; count: number; medianFeeUsdc: string | null; p90FeeUsdc: string | null; failed: number }>;
+  /** Averages per class from block_stats (available in both collector modes). failed is only attributed to contract calls. */
+  byOperation: Array<{ op: string; count: number; avgFeeUsdc: string | null; failed: number }>;
 }
 
 export async function feeSummary(db: Db, windowMinutes = 60): Promise<FeeSummary> {
@@ -91,16 +92,12 @@ export async function feeSummary(db: Db, windowMinutes = 60): Promise<FeeSummary
        FROM blocks WHERE "timestamp" > extract(epoch FROM now()) - $1 GROUP BY 1 ORDER BY 1`,
       [windowMinutes * 60],
     ),
-    db.query<{ op: string; n: string; med: string | null; p90: string | null; failed: string }>(
-      `SELECT CASE WHEN t."to" IS NULL THEN 'deploy' WHEN t.input_size = 0 THEN 'native_transfer'
-                   WHEN t.input_selector = '\\xa9059cbb'::bytea THEN 'erc20_transfer' ELSE 'contract_call' END AS op,
-              count(*) AS n,
-              percentile_cont(0.5) WITHIN GROUP (ORDER BY r.fee_usdc18) AS med,
-              percentile_cont(0.9) WITHIN GROUP (ORDER BY r.fee_usdc18) AS p90,
-              count(*) FILTER (WHERE r.status = 0) AS failed
-       FROM receipts r JOIN transactions t ON t.hash = r.tx_hash
-       WHERE r.block_number > (SELECT max(number) FROM blocks) - $1
-       GROUP BY 1 ORDER BY 2 DESC`,
+    db.query<{ op: string; n: string; fee: string | null; failed: string }>(
+      `WITH w AS (SELECT * FROM block_stats WHERE block_number > (SELECT max(number) FROM blocks) - $1)
+       SELECT 'native_transfer' AS op, sum(native_transfers) AS n, sum(fee_native) AS fee, 0 AS failed FROM w
+       UNION ALL SELECT 'erc20_transfer', sum(erc20_transfers), sum(fee_erc20), 0 FROM w
+       UNION ALL SELECT 'contract_call', sum(contract_calls), sum(fee_calls), sum(failed) FROM w
+       UNION ALL SELECT 'deploy', sum(deploys), sum(fee_deploys), 0 FROM w`,
       [Math.round((windowMinutes * 60) / 0.5)],
     ),
   ]);
@@ -116,13 +113,15 @@ export async function feeSummary(db: Db, windowMinutes = 60): Promise<FeeSummary
     costNow: price !== null ? { nativeTransferUsdc: cost(GAS_NATIVE_TRANSFER, price), erc20TransferUsdc: cost(GAS_ERC20_TRANSFER, price) } : null,
     last24h: day.rows[0] ? { minGwei: gwei(day.rows[0].mn), maxGwei: gwei(day.rows[0].mx), avgUtilization: num(day.rows[0].util) } : null,
     series: series.rows.map((r) => ({ t: Number(r.t), baseFeeGwei: Number(BigInt(Math.round(Number(r.fee)).toString())) / 1e9, utilization: Number(r.util), blocks: Number(r.n) })),
-    byOperation: ops.rows.map((r) => ({
-      op: r.op,
-      count: Number(r.n),
-      medianFeeUsdc: r.med === null ? null : usd(BigInt(Math.round(Number(r.med))).toString()),
-      p90FeeUsdc: r.p90 === null ? null : usd(BigInt(Math.round(Number(r.p90))).toString()),
-      failed: Number(r.failed),
-    })),
+    byOperation: ops.rows
+      .filter((r) => Number(r.n) > 0)
+      .sort((a, b) => Number(b.n) - Number(a.n))
+      .map((r) => ({
+        op: r.op,
+        count: Number(r.n),
+        avgFeeUsdc: r.fee === null ? null : usd((BigInt(r.fee) / BigInt(r.n)).toString()),
+        failed: Number(r.failed),
+      })),
   };
 }
 
@@ -150,7 +149,7 @@ export async function activity(db: Db, windowMinutes = 60) {
       [windowMinutes * 60],
     ),
     db.query<{ n: string; failed: string }>(
-      `SELECT count(*) AS n, count(*) FILTER (WHERE status = 0) AS failed FROM receipts WHERE block_number > (SELECT max(number) FROM blocks) - $1`,
+      `SELECT coalesce(sum(tx_count),0) AS n, coalesce(sum(failed),0) AS failed FROM block_stats WHERE block_number > (SELECT max(number) FROM blocks) - $1`,
       [Math.round((windowMinutes * 60) / 0.5)],
     ),
     db.query<{ selector: Buffer; n: string }>(

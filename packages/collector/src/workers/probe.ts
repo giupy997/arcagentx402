@@ -1,3 +1,4 @@
+import { statfs } from "node:fs/promises";
 import type { Alerter } from "../alerts.js";
 import type { CollectorConfig } from "../config.js";
 import type { Db } from "../db/index.js";
@@ -92,6 +93,16 @@ export class ProbeWorker {
 
     if (this.state.gapsOpen > 50) await this.alerts.raise("gaps", `${this.state.gapsOpen} gap ranges open`);
     else await this.alerts.clear("gaps");
+
+    try {
+      const st = await statfs(this.cfg.diskPath);
+      const freeGb = (Number(st.bavail) * Number(st.bsize)) / 1e9;
+      this.state.diskFreeGb = Math.round(freeGb * 10) / 10;
+      if (freeGb < this.cfg.diskAlertGb) await this.alerts.raise("disk", `${this.state.diskFreeGb} GB free on ${this.cfg.diskPath} (alert below ${this.cfg.diskAlertGb} GB)`);
+      else await this.alerts.clear("disk");
+    } catch {
+      /* statfs unsupported: no disk alerting */
+    }
   }
 
   private async loop(): Promise<void> {

@@ -150,6 +150,7 @@ export class HeadWorker {
     for (const fb of blocks) {
       const live = headAtFetch - fb.number <= LIVE_WINDOW;
       const r = await writeBundle(this.db, fb.bundle, {
+        mode: this.cfg.mode,
         sourceRpc: this.pool.endpoints.find((e) => e.url === fb.endpoint)?.name ?? fb.endpoint,
         fetchMs: fb.fetchMs,
         observedAt: live ? new Date() : null,

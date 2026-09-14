@@ -37,7 +37,7 @@ export interface Fees {
   costNow: { nativeTransferUsdc: string; erc20TransferUsdc: string } | null;
   last24h: { minGwei: number | null; maxGwei: number | null; avgUtilization: number | null } | null;
   series: Array<{ t: number; baseFeeGwei: number; utilization: number; blocks: number }>;
-  byOperation: Array<{ op: string; count: number; medianFeeUsdc: string | null; p90FeeUsdc: string | null; failed: number }>;
+  byOperation: Array<{ op: string; count: number; avgFeeUsdc: string | null; failed: number }>;
 }
 export interface Activity {
   windowMinutes: number;

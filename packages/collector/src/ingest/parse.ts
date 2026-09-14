@@ -105,8 +105,48 @@ export interface ParsedDeploy {
   success: boolean;
 }
 
+export type OpClass = "native_transfer" | "erc20_transfer" | "contract_call" | "deploy";
+
+export interface BlockStats {
+  blockNumber: number;
+  timestamp: number;
+  txCount: number;
+  failed: number;
+  counts: Record<OpClass, number>;
+  fees: Record<OpClass, bigint>;
+  feeTotal: bigint;
+  gasUsed: number;
+}
+
+const ERC20_TRANSFER = "a9059cbb";
+
+/** Pure classification used by both the stats and the API: deploy > native transfer > ERC-20 transfer > call. */
+export function classifyTx(tx: Pick<ParsedTx, "to" | "inputSize" | "inputSelector">): OpClass {
+  if (tx.to === null) return "deploy";
+  if (tx.inputSize === 0) return "native_transfer";
+  if (tx.inputSelector && tx.inputSelector.toString("hex") === ERC20_TRANSFER) return "erc20_transfer";
+  return "contract_call";
+}
+
+export function computeStats(block: ParsedBlock, txs: readonly ParsedTx[], receipts: readonly ParsedReceipt[]): BlockStats {
+  const counts: Record<OpClass, number> = { native_transfer: 0, erc20_transfer: 0, contract_call: 0, deploy: 0 };
+  const fees: Record<OpClass, bigint> = { native_transfer: 0n, erc20_transfer: 0n, contract_call: 0n, deploy: 0n };
+  let failed = 0;
+  let feeTotal = 0n;
+  for (let i = 0; i < txs.length; i++) {
+    const cls = classifyTx(txs[i]!);
+    const fee = BigInt(receipts[i]!.feeUsdc18);
+    counts[cls]++;
+    fees[cls] += fee;
+    feeTotal += fee;
+    if (receipts[i]!.status !== 1) failed++;
+  }
+  return { blockNumber: block.number, timestamp: block.timestamp, txCount: txs.length, failed, counts, fees, feeTotal, gasUsed: block.gasUsed };
+}
+
 export interface ParsedBlockBundle {
   block: ParsedBlock;
+  stats: BlockStats;
   txs: ParsedTx[];
   receipts: ParsedReceipt[];
   logs: ParsedLog[];
@@ -243,7 +283,7 @@ export function parseBundle(rawBlock: RpcBlock, rawReceipts: RpcReceipt[], rawMo
     }
     if (pr.status !== 1) failedTxHashes.push(pt.hash);
   }
-  return { block, txs, receipts, logs, deploys, failedTxHashes };
+  return { block, stats: computeStats(block, txs, receipts), txs, receipts, logs, deploys, failedTxHashes };
 }
 
 /** Failed creations may have contractAddress=null; use the deterministic CREATE address for the row key. */
