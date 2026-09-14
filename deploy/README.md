@@ -6,7 +6,17 @@ essere più o meno denso: partire con **1 TB NVMe**, monitorare `pg_database_siz
 Se serve tagliare: il raw dei receipt duplica i log (tabella `logs`); è la prima cosa da comprimere,
 ma NON prima di aver visto i dati reali.
 
-## Docker (consigliato)
+## VPS con Caddy già presente (bare metal, consigliato se il server ospita altro)
+
+```bash
+ssh root@<vps>
+curl -fsSL https://raw.githubusercontent.com/giupy997/arcagentx402/main/deploy/setup.sh | DOMAIN=arc.tuodominio.com bash
+# senza DOMAIN: sito su http://<ip>:8081
+nano /opt/arc-rail/.env && systemctl restart arc-rail-collector arc-rail-api
+journalctl -u arc-rail-collector -f
+```
+
+## Docker
 
 ```bash
 git clone <repo> /opt/arc-rail && cd /opt/arc-rail/deploy

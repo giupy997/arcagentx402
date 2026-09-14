@@ -11,6 +11,8 @@ verificato contro docs.arc.io e cosa resta da confermare al lancio mainnet (16/0
 |---|---|
 | `packages/accounting` | Unico modulo che fa aritmetica su USDC. Tipi branded `Usdc6` (ERC-20) / `Usdc18` (gas). Test di proprietà |
 | `packages/collector` | Collettore: blocchi, tx, receipt, log, deploy, revert, base fee, osservazioni di testa per RPC. Postgres append-only con raw JSON |
+| `packages/api` | API di lettura sul DB del collettore (Hono). `/v1/network`, `/v1/fees`, `/v1/fees/estimate`, `/v1/activity`, `/v1/deploys`, `/v1/rpc`, `/v1/health`. Serve anche il sito. In fase 1 diventa il lato venditore (stesse rotte, a pagamento via x402) |
+| `packages/web` | Sito: landing (`/`) e dashboard live (`/dashboard`). HTML/CSS/TS senza framework, grafici SVG |
 
 ## Setup
 
@@ -21,6 +23,7 @@ cp .env.example .env   # poi modifica DATABASE_URL / ARC_RPC_URLS
 npm test
 npm run db:migrate
 npm run collector
+npm run web:build && npm run api   # http://localhost:8791
 ```
 
 Postgres locale (Homebrew, keg-only):
@@ -45,6 +48,11 @@ LC_ALL=en_US.UTF-8 /opt/homebrew/opt/postgresql@17/bin/pg_ctl -D /opt/homebrew/v
 - **Alert**: log + Telegram (opzionale) su lag > N blocchi, stallo, tutti gli RPC giù, troppi gap.
 
 Stato dal DB: `npm run status -w @arc-rail/collector`.
+
+## Deploy
+
+`deploy/setup.sh` installa tutto su un VPS Ubuntu con Caddy (Node 22, Postgres 17, systemd, sito Caddy).
+Vedi `deploy/README.md`.
 
 ## Regole del repo
 

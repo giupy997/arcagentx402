@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ArcRail — live dashboard</title>
+<meta name="description" content="Arc network live: base fee and next-block forecast, cost per transaction type, finality latency, contract deploys, RPC provider health.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M9 22 16 9l7 13h-4l-3-6-3 6z' fill='white'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="/"><span class="mark"></span>ArcRail</a>
+    <nav class="links">
+      <span class="net-pill" id="netpill"><span class="dot" id="netdot"></span><span id="netlabel">connecting…</span></span>
+      <a href="/">About</a>
+      <a href="https://github.com/giupy997/arcagentx402" rel="noopener">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="dash-head">
+    <h1>Arc, live</h1>
+    <div class="meta" id="meta">—</div>
+  </div>
+
+  <div class="filters">
+    <span class="lbl">Window</span>
+    <div class="seg" id="window" role="group" aria-label="Time window">
+      <button aria-pressed="true" data-w="60">1h</button>
+      <button aria-pressed="false" data-w="360">6h</button>
+      <button aria-pressed="false" data-w="1440">24h</button>
+    </div>
+  </div>
+
+  <div class="tiles">
+    <div class="tile hero-figure">
+      <div>
+        <div class="label">Cost of a USDC transfer right now</div>
+        <div class="value" id="t-cost">—</div>
+      </div>
+      <div class="aside">native transfer <b id="t-cost-native">—</b><br>base fee <b id="t-fee-gwei">—</b> · next block <b id="t-fee-next">—</b></div>
+    </div>
+    <div class="tile"><div class="label">Head block</div><div class="value" id="t-head">—</div><div class="delta" id="t-head-sub">&nbsp;</div></div>
+    <div class="tile"><div class="label">Block time</div><div class="value" id="t-bt">—</div><div class="delta">avg, last 1,200 blocks</div></div>
+    <div class="tile"><div class="label">Transactions / s</div><div class="value" id="t-tps">—</div><div class="delta" id="t-tps-sub">&nbsp;</div></div>
+    <div class="tile"><div class="label">Finality observed</div><div class="value" id="t-fin">—</div><div class="delta" id="t-fin-sub">&nbsp;</div></div>
+    <div class="tile"><div class="label">Failed transactions</div><div class="value" id="t-fail">—</div><div class="delta" id="t-fail-sub">&nbsp;</div></div>
+    <div class="tile"><div class="label">Contracts deployed</div><div class="value" id="t-deploys">—</div><div class="delta" id="t-deploys-sub">&nbsp;</div></div>
+  </div>
+
+  <div class="charts">
+    <div class="chart-card" id="c-fee">
+      <div class="head"><div><h2>Base fee</h2><div class="sub">gwei per gas · protocol floor 20 gwei · minute averages</div></div><button class="tbl-toggle">table</button></div>
+      <div class="viz"></div>
+    </div>
+    <div class="chart-card" id="c-util">
+      <div class="head"><div><h2>Block utilisation</h2><div class="sub">gas used / 30M limit · the input to the fee EWMA</div></div><button class="tbl-toggle">table</button></div>
+      <div class="viz"></div>
+    </div>
+    <div class="chart-card" id="c-tpm">
+      <div class="head"><div><h2>Transactions per minute</h2><div class="sub" id="c-tpm-sub">—</div></div><button class="tbl-toggle">table</button></div>
+      <div class="viz"></div>
+    </div>
+    <div class="chart-card" id="c-ops">
+      <div class="head"><div><h2>Median fee by operation</h2><div class="sub">USDC per transaction, in the window</div></div><button class="tbl-toggle">table</button></div>
+      <div class="viz"></div>
+    </div>
+    <div class="chart-card wide" id="c-rpc">
+      <div class="head"><div><h2>RPC providers</h2><div class="sub">probed every 5 s · last 15 minutes</div></div></div>
+      <div class="tbl-wrap" id="rpc-table"></div>
+    </div>
+    <div class="chart-card wide" id="c-deploys">
+      <div class="head"><div><h2>Recent contract deploys</h2><div class="sub">top-level creations · labels from the known-contracts registry</div></div></div>
+      <div class="tbl-wrap" id="deploys-table"></div>
+    </div>
+    <div class="chart-card" id="c-emitters">
+      <div class="head"><div><h2>Most active contracts</h2><div class="sub">by logs emitted, in the window</div></div></div>
+      <div class="tbl-wrap" id="emitters-table"></div>
+    </div>
+    <div class="chart-card" id="c-selectors">
+      <div class="head"><div><h2>Most called functions</h2><div class="sub">by 4-byte selector, in the window</div></div></div>
+      <div class="tbl-wrap" id="selectors-table"></div>
+    </div>
+  </div>
+
+  <footer>
+    <span>Data: ArcRail block-zero collector · refreshes every 5 s · <span id="collector-note"></span></span>
+    <span><a href="/v1/network">/v1/network</a> · <a href="/v1/fees">/v1/fees</a> · <a href="/v1/deploys">/v1/deploys</a> · <a href="/v1/rpc">/v1/rpc</a></span>
+  </footer>
+</div>
+<script type="module" src="/js/dashboard.js"></script>
+</body>
+</html>
