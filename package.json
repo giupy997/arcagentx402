@@ -30,5 +30,10 @@
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/giupy997/arcagentx402.git"
+  },
+  "license": "MIT"
 }
