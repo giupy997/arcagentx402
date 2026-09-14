@@ -144,6 +144,7 @@ function showOffline(): void {
   document.querySelector(".charts")?.classList.add("hidden");
   document.querySelector(".filters")?.classList.add("hidden");
   $("offline").classList.remove("hidden");
+  document.getElementById("dash-footer")?.classList.add("hidden");
   $("meta").textContent = "";
   const dot = document.getElementById("netdot");
   const label = document.getElementById("netlabel");
