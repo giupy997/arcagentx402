@@ -89,5 +89,5 @@ export function setNetPill(n: Network | null, err = false): void {
   }
   const age = n.collector.lastBlockAgeSeconds ?? 9999;
   dot.className = `dot ${age < 30 ? "ok" : age < 300 ? "warn" : "bad"}`;
-  label.textContent = `Arc ${n.network} · chain ${n.chainId}${age >= 30 ? ` · data ${age}s old` : ""}`;
+  label.textContent = `Arc ${n.network}${age >= 30 ? ` · ${age}s old` : " · live"}`;
 }

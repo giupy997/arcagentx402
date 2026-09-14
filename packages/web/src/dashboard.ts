@@ -1,5 +1,8 @@
 import { ApiUnavailable, ago, fmtCompact, fmtGwei, fmtInt, fmtPct, fmtSec, fmtUsdc, getJson, setNetPill, short, timeHM, type Activity, type Deploys, type Fees, type Network, type Rpc } from "./api.js";
 import { barChart, columnChart, lineChart, tableTwin } from "./charts.js";
+import { initChrome } from "./menu.js";
+
+initChrome();
 
 const $ = (id: string) => document.getElementById(id)!;
 const viz = (cardId: string) => document.querySelector<HTMLElement>(`#${cardId} .viz`)!;
