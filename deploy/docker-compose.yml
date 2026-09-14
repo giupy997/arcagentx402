@@ -1,0 +1,35 @@
+# Server deployment: Postgres + collector. Copy .env.example to .env next to this file and fill it.
+# DATABASE_URL must be postgres://arc:${POSTGRES_PASSWORD}@db:5432/arc_rail
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: arc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: arc_rail
+    command: >
+      postgres -c shared_buffers=1GB -c effective_cache_size=3GB -c wal_compression=on
+               -c max_wal_size=4GB -c checkpoint_completion_target=0.9 -c synchronous_commit=off
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arc -d arc_rail"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  collector:
+    build:
+      context: ..
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8790:8790"
+    logging:
+      driver: json-file
+      options: { max-size: "50m", max-file: "10" }
+volumes:
+  pgdata:

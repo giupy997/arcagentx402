@@ -1,0 +1,19 @@
+{
+  "name": "@arc-rail/collector",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node --env-file-if-exists=../../.env --import tsx src/main.ts",
+    "migrate": "node --env-file-if-exists=../../.env --import tsx src/db/migrate.ts",
+    "status": "node --env-file-if-exists=../../.env --import tsx src/cli/status.ts"
+  },
+  "dependencies": {
+    "@arc-rail/accounting": "0.0.1",
+    "pg": "^8.16.0",
+    "pino": "^9.7.0",
+    "viem": "^2.31.0",
+    "zod": "^3.25.0"
+  }
+}

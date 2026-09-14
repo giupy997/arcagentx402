@@ -1,0 +1,24 @@
+# Bare-metal alternative to docker-compose (Node 22 + Postgres installed on the host).
+# sudo cp deploy/arc-rail-collector.service /etc/systemd/system/ && sudo systemctl enable --now arc-rail-collector
+[Unit]
+Description=arc-rail collector (Arc block-zero data collector)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=arc
+WorkingDirectory=/opt/arc-rail
+EnvironmentFile=/opt/arc-rail/.env
+ExecStart=/usr/bin/node packages/collector/dist/main.js
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=40
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/arc-rail
+
+[Install]
+WantedBy=multi-user.target
