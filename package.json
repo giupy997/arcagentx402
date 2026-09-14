@@ -11,15 +11,17 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "tsc -b packages/accounting packages/policy packages/ledger packages/identity packages/router packages/collector packages/seller packages/api packages/mcp && npm run web:build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b packages/accounting packages/collector packages/api && tsc -p packages/web/tsconfig.json --noEmit",
+    "typecheck": "tsc -b packages/accounting packages/policy packages/ledger packages/identity packages/router packages/collector packages/seller packages/api packages/mcp && tsc -p packages/web/tsconfig.json --noEmit",
     "lint": "tsc -b --noEmit packages/accounting packages/collector",
     "collector": "npm run start -w @arc-rail/collector --",
     "db:migrate": "npm run migrate -w @arc-rail/collector --",
     "api": "npm run start -w @arc-rail/api --",
-    "web:build": "npm run build -w @arc-rail/web"
+    "web:build": "npm run build -w @arc-rail/web",
+    "mcp": "npm run start -w @arc-rail/mcp --",
+    "rail": "npm run -s cli -w @arc-rail/mcp --"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

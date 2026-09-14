@@ -1,0 +1,3 @@
+{ "name": "@arc-rail/seller", "version": "0.0.1", "type": "module", "main": "./dist/index.js", "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } }, "scripts": { "build": "tsc -b" },
+  "dependencies": { "@circle-fin/x402-batching": "^3.4.0", "@x402/core": "^2.25.0", "@x402/evm": "^2.25.0", "@x402/hono": "^2.25.0", "hono": "^4.7.0" } }

@@ -1,21 +1,20 @@
-import { ago, fmtGwei, fmtInt, fmtSec, fmtUsdc, getJson, setNetPill, type Fees, type Network } from "./api.js";
+import { fmtGwei, fmtSec, fmtUsdc, getJson, type Fees, type Network } from "./api.js";
 
-const $ = (id: string) => document.getElementById(id)!;
+const set = (id: string, v: string) => { const e = document.getElementById(id); if (e) e.textContent = v; };
 
 async function refresh(): Promise<void> {
   try {
     const [n, f] = await Promise.all([getJson<Network>("/v1/network"), getJson<Fees>("/v1/fees?window=60")]);
-    setNetPill(n);
-    $("s-head").textContent = fmtInt(n.chainHead ?? n.head?.number ?? null);
-    $("s-head-sub").textContent = n.lagBlocks !== null && n.lagBlocks > 20 ? `collector ${fmtInt(n.lagBlocks)} blocks behind` : `${n.blockTimeSeconds ?? "—"} s blocks`;
-    $("s-fee").textContent = fmtGwei(f.current?.baseFeeGwei);
-    $("s-fee-sub").textContent = f.current?.nextBaseFeeGwei !== null && f.current?.nextBaseFeeGwei !== undefined ? `next block ${fmtGwei(f.current.nextBaseFeeGwei)}` : "";
-    $("s-cost").textContent = fmtUsdc(f.costNow?.erc20TransferUsdc);
-    $("s-fin").textContent = fmtSec(n.finality.p50Seconds, 1);
-    $("s-deploys").textContent = fmtInt(n.totals.deploys);
+    const dot = document.getElementById("netdot");
+    if (dot) dot.className = `dot ${(n.collector.lastBlockAgeSeconds ?? 9999) < 60 ? "ok" : "warn"}`;
+    set("netlabel", `Arc ${n.network} live · x402 · USDC`);
+    set("s-fee", fmtGwei(f.current?.baseFeeGwei));
+    set("s-fee-next", fmtGwei(f.current?.nextBaseFeeGwei));
+    set("s-transfer", fmtUsdc(f.costNow?.erc20TransferUsdc));
+    if (n.finality.p50Seconds !== null) set("s-fin", fmtSec(n.finality.p50Seconds, 1));
   } catch {
-    setNetPill(null, true);
+    /* landing stays static if the API is down */
   }
 }
 void refresh();
-setInterval(() => void refresh(), 10_000);
+setInterval(() => void refresh(), 15_000);

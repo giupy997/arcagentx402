@@ -2,8 +2,9 @@
 
 Rail di pagamento agentico su Arc (L1 di Circle, gas in USDC). Monorepo TypeScript, npm workspaces, Node 22.
 
-Stato: **Fase 0 — collettore dati dal blocco zero.** Vedi `docs/arc-verification.md` per cosa è stato
-verificato contro docs.arc.io e cosa resta da confermare al lancio mainnet (16/09/2026).
+Stato: fase 0 (collettore) fatta; **fase 1 (agente x402) in corso**: quote → policy → identità →
+nanopagamento via Circle Gateway → ledger, esposto come server MCP. Vedi `docs/arc-verification.md`
+per cosa è verificato contro docs.arc.io e cosa resta da confermare al lancio mainnet (16/09/2026).
 
 ## Package
 
@@ -12,7 +13,13 @@ verificato contro docs.arc.io e cosa resta da confermare al lancio mainnet (16/0
 | `packages/accounting` | Unico modulo che fa aritmetica su USDC. Tipi branded `Usdc6` (ERC-20) / `Usdc18` (gas). Test di proprietà |
 | `packages/collector` | Collettore: blocchi, tx, receipt, log, deploy, revert, base fee, osservazioni di testa per RPC. Postgres append-only con raw JSON |
 | `packages/api` | API di lettura sul DB del collettore (Hono). `/v1/network`, `/v1/fees`, `/v1/fees/estimate`, `/v1/activity`, `/v1/deploys`, `/v1/rpc`, `/v1/health`. Serve anche il sito. In fase 1 diventa il lato venditore (stesse rotte, a pagamento via x402) |
-| `packages/web` | Sito: landing (`/`) e dashboard live (`/dashboard`). HTML/CSS/TS senza framework, grafici SVG |
+| `packages/web` | Sito: landing sul prodotto (`/`) e pagina rete live (`/network`). HTML/CSS/TS senza framework, grafici SVG |
+| `packages/policy` | Controllo spesa, puro: cap per pagamento / giorno / controparte, rate limit, allow/deny, identità richiesta, gancio bond (fase 2). Sintassi `daily=5,per_seller=0.5,...` |
+| `packages/ledger` | Ogni tentativo di pagamento (quoted/rejected/signed/settled/failed) con importo, controparte, latenza, tx. `MemoryLedger` e `PgLedger`; `exposure()` per controparte |
+| `packages/identity` | Firma con schema esplicito (`secp256k1` oggi, PQ riservato) e risoluzione ERC-8004 (fail closed) |
+| `packages/router` | Il binario compratore: `rail.quote(url)`, `rail.fetch(url)` con x402 + Circle Gateway (batched, gas-free) o `exact` on-chain; `chooseRail()` pura (nanopagamento vs escrow) |
+| `packages/seller` | `createSeller().route("GET /x", "$0.001")` su Hono: 402 x402 verificato e regolato da Circle Gateway |
+| `packages/mcp` | Server MCP (stdio): `arc_quote`, `arc_pay`, `arc_balance`, `arc_deposit`, `arc_ledger`, `arc_policy`. CLI `npm run rail -- pay <url>` |
 
 ## Setup
 
@@ -48,6 +55,20 @@ LC_ALL=en_US.UTF-8 /opt/homebrew/opt/postgresql@17/bin/pg_ctl -D /opt/homebrew/v
 - **Alert**: log + Telegram (opzionale) su lag > N blocchi, stallo, tutti gli RPC giù, troppi gap.
 
 Stato dal DB: `npm run status -w @arc-rail/collector`.
+
+## Agente x402 in locale
+
+```bash
+# .env: ARCRAIL_NETWORK=arcTestnet, ARCRAIL_KEY_FILE=.secrets/agent.key (chmod 600), ARCRAIL_POLICY=...
+npm run rail -- policy
+npm run rail -- quote http://localhost:8791/v1/paid/fees/forecast
+npm run rail -- deposit 1      # USDC dal wallet al saldo Gateway (serve USDC di testnet dal faucet Circle)
+npm run rail -- pay   http://localhost:8791/v1/paid/fees/forecast
+npm run rail -- ledger
+npm run mcp                    # server MCP su stdio
+```
+
+Il venditore si attiva con `SELLER_ADDRESS` nel `.env`: l'API espone `/v1/paid/*` a pagamento (catalogo su `/v1/paid`).
 
 ## Deploy
 

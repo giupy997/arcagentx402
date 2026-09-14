@@ -133,3 +133,34 @@ table.data tr:last-child td { border-bottom: 0; }
   .hero-figure { grid-template-columns: 1fr; }
   .hero-figure .aside { text-align: left; }
 }
+
+/* landing v2: product first */
+.eyebrow { margin-bottom: 18px; }
+.hero-x { display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; align-items: center; padding-block: 56px 40px; }
+.hero-x h1 { max-width: 12ch; }
+.proof { list-style: none; padding: 0; margin: 26px 0 0; display: flex; gap: 22px; flex-wrap: wrap; color: var(--ink-2); font-size: 14px; }
+.proof b { color: var(--ink); font-weight: 600; }
+.term { background: #0f1115; color: #e6e6e6; border-radius: 12px; border: 1px solid rgba(255,255,255,.08); box-shadow: 0 30px 60px -30px rgba(0,0,0,.6); overflow: hidden; }
+.term-bar { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.06); }
+.term-bar span { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.12); }
+.term-bar em { margin-left: auto; font-style: normal; font-size: 12px; color: rgba(255,255,255,.4); }
+.term pre { margin: 0; padding: 16px 18px; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; overflow-x: auto; }
+.term .c { color: rgba(255,255,255,.4); }
+.term .k { color: #86b6ef; }
+.term .s { color: #f0c987; }
+.term .dim { color: rgba(255,255,255,.62); }
+.term .ok { color: #5fd38a; font-weight: 600; }
+pre.code .c { color: var(--muted); }
+pre.code .k { color: var(--accent); }
+pre.code .s { color: var(--series-2); }
+code { font-family: var(--mono); font-size: 0.92em; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; align-items: start; }
+.stack { display: grid; gap: 12px; }
+.checks { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; color: var(--ink-2); font-size: 14.5px; }
+.checks li::before { content: "✓"; color: var(--good); font-weight: 700; margin-right: 8px; }
+.card.soft { background: var(--surface-2); }
+.fine { color: var(--muted); font-size: 13px; margin-top: 22px; }
+@media (max-width: 860px) {
+  .hero-x { grid-template-columns: 1fr; padding-block: 40px 24px; }
+  .two-col { grid-template-columns: 1fr; }
+}

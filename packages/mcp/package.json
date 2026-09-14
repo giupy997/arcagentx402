@@ -1,0 +1,24 @@
+{
+  "name": "@arc-rail/mcp",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/server.js",
+  "bin": {
+    "arc-rail-mcp": "./dist/server.js",
+    "arc-rail": "./dist/cli/rail.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node --env-file-if-exists=../../.env --import tsx src/server.ts",
+    "cli": "node --env-file-if-exists=../../.env --import tsx src/cli/rail.ts"
+  },
+  "dependencies": {
+    "@arc-rail/accounting": "0.0.1",
+    "@arc-rail/identity": "0.0.1",
+    "@arc-rail/ledger": "0.0.1",
+    "@arc-rail/policy": "0.0.1",
+    "@arc-rail/router": "0.0.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.25.0"
+  }
+}

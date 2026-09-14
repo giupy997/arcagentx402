@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import pino from "pino";
 import { createPool } from "./db.js";
 import { activity, deployStats, feeEstimate, feeSummary, networkSummary, recentDeploys, rpcStatus } from "./queries.js";
+import { mountPaidRoutes } from "./paid.js";
 
 const log = pino({ level: process.env.LOG_LEVEL ?? "info", base: { app: "arc-rail-api" } });
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -61,6 +62,8 @@ app.get("/v1/health", async (c) => {
     return c.json({ ok: false, error: (err as Error).message }, 503);
   }
 });
+mountPaidRoutes(app, db, NETWORK, log);
+
 app.onError((err, c) => {
   log.error({ err, path: c.req.path }, "request failed");
   return c.json({ error: "internal error" }, 500);
@@ -68,7 +71,7 @@ app.onError((err, c) => {
 
 if (existsSync(WEB_DIR)) {
   const rel = WEB_DIR.startsWith(process.cwd()) ? WEB_DIR.slice(process.cwd().length + 1) : WEB_DIR;
-  app.use("/*", serveStatic({ root: rel, rewriteRequestPath: (p) => (p === "/dashboard" ? "/dashboard.html" : p) }));
+  app.use("/*", serveStatic({ root: rel, rewriteRequestPath: (p) => (p === "/dashboard" || p === "/network" ? "/dashboard.html" : p) }));
   log.info({ webDir: WEB_DIR }, "serving web");
 } else {
   log.warn({ webDir: WEB_DIR }, "web dist not found: API only");

@@ -3,93 +3,141 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ArcRail — the payment rail for machines on Arc</title>
-<meta name="description" content="A clearing house for machine-to-machine payments on Arc, Circle's USDC-native L1. Buyer-side router, seller-side data endpoints, and the block-zero dataset behind them.">
+<title>ArcRail — let your agent pay for what it uses</title>
+<meta name="description" content="ArcRail is the x402 payment agent for Arc, Circle's USDC-native L1. One tool call: find the price, pay per request through Circle Gateway nanopayments, verify, keep the ledger. Spend limits enforced at the account.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M9 22 16 9l7 13h-4l-3-6-3 6z' fill='white'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/style.css">
 </head>
-<body>
+<body class="landing">
 <div class="wrap">
   <header class="top">
     <a class="brand" href="/"><span class="mark"></span>ArcRail</a>
     <nav class="links">
-      <span class="net-pill" id="netpill"><span class="dot" id="netdot"></span><span id="netlabel">connecting…</span></span>
-      <a href="/dashboard">Live dashboard</a>
+      <a href="#how">How it works</a>
+      <a href="#sell">Sell</a>
+      <a href="/network">Network</a>
       <a href="https://github.com/giupy997/arcagentx402" rel="noopener">GitHub</a>
-      <a class="cta" href="/dashboard">See the chain live</a>
+      <a class="cta" href="#install">Install the agent</a>
     </nav>
   </header>
 
-  <section class="hero">
-    <h1>The payment rail for machines on Arc.</h1>
-    <p class="lead">Arc is Circle's USDC-native L1: gas in dollars, fees around a cent, deterministic finality under a second. That makes one thing possible that no other chain can do economically — an agent paying for a single API call. ArcRail is the clearing house for those payments: it finds the service, prices it, pays it, verifies it, and keeps the ledger.</p>
-    <div class="actions">
-      <a class="btn primary" href="/dashboard">Open the live dashboard</a>
-      <a class="btn" href="#how">How it works</a>
+  <section class="hero hero-x">
+    <div class="hero-copy">
+      <div class="eyebrow"><span class="net-pill"><span class="dot" id="netdot"></span><span id="netlabel">Arc · x402 · USDC</span></span></div>
+      <h1>Let your agent pay for what it uses.</h1>
+      <p class="lead">ArcRail is the x402 payment agent for Arc, Circle's USDC-native chain. Give any LLM agent one tool and it can buy an API call for a fraction of a cent: price discovered, paid off-chain through Circle Gateway, verified, written to a ledger. No gas, no token, no wallet code in your agent.</p>
+      <div class="actions">
+        <a class="btn primary" href="#install">Install the agent</a>
+        <a class="btn" href="#sell">Sell an endpoint</a>
+      </div>
+      <ul class="proof">
+        <li><b id="s-cost">$0.001</b> typical price per call</li>
+        <li><b id="s-fin">&lt;1 s</b> finality on Arc</li>
+        <li><b>0 gas</b> for the buyer, batched settlement</li>
+      </ul>
     </div>
-  </section>
+    <div class="hero-demo" aria-label="Example: an agent paying for a request">
+      <div class="term">
+        <div class="term-bar"><span></span><span></span><span></span><em>agent session</em></div>
+        <pre><span class="c">// the agent calls one tool</span>
+<span class="k">arc_pay</span>({ url: <span class="s">"https://api.weather.example/v1/forecast?city=Milan"</span> })
 
-  <div class="live-strip" id="strip">
-    <div class="tile"><div class="label">Head block</div><div class="value" id="s-head">—</div><div class="delta" id="s-head-sub">&nbsp;</div></div>
-    <div class="tile"><div class="label">Base fee</div><div class="value" id="s-fee">—</div><div class="delta" id="s-fee-sub">&nbsp;</div></div>
-    <div class="tile"><div class="label">Cost of a USDC transfer now</div><div class="value" id="s-cost">—</div><div class="delta">at the current base fee</div></div>
-    <div class="tile"><div class="label">Finality observed</div><div class="value" id="s-fin">—</div><div class="delta">median, last hour</div></div>
-    <div class="tile"><div class="label">Contracts deployed</div><div class="value" id="s-deploys">—</div><div class="delta">since block zero</div></div>
-  </div>
+<span class="c">// ArcRail does the rest</span>
+<span class="dim">→ 402 Payment Required · $0.001 USDC · eip155:5042</span>
+<span class="dim">→ policy ok · cap $5/day, spent $0.31 · seller verified (ERC-8004 #1042)</span>
+<span class="dim">→ signed nanopayment · Circle Gateway · no gas</span>
+<span class="dim">→ 200 OK · 214 ms · ledger #8811</span>
 
-  <section class="block" id="why">
-    <h2>Why Arc, why now</h2>
-    <p class="sub">Every rail needs a fee model it can rely on. Arc's base fee follows an exponential moving average of block usage, floored at 20 gwei, and the next block's fee is published in the current header. It is predictable by construction — and predictable fees are what make per-call pricing sane.</p>
-    <div class="grid-3">
-      <div class="card"><h3>Gas is USDC</h3><p>Fees are dollars from the start. No token to acquire, no volatile denominator between what an agent earns and what it spends.</p></div>
-      <div class="card"><h3>Final in under a second</h3><p>Malachite BFT: a transaction is unconfirmed or final, nothing in between. No reorg logic, no confirmation windows, settlement you can act on immediately.</p></div>
-      <div class="card"><h3>Agent standards on day one</h3><p>ERC-8004 identity, ERC-8183 job escrow and Circle's gas-free nanopayments give agents an identity, an escrow and a way to pay per call.</p></div>
+<span class="ok">✓ paid $0.001 · balance $4.69</span></pre>
+      </div>
     </div>
   </section>
 
   <section class="block" id="how">
-    <h2>What the rail does</h2>
-    <p class="sub">One call from an agent, four things done for it. Rails are picked automatically by amount and by the nature of the service.</p>
+    <h2>One tool call. Four things done.</h2>
+    <p class="sub">The agent never touches keys, gas or chain state. It asks for a resource; ArcRail returns the resource and a receipt.</p>
     <div class="steps">
-      <div class="card"><h3>Find</h3><p>Resolve the seller's ERC-8004 identity and verify it. Fail closed: no identity, no payment.</p></div>
-      <div class="card"><h3>Price</h3><p>Check the ask against the agent's spending policy: caps per agent and per counterparty, rate limits, allowlists. Enforced at the account, not trusted to the agent's code.</p></div>
-      <div class="card"><h3>Pay</h3><p>Nanopayments through Circle Gateway for pay-per-call — signed off-chain, gas-free, settled in batches. ERC-8183 escrow for large or deferred jobs, with an injected evaluator.</p></div>
-      <div class="card"><h3>Verify &amp; record</h3><p>Every attempt lands in the ledger: amount, counterparty, latency, outcome. Real prices, real latencies, real failure rates per endpoint.</p></div>
+      <div class="card"><h3>Quote</h3><p>Fetch the resource. If the server answers <code>402</code>, read the x402 requirements: price, asset, network, seller.</p></div>
+      <div class="card"><h3>Check</h3><p>Spending policy enforced outside the agent: cap per day, cap per seller, rate limit, allowlist. Seller identity resolved on ERC-8004; unknown seller, no payment.</p></div>
+      <div class="card"><h3>Pay</h3><p>Sign a USDC authorization against Circle Gateway. Off-chain, gas-free, settled in batches on Arc. Large or deferred jobs go to ERC-8183 escrow instead.</p></div>
+      <div class="card"><h3>Record</h3><p>Every attempt lands in the ledger: price, seller, latency, outcome. Exposure per seller is a query, not a guess.</p></div>
     </div>
   </section>
 
-  <section class="block" id="data">
-    <h2>We are our own first seller</h2>
-    <p class="sub">There are close to zero paid endpoints on Arc today, so a discovery index would be empty. Instead we collect everything from block zero and sell what only that dataset can answer — starting with what the dashboard shows for free.</p>
+  <section class="block" id="install">
+    <div class="two-col">
+      <div>
+        <h2>For agents: MCP, or a fetch you already know</h2>
+        <p class="sub">Add ArcRail as an MCP server and your agent gets <code>arc_quote</code>, <code>arc_pay</code>, <code>arc_balance</code> and <code>arc_ledger</code>. Or wrap <code>fetch</code> in your own code. The key lives in the rail, never in the model.</p>
+        <ul class="checks">
+          <li>Works with Claude, ChatGPT, Cursor and any MCP client</li>
+          <li>Policy is the account's, not the prompt's: the model cannot raise its own limit</li>
+          <li>Testnet today; mainnet on 16 September 2026</li>
+        </ul>
+      </div>
+      <div class="stack">
+        <pre class="code"><span class="c">// claude_desktop_config.json / .mcp.json</span>
+{ "mcpServers": { "arcrail": {
+    "command": "arc-rail-mcp",
+    "env": { "ARCRAIL_NETWORK": "arc",
+             "ARCRAIL_KEY_FILE": "/etc/arcrail/agent.key",
+             "ARCRAIL_POLICY": "daily=5,per_seller=0.5,per_payment=0.05,identity=required" }
+} } }
+<span class="c">// tools: arc_quote · arc_pay · arc_balance · arc_deposit · arc_ledger · arc_policy</span></pre>
+        <pre class="code"><span class="c">// or in TypeScript</span>
+<span class="k">import</span> { createRail } <span class="k">from</span> <span class="s">"@arc-rail/router"</span>;
+<span class="k">const</span> rail = createRail({ network: <span class="s">"arc"</span>, signer, policy, ledger, identity, agentId });
+<span class="k">const</span> { response, receipt } = <span class="k">await</span> rail.fetch(<span class="s">"https://api.example/v1/data"</span>);
+<span class="c">// receipt → { amountUsdc: "0.001", payTo, status: "settled", txHash, latencyMs }</span></pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="sell">
+    <div class="two-col">
+      <div class="stack">
+        <pre class="code"><span class="c">// Hono: a price on a route, settled by Circle Gateway</span>
+<span class="k">import</span> { createSeller } <span class="k">from</span> <span class="s">"@arc-rail/seller"</span>;
+<span class="k">const</span> seller = createSeller({ sellerAddress, network: <span class="s">"arc"</span> })
+  .route(<span class="s">"GET /v1/forecast"</span>, <span class="s">"$0.001"</span>);
+app.use(seller.middleware());</pre>
+        <div class="card soft"><h3>Live on the rail today</h3><p>Our own Arc data endpoints are the first paid resources: base-fee forecast, cost estimate for a transaction, deploy history, RPC health. Free previews on the <a href="/network">network page</a>.</p></div>
+      </div>
+      <div>
+        <h2>For sellers: get paid per request, settle in USDC</h2>
+        <p class="sub">Put a price on a route. Buyers pay through Circle Gateway; you receive USDC on Arc in batched settlements, no invoicing, no chargebacks, no API keys to leak. ArcRail lists your endpoint to every agent on the rail.</p>
+        <ul class="checks">
+          <li>x402 standard, so any x402 buyer can pay you, not only ArcRail agents</li>
+          <li>Settlement guarantee and seller bonds arrive in phase 2</li>
+          <li>Your prices, latencies and failure rates become your reputation</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="why">
+    <h2>Why this only works on Arc</h2>
+    <p class="sub">Per-call pricing needs a fee you can predict. Arc's base fee is an exponential moving average of block usage with a 20 gwei floor, and the next block's fee is published in the current header. Gas is USDC, so an agent's cost and its revenue are in the same unit. Finality is deterministic in under a second, so "paid" means paid.</p>
     <div class="grid-3">
-      <div class="card"><h3>Fee forecast</h3><p>Current and next-block base fee, cost of a transaction by type, utilisation trend that drives the EWMA.</p><div class="k">GET /v1/fees · /v1/fees/estimate?gas=…</div></div>
-      <div class="card"><h3>Deploy history</h3><p>Who deployed what and when, from the first block. The order in which protocols arrive on a new chain is data nobody gets back.</p><div class="k">GET /v1/deploys</div></div>
-      <div class="card"><h3>Network &amp; RPC health</h3><p>Observed finality latency, per-provider RPC lag and error rates, activity by operation.</p><div class="k">GET /v1/network · /v1/rpc · /v1/activity</div></div>
+      <div class="card"><h3>Gas is USDC</h3><p>No native token to acquire and no volatile denominator between what an agent earns and what it spends.</p></div>
+      <div class="card"><h3>Standards on day one</h3><p>ERC-8004 identity, ERC-8183 job escrow, Circle Gateway nanopayments. ArcRail composes them; it does not reinvent them.</p></div>
+      <div class="card"><h3>Predictable by design</h3><p>Base fee now <b id="s-fee">—</b>, next block <b id="s-fee-next">—</b>. A USDC transfer costs <b id="s-transfer">—</b>. <a href="/network">Watch the network live.</a></p></div>
     </div>
-  </section>
-
-  <section class="block" id="agents">
-    <h2>Built for agents, not dashboards</h2>
-    <p class="sub">The primary interface is an MCP server that exposes the router as tools. A human reads this page; an agent calls the rail.</p>
-    <pre class="code">{ "mcpServers": { "arcrail": { "command": "npx", "args": ["@arc-rail/mcp"] } } }
-
-// tools: find_service · quote · pay · verify · ledger.recent   (phase 1)</pre>
   </section>
 
   <section class="block" id="roadmap">
-    <h2>Phases</h2>
+    <h2>Where this goes</h2>
     <div class="phases">
-      <div class="ph now">Phase 0</div><div><b>Block-zero collector.</b> Running from mainnet genesis: blocks, transactions, receipts, logs, deploys, failed transactions with reasons, base fee inputs, per-RPC finality observations. This dashboard is its first reader.</div>
-      <div class="ph">Phase 1</div><div><b>Buyer-side router + sold endpoints.</b> Nanopayments via Circle Gateway, ERC-8183 escrow, spend policy, ledger, MCP server. First paid endpoints are the data above.</div>
-      <div class="ph">Phase 2</div><div><b>Settlement guarantee.</b> Seller bonds and open exposure per counterparty, computed from the ledger in real time.</div>
-      <div class="ph">Phase 3</div><div><b>Float.</b> Escrow balances, tracked apart from operating capital, put to work in USYC.</div>
-      <div class="ph">Phase 4</div><div><b>Evaluator</b> for ERC-8183 jobs once jobs outgrow nanopayments.</div>
+      <div class="ph now">Now</div><div><b>Buyer agent + first paid endpoints.</b> MCP server, policy, ledger, nanopayments on Arc testnet; mainnet at launch.</div>
+      <div class="ph">Next</div><div><b>Settlement guarantee.</b> Seller bonds and real-time exposure per counterparty, from the ledger.</div>
+      <div class="ph">Then</div><div><b>Escrow float</b> put to work in USYC, and an evaluator for ERC-8183 jobs.</div>
     </div>
+    <p class="fine">No project token. Not affiliated with Circle or Arc. Source on <a href="https://github.com/giupy997/arcagentx402" rel="noopener">GitHub</a>.</p>
   </section>
 
   <footer>
-    <span>ArcRail · not affiliated with Circle or Arc · no project token</span>
-    <span><a href="/dashboard">Dashboard</a> · <a href="https://docs.arc.io" rel="noopener">docs.arc.io</a> · <a href="https://github.com/giupy997/arcagentx402" rel="noopener">Source</a></span>
+    <span>ArcRail · built on Arc, x402 and Circle Gateway</span>
+    <span><a href="/network">Network</a> · <a href="https://docs.arc.io" rel="noopener">docs.arc.io</a> · <a href="https://x402.org" rel="noopener">x402.org</a></span>
   </footer>
 </div>
 <script type="module" src="/js/landing.js"></script>
