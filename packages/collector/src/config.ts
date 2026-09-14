@@ -58,6 +58,7 @@ const EnvSchema = z.object({
   COLLECTOR_HEALTH_PORT: intEnv(8790),
   COLLECTOR_ENRICH_REVERTS: boolEnv(true),
   COLLECTOR_ENRICH_CODE: boolEnv(true),
+  COLLECTOR_RAW_MODE: z.enum(["full", "compact"]).default("compact"),
   COLLECTOR_RPC_TIMEOUT_MS: intEnv(15_000),
   COLLECTOR_ENDPOINT_LAG_TOLERANCE: intEnv(20),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
@@ -84,6 +85,12 @@ export interface CollectorConfig {
   readonly healthPort: number;
   readonly enrichReverts: boolean;
   readonly enrichCode: boolean;
+  /**
+   * full: tx raw and receipt raw stored verbatim (calldata and logs duplicated in raw + columns).
+   * compact: raw stored without `input` (kept in transactions.input) and without `logs` (kept in logs table).
+   * Both are lossless; compact is ~2x smaller on disk.
+   */
+  readonly rawMode: "full" | "compact";
   readonly rpcTimeoutMs: number;
   readonly endpointLagTolerance: number;
   readonly telegram: { botToken: string; chatId: string } | null;
@@ -125,6 +132,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
     healthPort: e.COLLECTOR_HEALTH_PORT,
     enrichReverts: e.COLLECTOR_ENRICH_REVERTS,
     enrichCode: e.COLLECTOR_ENRICH_CODE,
+    rawMode: e.COLLECTOR_RAW_MODE,
     rpcTimeoutMs: e.COLLECTOR_RPC_TIMEOUT_MS,
     endpointLagTolerance: e.COLLECTOR_ENDPOINT_LAG_TOLERANCE,
     telegram: e.TELEGRAM_BOT_TOKEN && e.TELEGRAM_CHAT_ID ? { botToken: e.TELEGRAM_BOT_TOKEN, chatId: e.TELEGRAM_CHAT_ID } : null,

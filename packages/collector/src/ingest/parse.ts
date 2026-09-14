@@ -65,7 +65,8 @@ export interface ParsedTx {
   chainId: number | null;
   inputSelector: Buffer | null;
   inputSize: number;
-  raw: RpcTransaction;
+  input: Buffer;
+  raw: RpcTransaction | Omit<RpcTransaction, "input">;
 }
 
 export interface ParsedReceipt {
@@ -79,7 +80,7 @@ export interface ParsedReceipt {
   feeUsdc18: string;
   contractAddress: Buffer | null;
   logsCount: number;
-  raw: RpcReceipt;
+  raw: RpcReceipt | Omit<RpcReceipt, "logs">;
 }
 
 export interface ParsedLog {
@@ -141,9 +142,12 @@ export function parseBlockHeader(b: RpcBlock): ParsedBlock {
   };
 }
 
-export function parseTx(t: RpcTransaction, blockNumber: number): ParsedTx {
+export type RawMode = "full" | "compact";
+
+export function parseTx(t: RpcTransaction, blockNumber: number, rawMode: RawMode = "compact"): ParsedTx {
   const input = t.input ?? "0x";
   const inputBytes = (input.length - 2) / 2;
+  const { input: _dropped, ...rawNoInput } = t;
   return {
     blockNumber,
     txIndex: hexInt(t.transactionIndex, "tx.transactionIndex"),
@@ -160,13 +164,15 @@ export function parseTx(t: RpcTransaction, blockNumber: number): ParsedTx {
     chainId: t.chainId ? hexInt(t.chainId, "tx.chainId") : null,
     inputSelector: inputBytes >= 4 ? Buffer.from(input.slice(2, 10), "hex") : null,
     inputSize: inputBytes,
-    raw: t,
+    input: bytes(input),
+    raw: rawMode === "full" ? t : rawNoInput,
   };
 }
 
-export function parseReceipt(r: RpcReceipt, blockNumber: number): ParsedReceipt {
+export function parseReceipt(r: RpcReceipt, blockNumber: number, rawMode: RawMode = "compact"): ParsedReceipt {
   const gasUsed = hexQuantityToBigInt(r.gasUsed);
   const price = hexQuantityToBigInt(r.effectiveGasPrice);
+  const { logs: _dropped, ...rawNoLogs } = r;
   return {
     txHash: bytes(r.transactionHash),
     blockNumber,
@@ -178,7 +184,7 @@ export function parseReceipt(r: RpcReceipt, blockNumber: number): ParsedReceipt 
     feeUsdc18: toSqlNumeric(txFee18(gasUsed, price)),
     contractAddress: optBytes(r.contractAddress),
     logsCount: r.logs.length,
-    raw: r,
+    raw: rawMode === "full" ? r : rawNoLogs,
   };
 }
 
@@ -198,7 +204,7 @@ export function parseLogs(r: RpcReceipt, blockNumber: number, txIndex: number): 
  * Validates that receipts belong to the block and match its transactions 1:1, then parses everything.
  * Throws ParseError on inconsistency (caller treats it as a transient RPC problem and refetches).
  */
-export function parseBundle(rawBlock: RpcBlock, rawReceipts: RpcReceipt[]): ParsedBlockBundle {
+export function parseBundle(rawBlock: RpcBlock, rawReceipts: RpcReceipt[], rawMode: RawMode = "compact"): ParsedBlockBundle {
   const block = parseBlockHeader(rawBlock);
   const txsRaw = rawBlock.transactions;
   if (txsRaw.length > 0 && typeof txsRaw[0] === "string") throw new ParseError(`block ${block.number}: transactions are hashes, need full objects`);
@@ -215,9 +221,9 @@ export function parseBundle(rawBlock: RpcBlock, rawReceipts: RpcReceipt[]): Pars
     if (t.blockHash.toLowerCase() !== rawBlock.hash.toLowerCase()) throw new ParseError(`block ${block.number}: tx ${t.hash} has blockHash ${t.blockHash}`);
     if (r.transactionHash.toLowerCase() !== t.hash.toLowerCase()) throw new ParseError(`block ${block.number}: receipt[${i}] is for ${r.transactionHash}, tx is ${t.hash}`);
     if (r.blockHash.toLowerCase() !== rawBlock.hash.toLowerCase()) throw new ParseError(`block ${block.number}: receipt ${r.transactionHash} has blockHash ${r.blockHash}`);
-    const pt = parseTx(t, block.number);
+    const pt = parseTx(t, block.number, rawMode);
     if (pt.txIndex !== i) throw new ParseError(`block ${block.number}: tx index ${pt.txIndex} at position ${i}`);
-    const pr = parseReceipt(r, block.number);
+    const pr = parseReceipt(r, block.number, rawMode);
     txs.push(pt);
     receipts.push(pr);
     logs.push(...parseLogs(r, block.number, i));

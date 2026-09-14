@@ -108,8 +108,8 @@ export class EnrichWorker {
   }
 
   async replayReverts(limit: number): Promise<number> {
-    const rows = await this.db.query<{ tx_hash: Buffer; block_number: string; attempts: number; raw: RpcTransaction }>(
-      `SELECT r.tx_hash, r.block_number, r.attempts, t.raw
+    const rows = await this.db.query<{ tx_hash: Buffer; block_number: string; attempts: number; raw: RpcTransaction; input: Buffer | null }>(
+      `SELECT r.tx_hash, r.block_number, r.attempts, t.raw, t.input
        FROM tx_reverts r JOIN transactions t ON t.hash = r.tx_hash
        WHERE r.replay_status IN ('pending', 'rpc_error') AND r.attempts < 5
        ORDER BY r.attempts ASC, r.block_number DESC LIMIT $1`,
@@ -120,7 +120,8 @@ export class EnrichWorker {
     for (const row of rows.rows) {
       const t = row.raw;
       const parent = Number(row.block_number) - 1;
-      const callObj: Record<string, unknown> = { from: t.from, data: t.input, value: t.value, gas: t.gas };
+      const data = row.input ? bytesToHex(row.input) : (t.input ?? "0x");
+      const callObj: Record<string, unknown> = { from: t.from, data, value: t.value, gas: t.gas };
       if (t.to) callObj.to = t.to;
       // gasPrice matters for reverts that depend on msg.gas price/balance; pass what the tx used.
       if (t.gasPrice) callObj.gasPrice = t.gasPrice;

@@ -128,7 +128,7 @@ export class HeadWorker {
     for (let attempt = 0; attempt <= MAX_INLINE_RETRIES && pending.length > 0; attempt++) {
       let res;
       try {
-        res = await fetchBlocks(this.pool, pending, exclude.size > 0 && exclude.size < this.pool.endpoints.length ? exclude : undefined);
+        res = await fetchBlocks(this.pool, pending, exclude.size > 0 && exclude.size < this.pool.endpoints.length ? exclude : undefined, this.cfg.rawMode);
       } catch (err) {
         this.log.warn({ err, attempt, first: pending[0] }, "fetch batch failed");
         await sleep(300 * (attempt + 1));

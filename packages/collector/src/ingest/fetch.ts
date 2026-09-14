@@ -1,6 +1,6 @@
 import type { RpcPool } from "../rpc/pool.js";
 import type { RpcBlock, RpcReceipt } from "../rpc/types.js";
-import { ParseError, parseBundle, type ParsedBlockBundle } from "./parse.js";
+import { ParseError, parseBundle, type ParsedBlockBundle, type RawMode } from "./parse.js";
 
 export interface FetchedBlock {
   number: number;
@@ -27,7 +27,7 @@ const toHex = (n: number): `0x${string}` => `0x${n.toString(16)}`;
  * Per-block failures (null block = node behind, mismatched receipts = node inconsistency) are returned,
  * not thrown, so the caller can retry only those, preferably on another endpoint.
  */
-export async function fetchBlocks(pool: RpcPool, numbers: readonly number[], exclude?: ReadonlySet<string>): Promise<FetchResult> {
+export async function fetchBlocks(pool: RpcPool, numbers: readonly number[], exclude?: ReadonlySet<string>, rawMode: RawMode = "compact"): Promise<FetchResult> {
   if (numbers.length === 0) return { ok: [], failed: [] };
   const calls = numbers.flatMap((n) => [
     { method: "eth_getBlockByNumber", params: [toHex(n), true] },
@@ -58,7 +58,7 @@ export async function fetchBlocks(pool: RpcPool, numbers: readonly number[], exc
       continue;
     }
     try {
-      const bundle = parseBundle(bo.result as RpcBlock, ro.result as RpcReceipt[]);
+      const bundle = parseBundle(bo.result as RpcBlock, ro.result as RpcReceipt[], rawMode);
       if (bundle.block.number !== n) throw new ParseError(`asked ${n}, got ${bundle.block.number}`);
       ok.push({ number: n, bundle, endpoint: routed.endpoint, fetchMs: perBlockMs });
     } catch (err) {

@@ -45,15 +45,15 @@ async function writeTxs(tx: Tx, { txs }: ParsedBlockBundle): Promise<void> {
   if (txs.length === 0) return;
   await tx.query(
     `INSERT INTO transactions (block_number, tx_index, hash, "from", "to", value, nonce, gas, gas_price, max_fee_per_gas,
-       max_priority_fee_per_gas, tx_type, chain_id, input_selector, input_size, raw)
+       max_priority_fee_per_gas, tx_type, chain_id, input_selector, input_size, raw, input)
      SELECT * FROM unnest($1::bigint[], $2::int[], $3::bytea[], $4::bytea[], $5::bytea[], $6::numeric[], $7::bigint[], $8::bigint[],
-       $9::numeric[], $10::numeric[], $11::numeric[], $12::smallint[], $13::bigint[], $14::bytea[], $15::int[], $16::jsonb[])
+       $9::numeric[], $10::numeric[], $11::numeric[], $12::smallint[], $13::bigint[], $14::bytea[], $15::int[], $16::jsonb[], $17::bytea[])
      ON CONFLICT DO NOTHING`,
     [
       txs.map((t) => t.blockNumber), txs.map((t) => t.txIndex), txs.map((t) => t.hash), txs.map((t) => t.from), txs.map((t) => t.to),
       txs.map((t) => t.value), txs.map((t) => t.nonce), txs.map((t) => t.gas), txs.map((t) => t.gasPrice), txs.map((t) => t.maxFeePerGas),
       txs.map((t) => t.maxPriorityFeePerGas), txs.map((t) => t.txType), txs.map((t) => t.chainId), txs.map((t) => t.inputSelector),
-      txs.map((t) => t.inputSize), txs.map((t) => JSON.stringify(t.raw)),
+      txs.map((t) => t.inputSize), txs.map((t) => JSON.stringify(t.raw)), txs.map((t) => t.input),
     ],
   );
 }

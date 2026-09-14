@@ -128,7 +128,7 @@ export class BackfillWorker {
     for (let attempt = 0; attempt < 3 && pending.length > 0; attempt++) {
       let res;
       try {
-        res = await fetchBlocks(this.pool, pending);
+        res = await fetchBlocks(this.pool, pending, undefined, this.cfg.rawMode);
       } catch (err) {
         this.log.warn({ err, first: pending[0] }, "backfill fetch failed");
         await sleep(500 * (attempt + 1));
