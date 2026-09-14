@@ -24,6 +24,12 @@
     <div class="meta" id="meta">—</div>
   </div>
 
+  <div class="offline hidden" id="offline">
+    <h2>Live network data is coming online</h2>
+    <p>This page reads ArcRail's block-zero collector: base fee and next-block forecast, cost per operation, finality, contract deploys, RPC provider health. The collector goes live with Arc mainnet on 16 September 2026.</p>
+    <p><a class="btn" href="/">Back to ArcRail</a></p>
+  </div>
+
   <div class="filters">
     <span class="lbl">Window</span>
     <div class="seg" id="window" role="group" aria-label="Time window">
@@ -89,6 +95,7 @@
     <span><a href="/v1/network">/v1/network</a> · <a href="/v1/fees">/v1/fees</a> · <a href="/v1/deploys">/v1/deploys</a> · <a href="/v1/rpc">/v1/rpc</a></span>
   </footer>
 </div>
+<script src="/config.js"></script>
 <script type="module" src="/js/dashboard.js"></script>
 </body>
 </html>

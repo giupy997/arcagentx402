@@ -1,8 +1,21 @@
 export const API_BASE: string = (window as unknown as { ARCRAIL_API?: string }).ARCRAIL_API ?? "";
 
+/** Thrown when there is no API behind the site (e.g. static hosting without ARCRAIL_API_URL). */
+export class ApiUnavailable extends Error {
+  override readonly name = "ApiUnavailable";
+}
+
 export async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { headers: { accept: "application/json" } });
-  if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { headers: { accept: "application/json" } });
+  } catch {
+    throw new ApiUnavailable("network error");
+  }
+  const type = res.headers.get("content-type") ?? "";
+  // Static hosts answer unknown paths with an HTML 404 page: that means "no API here", not a data error.
+  if (res.status === 404 || !type.includes("application/json")) throw new ApiUnavailable(`${path}: no API`);
+  if (!res.ok && res.status !== 503) throw new Error(`${path}: HTTP ${res.status}`);
   return (await res.json()) as T;
 }
 

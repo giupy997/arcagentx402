@@ -1,4 +1,4 @@
-import { ago, fmtCompact, fmtGwei, fmtInt, fmtPct, fmtSec, fmtUsdc, getJson, setNetPill, short, timeHM, type Activity, type Deploys, type Fees, type Network, type Rpc } from "./api.js";
+import { ApiUnavailable, ago, fmtCompact, fmtGwei, fmtInt, fmtPct, fmtSec, fmtUsdc, getJson, setNetPill, short, timeHM, type Activity, type Deploys, type Fees, type Network, type Rpc } from "./api.js";
 import { barChart, columnChart, lineChart, tableTwin } from "./charts.js";
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -38,6 +38,10 @@ async function refresh(): Promise<void> {
     $("meta").textContent = `updated ${new Date().toLocaleTimeString()} · ${fmtInt(n.totals.blocks)} blocks · ${fmtCompact(n.totals.transactions)} transactions collected`;
     $("collector-note").textContent = n.collector.gapsOpen > 0 ? `${n.collector.gapsOpen} gap(s) being backfilled` : "no gaps";
   } catch (err) {
+    if (err instanceof ApiUnavailable) {
+      showOffline();
+      return;
+    }
     setNetPill(null, true);
     $("meta").textContent = `error: ${(err as Error).message}`;
     document.querySelectorAll<HTMLElement>(".viz").forEach((v) => v.classList.remove("stale"));
@@ -132,6 +136,21 @@ function renderSelectors(a: Activity): void {
   $("selectors-table").innerHTML = rows ? `<table class="data"><thead><tr><th>Selector</th><th>Function</th><th class="num">Calls</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">No calls in this window.</div>';
 }
 
+let offline = false;
+function showOffline(): void {
+  if (offline) return;
+  offline = true;
+  document.querySelector(".tiles")?.classList.add("hidden");
+  document.querySelector(".charts")?.classList.add("hidden");
+  document.querySelector(".filters")?.classList.add("hidden");
+  $("offline").classList.remove("hidden");
+  $("meta").textContent = "";
+  const dot = document.getElementById("netdot");
+  const label = document.getElementById("netlabel");
+  if (dot) dot.className = "dot";
+  if (label) label.textContent = "Arc · live data soon";
+}
+
 document.querySelectorAll<HTMLButtonElement>("#window button").forEach((b) => {
   b.addEventListener("click", () => {
     document.querySelectorAll<HTMLButtonElement>("#window button").forEach((x) => x.setAttribute("aria-pressed", "false"));
@@ -142,4 +161,4 @@ document.querySelectorAll<HTMLButtonElement>("#window button").forEach((b) => {
 });
 
 void refresh();
-setInterval(() => void refresh(), 5_000);
+setInterval(() => { if (!offline) void refresh(); }, 5_000);

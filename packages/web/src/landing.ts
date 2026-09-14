@@ -13,8 +13,12 @@ async function refresh(): Promise<void> {
     set("s-transfer", fmtUsdc(f.costNow?.erc20TransferUsdc));
     if (n.finality.p50Seconds !== null) set("s-fin", fmtSec(n.finality.p50Seconds, 1));
   } catch {
-    /* landing stays static if the API is down */
+    // No API behind this host: keep the static copy and a neutral pill.
+    const dot = document.getElementById("netdot");
+    if (dot) dot.className = "dot hidden";
+    stop();
   }
 }
+const timer = setInterval(() => void refresh(), 15_000);
+const stop = () => clearInterval(timer);
 void refresh();
-setInterval(() => void refresh(), 15_000);
