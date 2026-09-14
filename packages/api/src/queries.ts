@@ -1,4 +1,4 @@
-import { formatUsdc18, txFee18, usdc18, type Usdc18 } from "@arc-rail/accounting";
+import { formatUsdc18, txFee18, usdc18, type Usdc18 } from "@cra-agent/accounting";
 import { hex, type Db } from "./db.js";
 
 const usd = (wei18: string | bigint | null, digits = 6): string | null =>

@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * ArcRail MCP server: the agent-facing interface of the rail (brief §6: primary, not an add-on).
+ * CRA AGENT MCP server: the agent-facing interface of the rail (brief §6: primary, not an add-on).
  * Tools: arc_quote, arc_pay, arc_balance, arc_deposit, arc_ledger, arc_policy.
  * Transport: stdio. All diagnostics go to stderr; stdout is the MCP channel.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { formatUsdc6 } from "@arc-rail/accounting";
-import { describePolicy } from "@arc-rail/policy";
-import { EscrowNotImplemented, PolicyRejected } from "@arc-rail/router";
+import { formatUsdc6 } from "@cra-agent/accounting";
+import { describePolicy } from "@cra-agent/policy";
+import { EscrowNotImplemented, PolicyRejected } from "@cra-agent/router";
 import { railFromEnv } from "./rail-from-env.js";
 
 const text = (v: unknown) => ({ content: [{ type: "text" as const, text: typeof v === "string" ? v : JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x), 2) }] });
@@ -17,7 +17,7 @@ const fail = (msg: string) => ({ content: [{ type: "text" as const, text: msg }]
 
 async function main(): Promise<void> {
   const { rail, ledger, policy, network, agentId } = await railFromEnv();
-  const server = new McpServer({ name: "arcrail", version: "0.0.1" });
+  const server = new McpServer({ name: "cra-agent", version: "0.0.1" });
 
   server.registerTool("arc_quote", {
     title: "Quote an x402 resource",
@@ -34,7 +34,7 @@ async function main(): Promise<void> {
 
   server.registerTool("arc_pay", {
     title: "Fetch a resource, paying with USDC on Arc if it asks",
-    description: "Fetches the URL. If the server answers 402, ArcRail checks the spending policy, verifies the seller, signs a gas-free nanopayment through Circle Gateway (or a standard x402 payment), retries the request and records the outcome in the ledger. Returns the response body plus a receipt. Policy rejections are returned as errors with the rule that fired.",
+    description: "Fetches the URL. If the server answers 402, CRA AGENT checks the spending policy, verifies the seller, signs a gas-free nanopayment through Circle Gateway (or a standard x402 payment), retries the request and records the outcome in the ledger. Returns the response body plus a receipt. Policy rejections are returned as errors with the rule that fired.",
     inputSchema: { url: z.string().url(), method: z.enum(["GET", "POST"]).optional(), body: z.string().optional(), maxUsdc: z.string().optional().describe("Refuse if the quoted price is above this (decimal USDC)") },
   }, async ({ url, method, body, maxUsdc }) => {
     try {
@@ -90,10 +90,10 @@ async function main(): Promise<void> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(JSON.stringify({ event: "arcrail.mcp.ready", network, address: rail.address, agentId }));
+  console.error(JSON.stringify({ event: "cra.mcp.ready", network, address: rail.address, agentId }));
 }
 
 main().catch((err) => {
-  console.error(JSON.stringify({ event: "arcrail.mcp.fatal", error: (err as Error).message }));
+  console.error(JSON.stringify({ event: "cra.mcp.fatal", error: (err as Error).message }));
   process.exit(1);
 });

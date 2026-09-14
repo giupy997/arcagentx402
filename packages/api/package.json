@@ -1,5 +1,5 @@
 {
-  "name": "@arc-rail/api",
+  "name": "@cra-agent/api",
   "version": "0.0.1",
   "type": "module",
   "main": "./dist/main.js",
@@ -8,12 +8,12 @@
     "start": "node --env-file-if-exists=../../.env --import tsx src/main.ts"
   },
   "dependencies": {
-    "@arc-rail/accounting": "0.0.1",
+    "@cra-agent/accounting": "0.0.1",
     "@hono/node-server": "^1.14.0",
     "hono": "^4.7.0",
     "pg": "^8.16.0",
     "pino": "^9.7.0",
     "zod": "^3.25.0",
-    "@arc-rail/seller": "0.0.1"
+    "@cra-agent/seller": "0.0.1"
   }
 }

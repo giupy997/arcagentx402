@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseUsdc6, usdc6 } from "@arc-rail/accounting";
+import { parseUsdc6, usdc6 } from "@cra-agent/accounting";
 import { ARC_TESTNET, DEFAULT_POLICY, evaluatePolicy, parsePolicyString, type PolicyContext } from "../src/index.js";
 
 const ctx = (over: Partial<PolicyContext> = {}): PolicyContext => ({

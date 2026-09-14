@@ -1,4 +1,4 @@
-import { hexQuantityToBigInt, toSqlNumeric, txFee18 } from "@arc-rail/accounting";
+import { hexQuantityToBigInt, toSqlNumeric, txFee18 } from "@cra-agent/accounting";
 import { keccak256 } from "viem";
 import { hexToBytes } from "../db/index.js";
 import type { Hex, RpcBlock, RpcReceipt, RpcTransaction } from "../rpc/types.js";

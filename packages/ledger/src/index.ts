@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { sumUsdc6, toSqlNumeric, usdc6, type Usdc6 } from "@arc-rail/accounting";
+import { sumUsdc6, toSqlNumeric, usdc6, type Usdc6 } from "@cra-agent/accounting";
 
 export type PaymentStatus = "quoted" | "rejected" | "signed" | "settled" | "failed";
 export type RailKind = "nanopayment" | "escrow";

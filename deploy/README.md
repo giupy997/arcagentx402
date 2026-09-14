@@ -12,14 +12,14 @@ ma NON prima di aver visto i dati reali.
 ssh root@<vps>
 curl -fsSL https://raw.githubusercontent.com/giupy997/arcagentx402/main/deploy/setup.sh | DOMAIN=arc.tuodominio.com bash
 # senza DOMAIN: sito su http://<ip>:8081
-nano /opt/arc-rail/.env && systemctl restart arc-rail-collector arc-rail-api
-journalctl -u arc-rail-collector -f
+nano /opt/cra-agent/.env && systemctl restart cra-agent-collector cra-agent-api
+journalctl -u cra-agent-collector -f
 ```
 
 ## Docker
 
 ```bash
-git clone <repo> /opt/arc-rail && cd /opt/arc-rail/deploy
+git clone <repo> /opt/cra-agent && cd /opt/cra-agent/deploy
 cp ../.env.example .env
 # nel .env: ARC_NETWORK=mainnet, ARC_RPC_URLS=<endpoint mainnet verificati>, ARC_CHAIN_ID=<da docs.arc.io>,
 # DATABASE_URL=postgres://arc:<pw>@db:5432/arc_rail, POSTGRES_PASSWORD=<pw>, TELEGRAM_*

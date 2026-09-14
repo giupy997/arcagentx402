@@ -1,6 +1,6 @@
-export const API_BASE: string = (window as unknown as { ARCRAIL_API?: string }).ARCRAIL_API ?? "";
+export const API_BASE: string = (window as unknown as { CRA_API?: string }).CRA_API ?? "";
 
-/** Thrown when there is no API behind the site (e.g. static hosting without ARCRAIL_API_URL). */
+/** Thrown when there is no API behind the site (e.g. static hosting without CRA_API_URL). */
 export class ApiUnavailable extends Error {
   override readonly name = "ApiUnavailable";
 }

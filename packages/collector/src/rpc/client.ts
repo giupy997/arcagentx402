@@ -24,7 +24,7 @@ export interface RpcFailure {
 }
 export type RpcOutcome<T = unknown> = RpcResult<T> | RpcFailure;
 
-const USER_AGENT = "arc-rail-collector/0.0.1";
+const USER_AGENT = "cra-agent-collector/0.0.1";
 
 /** JSON-RPC error codes we treat as transient (retry on same or other endpoint). */
 export function isRetryableRpcCode(code: number): boolean {

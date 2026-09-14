@@ -1,7 +1,7 @@
 /**
  * Rail choice as a pure function (brief §6): testable on its own, separate from execution.
  */
-import { compareUsdc6, parseUsdc6, type Usdc6 } from "@arc-rail/accounting";
+import { compareUsdc6, parseUsdc6, type Usdc6 } from "@cra-agent/accounting";
 
 export type RailChoice = "nanopayment" | "escrow";
 

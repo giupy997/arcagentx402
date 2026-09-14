@@ -10,7 +10,7 @@ import { createPool } from "./db.js";
 import { activity, deployStats, feeEstimate, feeSummary, networkSummary, recentDeploys, rpcStatus } from "./queries.js";
 import { mountPaidRoutes } from "./paid.js";
 
-const log = pino({ level: process.env.LOG_LEVEL ?? "info", base: { app: "arc-rail-api" } });
+const log = pino({ level: process.env.LOG_LEVEL ?? "info", base: { app: "cra-agent-api" } });
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) throw new Error("DATABASE_URL is required");
 const PORT = Number(process.env.API_PORT ?? 8791);
@@ -77,4 +77,4 @@ if (existsSync(WEB_DIR)) {
   log.warn({ webDir: WEB_DIR }, "web dist not found: API only");
 }
 
-serve({ fetch: app.fetch, port: PORT }, (info) => log.info({ port: info.port, network: NETWORK }, "arc-rail api listening"));
+serve({ fetch: app.fetch, port: PORT }, (info) => log.info({ port: info.port, network: NETWORK }, "cra-agent api listening"));

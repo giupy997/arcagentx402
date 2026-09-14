@@ -1,5 +1,5 @@
 {
-  "name": "@arc-rail/web",
+  "name": "@cra-agent/web",
   "version": "0.0.1",
   "type": "module",
   "private": true,

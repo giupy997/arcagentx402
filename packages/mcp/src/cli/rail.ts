@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
  * Tiny CLI over the same rail the MCP server uses. For humans and for smoke tests.
- *   arc-rail quote <url>        arc-rail pay <url>        arc-rail balance
- *   arc-rail deposit <usdc>     arc-rail ledger [n]       arc-rail policy
+ *   cra-agent quote <url>        cra-agent pay <url>        cra-agent balance
+ *   cra-agent deposit <usdc>     cra-agent ledger [n]       cra-agent policy
  */
-import { formatUsdc6 } from "@arc-rail/accounting";
-import { describePolicy } from "@arc-rail/policy";
-import { EscrowNotImplemented, PolicyRejected } from "@arc-rail/router";
+import { formatUsdc6 } from "@cra-agent/accounting";
+import { describePolicy } from "@cra-agent/policy";
+import { EscrowNotImplemented, PolicyRejected } from "@cra-agent/router";
 import { railFromEnv } from "../rail-from-env.js";
 
 const out = (v: unknown) => console.log(JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x), 2));
@@ -46,7 +46,7 @@ async function main(): Promise<void> {
     }
     case "policy": out({ agentId, network, address: rail.address, policy: describePolicy(policy) }); break;
     default:
-      console.error("usage: arc-rail <quote|pay|balance|deposit|ledger|policy> [arg]");
+      console.error("usage: cra-agent <quote|pay|balance|deposit|ledger|policy> [arg]");
       process.exit(2);
   }
   await ledger.close();

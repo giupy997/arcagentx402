@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseUsdc6 } from "@arc-rail/accounting";
+import { parseUsdc6 } from "@cra-agent/accounting";
 import { chooseRail } from "../src/decide.js";
 
 describe("chooseRail", () => {

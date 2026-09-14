@@ -1,6 +1,6 @@
-{ "name": "@arc-rail/router", "version": "0.0.1", "type": "module", "main": "./dist/index.js", "types": "./dist/index.d.ts",
+{ "name": "@cra-agent/router", "version": "0.0.1", "type": "module", "main": "./dist/index.js", "types": "./dist/index.d.ts",
   "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } }, "scripts": { "build": "tsc -b" },
   "dependencies": {
-    "@arc-rail/accounting": "0.0.1", "@arc-rail/identity": "0.0.1", "@arc-rail/ledger": "0.0.1", "@arc-rail/policy": "0.0.1",
+    "@cra-agent/accounting": "0.0.1", "@cra-agent/identity": "0.0.1", "@cra-agent/ledger": "0.0.1", "@cra-agent/policy": "0.0.1",
     "@circle-fin/x402-batching": "^3.4.0", "@x402/core": "^2.25.0", "@x402/evm": "^2.25.0", "@x402/fetch": "^2.25.0", "viem": "^2.31.0"
   } }

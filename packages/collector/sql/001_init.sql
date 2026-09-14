@@ -1,4 +1,4 @@
--- arc-rail collector schema v1. Append-only, raw JSON-RPC preserved next to parsed columns.
+-- cra-agent collector schema v1. Append-only, raw JSON-RPC preserved next to parsed columns.
 -- Amount columns are numeric(78,0) (uint256 fits). Hashes/addresses are bytea.
 
 CREATE TABLE IF NOT EXISTS schema_migrations (

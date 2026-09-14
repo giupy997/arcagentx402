@@ -21,19 +21,19 @@ export class Alerter {
     if (last !== undefined && now - last < this.repeatMs) return;
     this.active.set(key, now);
     this.log.error({ alert: key }, message);
-    await this.send(`🔴 [arc-rail ${this.cfg.network}] ${key}: ${message}`);
+    await this.send(`🔴 [cra-agent ${this.cfg.network}] ${key}: ${message}`);
   }
 
   async clear(key: AlertKey, message = "recovered"): Promise<void> {
     if (!this.active.has(key)) return;
     this.active.delete(key);
     this.log.info({ alert: key }, `cleared: ${message}`);
-    await this.send(`🟢 [arc-rail ${this.cfg.network}] ${key} cleared: ${message}`);
+    await this.send(`🟢 [cra-agent ${this.cfg.network}] ${key} cleared: ${message}`);
   }
 
   async info(message: string): Promise<void> {
     this.log.info(message);
-    await this.send(`ℹ️ [arc-rail ${this.cfg.network}] ${message}`);
+    await this.send(`ℹ️ [cra-agent ${this.cfg.network}] ${message}`);
   }
 
   activeKeys(): AlertKey[] {

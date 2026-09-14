@@ -1,5 +1,5 @@
 /**
- * @arc-rail/accounting
+ * @cra-agent/accounting
  *
  * The ONLY module in the repo allowed to do arithmetic on raw USDC amounts.
  *

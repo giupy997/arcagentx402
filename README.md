@@ -1,4 +1,4 @@
-# arc-rail
+# cra-agent
 
 Rail di pagamento agentico su Arc (L1 di Circle, gas in USDC). Monorepo TypeScript, npm workspaces, Node 22.
 
@@ -54,12 +54,12 @@ LC_ALL=en_US.UTF-8 /opt/homebrew/opt/postgresql@17/bin/pg_ctl -D /opt/homebrew/v
 - **Health**: `GET :8790/health` (JSON, 503 se in ritardo/stallo), `GET :8790/metrics` (Prometheus).
 - **Alert**: log + Telegram (opzionale) su lag > N blocchi, stallo, tutti gli RPC giù, troppi gap.
 
-Stato dal DB: `npm run status -w @arc-rail/collector`.
+Stato dal DB: `npm run status -w @cra-agent/collector`.
 
 ## Agente x402 in locale
 
 ```bash
-# .env: ARCRAIL_NETWORK=arcTestnet, ARCRAIL_KEY_FILE=.secrets/agent.key (chmod 600), ARCRAIL_POLICY=...
+# .env: CRA_NETWORK=arcTestnet, CRA_KEY_FILE=.secrets/agent.key (chmod 600), CRA_POLICY=...
 npm run rail -- policy
 npm run rail -- quote http://localhost:8791/v1/paid/fees/forecast
 npm run rail -- deposit 1      # USDC dal wallet al saldo Gateway (serve USDC di testnet dal faucet Circle)

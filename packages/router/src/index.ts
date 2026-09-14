@@ -1,5 +1,5 @@
 /**
- * @arc-rail/router — the buyer-side rail.
+ * @cra-agent/router — the buyer-side rail.
  *
  *   rail.quote(url)  -> what would this cost, who is the seller, would policy allow it (no payment)
  *   rail.fetch(url)  -> pay if asked (x402), enforce policy at signing time, record everything in the ledger
@@ -8,10 +8,10 @@
  * settled in batches. Sellers that do not batch fall back to the standard x402 "exact" on-chain scheme.
  * The escrow rail (ERC-8183) is routed but not executed yet.
  */
-import { formatUsdc6, usdc6, type Usdc6 } from "@arc-rail/accounting";
-import { CAIP2, type ArcNetwork, type IdentityResolver, type RailSigner } from "@arc-rail/identity";
-import type { Ledger, PaymentRecord } from "@arc-rail/ledger";
-import { evaluatePolicy, type PolicyContext, type PolicyDecision, type SpendPolicy } from "@arc-rail/policy";
+import { formatUsdc6, usdc6, type Usdc6 } from "@cra-agent/accounting";
+import { CAIP2, type ArcNetwork, type IdentityResolver, type RailSigner } from "@cra-agent/identity";
+import type { Ledger, PaymentRecord } from "@cra-agent/ledger";
+import { evaluatePolicy, type PolicyContext, type PolicyDecision, type SpendPolicy } from "@cra-agent/policy";
 import { supportsBatching } from "@circle-fin/x402-batching";
 import { GatewayClient, registerBatchScheme } from "@circle-fin/x402-batching/client";
 import { x402Client, x402HTTPClient } from "@x402/core/client";

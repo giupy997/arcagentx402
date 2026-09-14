@@ -1,5 +1,5 @@
 {
-  "name": "@arc-rail/accounting",
+  "name": "@cra-agent/accounting",
   "version": "0.0.1",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,5 +1,5 @@
 # Netlify hosts only the website (landing + network page). The API and collector run on the VPS.
-# Point the pages at the API with ARCRAIL_API_URL (Site configuration > Environment variables),
+# Point the pages at the API with CRA_API_URL (Site configuration > Environment variables),
 # e.g. https://api.example.com. Without it the landing is static and /network shows a placeholder.
 
 [build]

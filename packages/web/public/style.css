@@ -1,4 +1,4 @@
-/* ArcRail — design system
+/* CRA AGENT — design system
    Deep-navy-to-paper gradient, film grain, monospace voice, square corners, crop marks. */
 :root {
   color-scheme: light;
@@ -56,10 +56,10 @@ code { font-family: var(--mono); font-size: 0.88em; background: var(--paper-2); 
 /* ------------------------------------------------------------------ nav */
 .nav { position: absolute; inset: 0 0 auto 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; padding: 26px 32px; }
 .nav.solid { position: sticky; top: 0; background: rgba(246, 249, 252, 0.86); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); padding-block: 14px; }
-.brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--sans); font-weight: 600; font-size: 24px; letter-spacing: -0.03em; color: var(--white); }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-family: var(--sans); font-weight: 600; font-size: 21px; letter-spacing: 0.01em; color: var(--white); white-space: nowrap; }
 .brand:hover { text-decoration: none; }
 .brand svg { width: 28px; height: 28px; flex: none; }
-.nav.solid .brand { color: var(--ink); font-size: 20px; }
+.nav.solid .brand { color: var(--ink); font-size: 18px; }
 .nav-right { display: flex; align-items: center; gap: 12px; }
 .menu-btn { width: 42px; height: 42px; display: grid; place-items: center; background: transparent; border: 1px solid rgba(255, 255, 255, 0.35); color: var(--white); cursor: pointer; padding: 0; }
 .menu-btn:hover { background: rgba(255, 255, 255, 0.08); }
@@ -247,7 +247,7 @@ table.data tr:last-child td { border-bottom: 0; }
 }
 @media (max-width: 560px) {
   .nav { padding: 18px 18px; }
-  .brand { font-size: 21px; }
+  .brand { font-size: 18px; }
   .grid-4 { grid-template-columns: 1fr; }
   .section { padding-block: 64px; }
   .phase { grid-template-columns: 1fr; gap: 4px; }

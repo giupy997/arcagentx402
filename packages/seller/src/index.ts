@@ -1,12 +1,12 @@
 /**
- * @arc-rail/seller — put a USDC price on a Hono route.
+ * @cra-agent/seller — put a USDC price on a Hono route.
  *
  *   const seller = createSeller({ sellerAddress, network: "arcTestnet" });
  *   seller.route("GET /v1/paid/forecast", "$0.001", { description: "..." });
  *   app.use(seller.middleware());
  *
  * Payments are verified and settled by Circle Gateway (batched, gas-free for the buyer); the
- * x402 "exact" scheme is what gets registered, so any x402 buyer can pay, not only ArcRail agents.
+ * x402 "exact" scheme is what gets registered, so any x402 buyer can pay, not only CRA AGENT agents.
  */
 import { BatchFacilitatorClient, GatewayEvmScheme } from "@circle-fin/x402-batching/server";
 import { paymentMiddleware, x402ResourceServer } from "@x402/hono";

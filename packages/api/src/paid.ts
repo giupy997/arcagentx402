@@ -1,6 +1,6 @@
 import type { Hono } from "hono";
 import type { Logger } from "pino";
-import { createSeller } from "@arc-rail/seller";
+import { createSeller } from "@cra-agent/seller";
 import type { Db } from "./db.js";
 import { deployStats, feeEstimate, feeSummary, recentDeploys, rpcStatus } from "./queries.js";
 
@@ -14,7 +14,7 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
     log.warn("SELLER_ADDRESS not set: paid endpoints disabled");
     return;
   }
-  const seller = createSeller({ sellerAddress, network: network === "mainnet" ? "arc" : "arcTestnet", serviceName: "ArcRail data" })
+  const seller = createSeller({ sellerAddress, network: network === "mainnet" ? "arc" : "arcTestnet", serviceName: "CRA AGENT data" })
     .route("GET /v1/paid/fees/forecast", "$0.001", { description: "Base fee now and next block, 24h band, utilisation trend, cost per operation type", preview: { hint: "pay $0.001 USDC via x402 to get the forecast; free summary at /v1/fees" } })
     .route("GET /v1/paid/fees/estimate", "$0.0005", { description: "Cost in USDC of a transaction with the given gas at current and next base fee (?gas=21000)" })
     .route("GET /v1/paid/deploys/history", "$0.002", { description: "Recent contract deploys with labels and per-hour history (?limit=200)" })

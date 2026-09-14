@@ -1,5 +1,5 @@
 /**
- * @arc-rail/identity — who signs, and who the counterparty is. Two separate concerns, one thin package.
+ * @cra-agent/identity — who signs, and who the counterparty is. Two separate concerns, one thin package.
  *
  * Signing: the scheme is an explicit parameter (brief §4.3). One implementation today (secp256k1 / ECDSA
  * via viem). SLH-DSA-SHA2-128s is reserved so nothing else in the repo assumes ECDSA.

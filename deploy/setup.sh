@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# One-time (idempotent) setup of arc-rail on an Ubuntu 24.04 VPS that already runs Caddy.
-# Installs Node 22 (NodeSource), PostgreSQL 17 (PGDG), a system user, the repo in /opt/arc-rail,
+# One-time (idempotent) setup of cra-agent on an Ubuntu 24.04 VPS that already runs Caddy.
+# Installs Node 22 (NodeSource), PostgreSQL 17 (PGDG), a system user, the repo in /opt/cra-agent,
 # systemd units for collector + api, and a Caddy site. Safe to re-run: keeps .env and the database.
 #
 #   curl -fsSL https://raw.githubusercontent.com/giupy997/arcagentx402/main/deploy/setup.sh \
@@ -11,11 +11,11 @@
 set -euo pipefail
 
 REPO="${REPO:-https://github.com/giupy997/arcagentx402.git}"
-APP_DIR=/opt/arc-rail
-APP_USER=arcrail
+APP_DIR=/opt/cra-agent
+APP_USER=craagent
 DOMAIN="${DOMAIN:-}"
 DB_NAME=arc_rail
-DB_USER=arcrail
+DB_USER=craagent
 API_PORT=8791
 HEALTH_PORT=8790
 
@@ -43,7 +43,7 @@ fi
 systemctl enable --now postgresql >/dev/null
 
 echo "==> database"
-DB_PASS_FILE=/etc/arc-rail.dbpass
+DB_PASS_FILE=/etc/cra-agent.dbpass
 if [ ! -f "$DB_PASS_FILE" ]; then
   tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32 > "$DB_PASS_FILE"
   chmod 600 "$DB_PASS_FILE"
@@ -53,8 +53,8 @@ sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER'" | g
 sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" | grep -q 1 || sudo -u postgres createdb -O "$DB_USER" "$DB_NAME"
 # Write-heavy append-only workload: trade a few seconds of durability for throughput. Data is re-fetchable from RPC.
 PGCONF=$(sudo -u postgres psql -tAc "SHOW config_file")
-grep -q "^# arc-rail" "$PGCONF" || cat >> "$PGCONF" <<'PG'
-# arc-rail
+grep -q "^# cra-agent" "$PGCONF" || cat >> "$PGCONF" <<'PG'
+# cra-agent
 shared_buffers = 2GB
 effective_cache_size = 6GB
 wal_compression = lz4
@@ -78,7 +78,7 @@ sudo -u "$APP_USER" bash -c "cd $APP_DIR && npm ci --no-audit --no-fund --silent
 echo "==> env"
 if [ ! -f "$APP_DIR/.env" ]; then
   cat > "$APP_DIR/.env" <<ENV
-# Filled by deploy/setup.sh on $(date -u +%F). Edit, then: systemctl restart arc-rail-collector arc-rail-api
+# Filled by deploy/setup.sh on $(date -u +%F). Edit, then: systemctl restart cra-agent-collector cra-agent-api
 ARC_NETWORK=testnet
 # ARC_CHAIN_ID=5042            # mainnet: confirm on docs.arc.io/arc/references/connect-to-arc first
 ARC_RPC_URLS=https://rpc.testnet.arc.io,https://rpc.drpc.testnet.arc.io,https://rpc.quicknode.testnet.arc.io,https://rpc.blockdaemon.testnet.arc.io
@@ -100,9 +100,9 @@ ENV
 fi
 
 echo "==> systemd"
-cat > /etc/systemd/system/arc-rail-collector.service <<UNIT
+cat > /etc/systemd/system/cra-agent-collector.service <<UNIT
 [Unit]
-Description=arc-rail collector (Arc block-zero data collector)
+Description=cra-agent collector (Arc block-zero data collector)
 After=network-online.target postgresql.service
 Wants=network-online.target
 
@@ -124,9 +124,9 @@ ReadWritePaths=$APP_DIR
 [Install]
 WantedBy=multi-user.target
 UNIT
-cat > /etc/systemd/system/arc-rail-api.service <<UNIT
+cat > /etc/systemd/system/cra-agent-api.service <<UNIT
 [Unit]
-Description=arc-rail api + website
+Description=cra-agent api + website
 After=network-online.target postgresql.service
 Wants=network-online.target
 
@@ -147,20 +147,20 @@ ProtectSystem=strict
 WantedBy=multi-user.target
 UNIT
 systemctl daemon-reload
-systemctl enable --now arc-rail-collector arc-rail-api >/dev/null
-systemctl restart arc-rail-collector arc-rail-api
+systemctl enable --now cra-agent-collector cra-agent-api >/dev/null
+systemctl restart cra-agent-collector cra-agent-api
 
 echo "==> caddy"
 install -d /etc/caddy/sites
 if [ -n "$DOMAIN" ]; then
-  cat > /etc/caddy/sites/arc-rail.caddy <<CADDY
+  cat > /etc/caddy/sites/cra-agent.caddy <<CADDY
 $DOMAIN {
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:$API_PORT
 }
 CADDY
 else
-  cat > /etc/caddy/sites/arc-rail.caddy <<CADDY
+  cat > /etc/caddy/sites/cra-agent.caddy <<CADDY
 :8081 {
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:$API_PORT
@@ -172,6 +172,6 @@ caddy validate --config /etc/caddy/Caddyfile >/dev/null && systemctl reload cadd
 
 echo "==> done"
 sleep 3
-systemctl --no-pager --no-legend status arc-rail-collector arc-rail-api | grep -E "Active|●" || true
+systemctl --no-pager --no-legend status cra-agent-collector cra-agent-api | grep -E "Active|●" || true
 curl -s "http://127.0.0.1:$HEALTH_PORT/health" | head -c 300; echo
 echo "site: ${DOMAIN:+https://$DOMAIN}${DOMAIN:-http://$(curl -s -4 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}'):8081}"

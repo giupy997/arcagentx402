@@ -1,5 +1,5 @@
 {
-  "name": "arc-rail",
+  "name": "cra-agent",
   "private": true,
   "version": "0.0.1",
   "description": "Agentic payment rail on Arc. Phase 0: block-zero data collector.",
@@ -16,12 +16,12 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b packages/accounting packages/policy packages/ledger packages/identity packages/router packages/collector packages/seller packages/api packages/mcp && tsc -p packages/web/tsconfig.json --noEmit",
     "lint": "tsc -b --noEmit packages/accounting packages/collector",
-    "collector": "npm run start -w @arc-rail/collector --",
-    "db:migrate": "npm run migrate -w @arc-rail/collector --",
-    "api": "npm run start -w @arc-rail/api --",
-    "web:build": "npm run build -w @arc-rail/web",
-    "mcp": "npm run start -w @arc-rail/mcp --",
-    "rail": "npm run -s cli -w @arc-rail/mcp --"
+    "collector": "npm run start -w @cra-agent/collector --",
+    "db:migrate": "npm run migrate -w @cra-agent/collector --",
+    "api": "npm run start -w @cra-agent/api --",
+    "web:build": "npm run build -w @cra-agent/web",
+    "mcp": "npm run start -w @cra-agent/mcp --",
+    "rail": "npm run -s cli -w @cra-agent/mcp --"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

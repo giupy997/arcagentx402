@@ -1,11 +1,11 @@
 /**
- * @arc-rail/policy — spend control for agent payments.
+ * @cra-agent/policy — spend control for agent payments.
  *
  * Pure: no I/O. The caller (router) gathers the context from the ledger and the identity layer and
  * asks for a decision. Enforcement lives at the account (the rail signs nothing the policy rejects),
  * never in the agent's prompt. The interface is the phase-2 product: keep it stable.
  */
-import { addUsdc6, compareUsdc6, formatUsdc6, parseUsdc6, usdc6, type Usdc6 } from "@arc-rail/accounting";
+import { addUsdc6, compareUsdc6, formatUsdc6, parseUsdc6, usdc6, type Usdc6 } from "@cra-agent/accounting";
 
 export interface SpendPolicy {
   /** Max for a single payment. */
@@ -85,7 +85,7 @@ export function evaluatePolicy(policy: SpendPolicy, ctx: PolicyContext): PolicyD
 }
 
 /**
- * Compact env/CLI syntax, e.g. ARCRAIL_POLICY="daily=5,per_seller=0.5,per_payment=0.05,rate=60/60s,identity=required,allow=api.a.com|0xabc"
+ * Compact env/CLI syntax, e.g. CRA_POLICY="daily=5,per_seller=0.5,per_payment=0.05,rate=60/60s,identity=required,allow=api.a.com|0xabc"
  * Unknown keys throw: a typo in a spend limit must not silently widen it.
  */
 export function parsePolicyString(text: string, base: SpendPolicy = DEFAULT_POLICY): SpendPolicy {
