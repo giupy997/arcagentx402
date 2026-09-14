@@ -38,7 +38,7 @@ export async function networkSummary(db: Db, network: string, chainId: number): 
        FROM blocks WHERE observed_at IS NOT NULL AND observed_at > now() - interval '1 hour'`,
     ),
     db.query<{ blocks: string; txs: string; deploys: string }>(
-      "SELECT (SELECT count(*) FROM blocks) AS blocks, (SELECT count(*) FROM transactions) AS txs, (SELECT count(*) FROM contract_deploys) AS deploys",
+      "SELECT (SELECT count(*) FROM blocks) AS blocks, (SELECT coalesce(sum(tx_count),0) FROM blocks) AS txs, (SELECT count(*) FROM contract_deploys) AS deploys",
     ),
     db.query<{ n: string }>("SELECT count(*) AS n FROM block_gaps"),
     db.query<{ best: string | null }>("SELECT max(latest) AS best FROM head_observations WHERE observed_at > now() - interval '2 minutes'"),
