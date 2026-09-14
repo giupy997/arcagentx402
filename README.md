@@ -1,4 +1,6 @@
-# cra-agent
+# CRA AGENT
+
+[![ci](https://github.com/giupy997/arcagentx402/actions/workflows/ci.yml/badge.svg)](https://github.com/giupy997/arcagentx402/actions/workflows/ci.yml)
 
 Rail di pagamento agentico su Arc (L1 di Circle, gas in USDC). Monorepo TypeScript, npm workspaces, Node 22.
 
@@ -76,6 +78,15 @@ Il venditore si attiva con `SELLER_ADDRESS` nel `.env`: l'API espone `/v1/paid/*
 
 `deploy/setup.sh` installa tutto su un VPS Ubuntu con Caddy (Node 22, Postgres 17, systemd, sito Caddy).
 Vedi `deploy/README.md`.
+
+## Test e migrazioni
+
+- `npm test`: 53 test (vitest) in `packages/*/test`: proprietà sull'accounting (fast-check), parser dei blocchi,
+  failover del pool RPC, policy di spesa, scelta del binario, firma. La CI li esegue a ogni push, insieme a un
+  test di round-trip del ledger su Postgres reale.
+- Migrazioni: `packages/collector/sql/NNN_*.sql`, applicate in ordine da `packages/collector/src/db/migrate.ts`
+  (tabella `schema_migrations`), automaticamente all'avvio del collettore o con `npm run db:migrate`.
+  Il ledger ha le sue in `packages/ledger/sql`, applicate da `PgLedger.migrate()`.
 
 ## Regole del repo
 

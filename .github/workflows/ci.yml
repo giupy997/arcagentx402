@@ -1,0 +1,28 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_USER: cra, POSTGRES_PASSWORD: cra, POSTGRES_DB: cra_test }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U cra" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - name: Typecheck and build every package
+        run: npm run build
+      - name: Unit and property tests
+        run: npx vitest run
+      - name: Migrations apply on a fresh database
+        env: { DATABASE_URL: "postgres://cra:cra@localhost:5432/cra_test" }
+        run: |
+          npm run -s db:migrate
+          node -e "import('@cra-agent/ledger').then(async m => { const l = new m.PgLedger(process.env.DATABASE_URL); await l.migrate(); const r = await l.record({ agentId: 'ci', rail: 'nanopayment', url: 'https://x/y', host: 'x', method: 'GET', network: 'eip155:5042002', scheme: 'exact', asset: '0x36', payTo: '0xAb', amount: 1000n, status: 'signed' }); await l.update(r.id, { status: 'settled' }); const s = await l.spentSince('ci', new Date(0)); if (s !== 1000n) throw new Error('ledger roundtrip failed'); await l.close(); console.log('ledger ok'); })"
