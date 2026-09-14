@@ -178,4 +178,4 @@ echo "==> done"
 sleep 3
 systemctl --no-pager --no-legend status cra-agent-collector cra-agent-api | grep -E "Active|●" || true
 curl -s "http://127.0.0.1:$HEALTH_PORT/health" | head -c 300; echo
-echo "site: ${DOMAIN:+https://$DOMAIN}${DOMAIN:-http://$(curl -s -4 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}'):8081}"
+if [ -n "$DOMAIN" ]; then echo "site: https://$DOMAIN"; else echo "site: http://$(curl -s -4 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}'):8081"; fi
