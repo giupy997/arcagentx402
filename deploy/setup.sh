@@ -45,7 +45,8 @@ systemctl enable --now postgresql >/dev/null
 echo "==> database"
 DB_PASS_FILE=/etc/cra-agent.dbpass
 if [ ! -f "$DB_PASS_FILE" ]; then
-  tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32 > "$DB_PASS_FILE"
+  # (not `tr </dev/urandom | head`: with pipefail the SIGPIPE on tr aborts the script)
+  openssl rand -hex 24 > "$DB_PASS_FILE"
   chmod 600 "$DB_PASS_FILE"
 fi
 DB_PASS=$(cat "$DB_PASS_FILE")
