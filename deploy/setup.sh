@@ -74,7 +74,8 @@ else
   install -d -o "$APP_USER" -g "$APP_USER" "$APP_DIR"
   sudo -u "$APP_USER" git clone -q "$REPO" "$APP_DIR"
 fi
-sudo -u "$APP_USER" bash -c "cd $APP_DIR && npm ci --no-audit --no-fund --silent && npx tsc -b packages/accounting packages/collector packages/api && npm run -s web:build"
+# --force: a previous failed build leaves tsbuildinfo files that make tsc skip emitting on the next run.
+sudo -u "$APP_USER" bash -c "cd $APP_DIR && npm ci --no-audit --no-fund --silent && rm -f packages/*/tsconfig.tsbuildinfo && npm run -s build"
 
 echo "==> env"
 if [ ! -f "$APP_DIR/.env" ]; then
