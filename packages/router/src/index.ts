@@ -254,8 +254,6 @@ export function createRail(cfg: RailConfig): Rail {
 
   function gatewayClient(): GatewayClient {
     if (cfg.signer.scheme !== "secp256k1") throw new Error("Gateway deposits need a secp256k1 signer today");
-    const privateKey = (cfg.signer.account as unknown as { privateKey?: Hex }).privateKey;
-    if (!privateKey) throw new Error("signer does not expose a private key for Gateway deposit/balance calls");
-    return new GatewayClient({ chain: cfg.network, privateKey, ...(cfg.rpcUrl ? { rpcUrl: cfg.rpcUrl } : {}) });
+    return new GatewayClient({ chain: cfg.network, privateKey: cfg.signer.privateKey, ...(cfg.rpcUrl ? { rpcUrl: cfg.rpcUrl } : {}) });
   }
 }

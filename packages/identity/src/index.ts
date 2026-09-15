@@ -17,6 +17,8 @@ export interface RailSigner {
   readonly address: Address;
   /** viem account; the x402 schemes need signTypedData. */
   readonly account: PrivateKeyAccount;
+  /** Only for the Gateway SDK (deposit/balances), which wants the raw key. Never log this. */
+  readonly privateKey: Hex;
 }
 
 export interface CreateSignerOptions {
@@ -28,7 +30,7 @@ export function createSigner(opts: CreateSignerOptions): RailSigner {
   switch (opts.scheme) {
     case "secp256k1": {
       const account = privateKeyToAccount(opts.privateKey);
-      return { scheme: "secp256k1", address: account.address, account };
+      return { scheme: "secp256k1", address: account.address, account, privateKey: opts.privateKey };
     }
     case "slh-dsa-sha2-128s":
       throw new Error("slh-dsa-sha2-128s: post-quantum signing is not implemented yet (Arc beta support; see docs.arc.io/arc/concepts/post-quantum-security)");
