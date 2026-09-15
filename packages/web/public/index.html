@@ -6,7 +6,21 @@
 <title>CRA AGENT — payments for AI agents on Arc</title>
 <meta name="description" content="CRA AGENT is the x402 payment agent for Arc, Circle's USDC-native chain. One tool call: price discovered, policy checked, paid gas-free through Circle Gateway, recorded in a ledger.">
 <meta name="theme-color" content="#061a42">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23061a42'/%3E%3Ccircle cx='16' cy='16' r='11.5' fill='none' stroke='white' stroke-width='2.2'/%3E%3Cpath d='M10 20.5 16 10l6 10.5M12.4 17h7.2' fill='none' stroke='white' stroke-width='2.2'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="/brand/favicon-48.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CRA AGENT">
+<meta property="og:title" content="CRA AGENT — payments for AI agents on Arc">
+<meta property="og:description" content="Give your agent a budget, not a wallet. x402 payments on Arc: quote, check policy, pay gas-free via Circle Gateway, record the receipt.">
+<meta property="og:url" content="https://cra-agent.tech/">
+<meta property="og:image" content="https://cra-agent.tech/brand/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="CRA AGENT — payments for AI agents on Arc">
+<meta name="twitter:description" content="Give your agent a budget, not a wallet. x402 payments on Arc: quote, check policy, pay gas-free via Circle Gateway, record the receipt.">
+<meta name="twitter:image" content="https://cra-agent.tech/brand/og.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -14,14 +28,14 @@
 </head>
 <body>
 <header class="nav" id="nav">
-  <a class="brand" href="/"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13.5" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M8.5 21.5 16 8.5l7.5 13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="miter"/><path d="M11.4 17h9.2" stroke="currentColor" stroke-width="2.5"/></svg>CRA AGENT</a>
+  <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
   <div class="nav-right">
     <button class="menu-btn" type="button" data-menu-open aria-label="Open menu" aria-controls="menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14" stroke="currentColor" stroke-width="1.5"/></svg></button>
   </div>
 </header>
 <div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="Menu">
   <div class="menu-top">
-    <a class="brand" href="/"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13.5" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M8.5 21.5 16 8.5l7.5 13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="miter"/><path d="M11.4 17h9.2" stroke="currentColor" stroke-width="2.5"/></svg>CRA AGENT</a>
+    <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
     <button class="menu-btn" type="button" data-menu-close aria-label="Close menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3.5 3.5l11 11M14.5 3.5l-11 11" stroke="currentColor" stroke-width="1.5"/></svg></button>
   </div>
   <ul>
@@ -41,10 +55,11 @@
     <canvas id="ring" aria-hidden="true"></canvas>
     <div class="marks" aria-hidden="true"><i></i><i></i><i></i><i></i><b class="t">⊥</b><b class="l">⊢</b><b class="r">⊣</b><b class="b">⊤</b></div>
     <div class="hero-center">
+      <img class="hero-logo" src="/brand/logo.webp" alt="CRA AGENT" width="132" height="132" fetchpriority="high">
       <h1 id="title" data-text="Agent Payments on Arc">Agent Payments on Arc</h1>
       <p class="tagline">Pay per call. Verified. Settled in USDC.</p>
       <div class="hero-actions">
-        <a class="btn light" href="#install"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13.5" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M8.5 21.5 16 8.5l7.5 13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="miter"/><path d="M11.4 17h9.2" stroke="currentColor" stroke-width="2.5"/></svg>Install the agent</a>
+        <a class="btn light" href="#install"><img class="logo" src="/brand/logo.webp" alt="" width="18" height="18">Install the agent</a>
         <a class="btn ghost" href="#sell">Sell an endpoint</a>
       </div>
     </div>
@@ -101,6 +116,7 @@
         </ul>
       </div>
       <div class="stack">
+        <figure class="shot"><img src="/brand/mcp-native.webp" alt="CRA AGENT as an MCP server: arc_pay, check policy, verify seller, write receipt" width="1400" height="1400" loading="lazy"></figure>
 <pre class="code"><span class="c">// .mcp.json</span>
 { "mcpServers": { "cra-agent": {
     "command": "cra-agent-mcp",
@@ -122,6 +138,7 @@
   <section class="section" id="sell">
     <div class="wrap two-col">
       <div class="stack">
+        <figure class="shot wide"><img src="/brand/flyer-price.webp" alt="Put a price on a route: buyers pay through Circle Gateway, sellers receive USDC on Arc" width="1400" height="788" loading="lazy"></figure>
 <pre class="code"><span class="k">import</span> { createSeller } <span class="k">from</span> <span class="s">"@cra-agent/seller"</span>;
 
 <span class="k">const</span> seller = createSeller({ sellerAddress, network: <span class="s">"arc"</span> })
@@ -169,10 +186,9 @@ app.use(seller.middleware());</pre>
   </section>
 
   <section class="band">
-    <h2>Give your agent a budget, not a wallet.</h2>
-    <p>No project token. Not affiliated with Circle or Arc.</p>
+    <img class="band-art" src="/brand/flyer-budget.webp" alt="Give your agent a budget, not a wallet. No project token. Not affiliated with Circle or Arc." width="1400" height="788" loading="lazy">
     <div class="hero-actions">
-      <a class="btn light" href="#install"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13.5" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="M8.5 21.5 16 8.5l7.5 13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="miter"/><path d="M11.4 17h9.2" stroke="currentColor" stroke-width="2.5"/></svg>Install the agent</a>
+      <a class="btn light" href="#install"><img class="logo" src="/brand/logo.webp" alt="" width="18" height="18">Install the agent</a>
       <a class="btn ghost" href="https://github.com/giupy997/arcagentx402" rel="noopener">View source</a>
     </div>
   </section>
