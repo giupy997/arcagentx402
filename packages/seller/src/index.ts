@@ -43,10 +43,24 @@ export interface Seller {
   readonly sellerAddress: string;
 }
 
-export function createSeller(cfg: SellerConfig): Seller {
+/** Shared by the Hono and Express flavours. */
+export function resolveNetwork(cfg: SellerConfig): { network: Network; facilitatorUrl: string } {
   if (!/^0x[0-9a-fA-F]{40}$/.test(cfg.sellerAddress)) throw new Error("sellerAddress must be a 0x address");
-  const network = CAIP2[cfg.network];
-  const facilitatorUrl = cfg.facilitatorUrl ?? FACILITATOR[cfg.network];
+  return { network: CAIP2[cfg.network], facilitatorUrl: cfg.facilitatorUrl ?? FACILITATOR[cfg.network] };
+}
+
+export function buildRoutes(cfg: SellerConfig, network: Network, _pattern: string, price: string, opts: RouteOptions): RouteConfig {
+  return {
+    accepts: { scheme: "exact", network, payTo: cfg.sellerAddress, price, ...(opts.maxTimeoutSeconds ? { maxTimeoutSeconds: opts.maxTimeoutSeconds } : {}) },
+    ...(opts.description ? { description: opts.description } : {}),
+    mimeType: opts.mimeType ?? "application/json",
+    ...(cfg.serviceName ? { serviceName: cfg.serviceName } : {}),
+    ...(opts.preview !== undefined ? { unpaidResponseBody: async () => ({ contentType: "application/json", body: opts.preview }) } : {}),
+  };
+}
+
+export function createSeller(cfg: SellerConfig): Seller {
+  const { network, facilitatorUrl } = resolveNetwork(cfg);
   const routes: Record<string, RouteConfig> = {};
   let mw: MiddlewareHandler | null = null;
   const seller: Seller = {
@@ -56,13 +70,7 @@ export function createSeller(cfg: SellerConfig): Seller {
     sellerAddress: cfg.sellerAddress,
     route(pattern, price, opts = {}) {
       if (mw) throw new Error("seller.route() must be called before seller.middleware()");
-      routes[pattern] = {
-        accepts: { scheme: "exact", network, payTo: cfg.sellerAddress, price, ...(opts.maxTimeoutSeconds ? { maxTimeoutSeconds: opts.maxTimeoutSeconds } : {}) },
-        ...(opts.description ? { description: opts.description } : {}),
-        mimeType: opts.mimeType ?? "application/json",
-        ...(cfg.serviceName ? { serviceName: cfg.serviceName } : {}),
-        ...(opts.preview !== undefined ? { unpaidResponseBody: async () => ({ contentType: "application/json", body: opts.preview }) } : {}),
-      };
+      routes[pattern] = buildRoutes(cfg, network, pattern, price, opts);
       return seller;
     },
     middleware() {

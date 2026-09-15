@@ -7,13 +7,14 @@
 import { formatUsdc6 } from "@cra-agent/accounting";
 import { describePolicy } from "@cra-agent/policy";
 import { EscrowNotImplemented, PolicyRejected } from "@cra-agent/router";
+import { registerIdentity } from "@cra-agent/identity";
 import { railFromEnv } from "../rail-from-env.js";
 
 const out = (v: unknown) => console.log(JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x), 2));
 
 async function main(): Promise<void> {
   const [cmd, arg] = process.argv.slice(2);
-  const { rail, ledger, policy, network, agentId } = await railFromEnv();
+  const { rail, ledger, policy, network, agentId, signer, escrow } = await railFromEnv();
   switch (cmd) {
     case "quote": {
       if (!arg) throw new Error("usage: quote <url>");
@@ -45,6 +46,23 @@ async function main(): Promise<void> {
       break;
     }
     case "policy": out({ agentId, network, address: rail.address, policy: describePolicy(policy) }); break;
+    case "identity-register": {
+      if (!arg) throw new Error("usage: identity-register <agentURI>");
+      const r = await registerIdentity({ network, signer, agentURI: arg, ...(process.env.CRA_RPC_URL ? { rpcUrl: process.env.CRA_RPC_URL } : {}) });
+      out({ agentId: r.agentId.toString(), txHash: r.txHash, registry: r.registry, owner: signer.address });
+      break;
+    }
+    case "job": {
+      const [, , sub, id, reason] = process.argv.slice(1);
+      const e = escrow();
+      if (!sub || !id) throw new Error("usage: job <status|fund|complete|reject> <jobId> [reason]");
+      if (sub === "status") out(await e.getJob(BigInt(id)));
+      else if (sub === "fund") out(await e.fund(BigInt(id)));
+      else if (sub === "complete") out(await e.complete(BigInt(id), reason ?? "work-delivered-and-approved"));
+      else if (sub === "reject") out(await e.reject(BigInt(id), reason ?? "rejected"));
+      else throw new Error(`unknown job command ${sub}`);
+      break;
+    }
     default:
       console.error("usage: cra-agent <quote|pay|balance|deposit|ledger|policy> [arg]");
       process.exit(2);

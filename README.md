@@ -20,8 +20,9 @@ per cosa è verificato contro docs.arc.io e cosa resta da confermare al lancio m
 | `packages/ledger` | Ogni tentativo di pagamento (quoted/rejected/signed/settled/failed) con importo, controparte, latenza, tx. `MemoryLedger` e `PgLedger`; `exposure()` per controparte |
 | `packages/identity` | Firma con schema esplicito (`secp256k1` oggi, PQ riservato) e risoluzione ERC-8004 (fail closed) |
 | `packages/router` | Il binario compratore: `rail.quote(url)`, `rail.fetch(url)` con x402 + Circle Gateway (batched, gas-free) o `exact` on-chain; `chooseRail()` pura (nanopagamento vs escrow) |
-| `packages/seller` | `createSeller().route("GET /x", "$0.001")` su Hono: 402 x402 verificato e regolato da Circle Gateway |
-| `packages/mcp` | Server MCP (stdio): `arc_quote`, `arc_pay`, `arc_balance`, `arc_deposit`, `arc_ledger`, `arc_policy`. CLI `npm run rail -- pay <url>` |
+| `packages/escrow` | Binario ERC-8183 (job con escrow): createJob, setBudget, fund (con approve USDC), submit, complete/reject, claimRefund. ABI dall'implementazione verificata su testnet; evaluator iniettato |
+| `packages/seller` | `createSeller().route("GET /x", "$0.001")` su Hono e `createExpressSeller()` su Express (`@cra-agent/seller/express`): 402 x402 verificato e regolato da Circle Gateway |
+| `packages/mcp` | Server MCP (stdio): `arc_quote`, `arc_pay`, `arc_balance`, `arc_deposit`, `arc_ledger`, `arc_policy`, più i job escrow `arc_job_create/fund/status/decide/submit`. CLI `npm run rail -- <quote|pay|balance|deposit|ledger|policy|identity-register|job>` |
 
 ## Setup
 
@@ -70,6 +71,10 @@ npm run rail -- deposit 1      # USDC dal wallet al saldo Gateway (serve USDC di
 npm run rail -- pay   http://localhost:8791/v1/paid/fees/forecast
 npm run rail -- ledger
 npm run mcp                    # server MCP su stdio
+npm run rail -- identity-register https://cra-agent.tech/.well-known/agent.json   # ERC-8004 (costa gas)
+npm run rail -- job status 1   # ERC-8183
+
+# pubblicazione su npm (dopo `npm login`): scripts/publish.sh --dry-run, poi senza flag
 ```
 
 Il venditore si attiva con `SELLER_ADDRESS` nel `.env`: l'API espone `/v1/paid/*` a pagamento (catalogo su `/v1/paid`).

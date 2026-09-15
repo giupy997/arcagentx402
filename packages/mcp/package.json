@@ -19,6 +19,22 @@
     "@cra-agent/policy": "0.0.1",
     "@cra-agent/router": "0.0.1",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "zod": "^3.25.0"
-  }
+    "zod": "^3.25.0",
+    "@cra-agent/escrow": "0.0.1",
+    "viem": "^2.31.0"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/giupy997/arcagentx402.git",
+    "directory": "packages/mcp"
+  },
+  "homepage": "https://cra-agent.tech"
 }

@@ -6,7 +6,7 @@
  *
  * Counterparty identity: ERC-8004 IdentityRegistry lookup. Fail closed: any error = not verified.
  */
-import { createPublicClient, http, type Address, type Chain, type Hex } from "viem";
+import { createPublicClient, createWalletClient, http, parseEventLogs, type Address, type Chain, type Hex } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { arc, arcTestnet } from "viem/chains";
 
@@ -68,10 +68,17 @@ export interface IdentityResolver {
   resolve(address: Address): Promise<IdentityResult>;
 }
 
-const REGISTRY_ABI = [
+/**
+ * Subset of IdentityRegistryUpgradeable (verified impl 0x7274e874ca62410a93bd8bf61c69d8045e399c02 behind the testnet
+ * proxy, read 2026-09-15). The registry is ERC-721 but NOT enumerable: owner -> agentId comes from the Registered event.
+ */
+export const REGISTRY_ABI = [
   { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "owner", type: "address" }], outputs: [{ type: "uint256" }] },
-  { type: "function", name: "tokenOfOwnerByIndex", stateMutability: "view", inputs: [{ name: "owner", type: "address" }, { name: "index", type: "uint256" }], outputs: [{ type: "uint256" }] },
+  { type: "function", name: "ownerOf", stateMutability: "view", inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ type: "address" }] },
   { type: "function", name: "tokenURI", stateMutability: "view", inputs: [{ name: "tokenId", type: "uint256" }], outputs: [{ type: "string" }] },
+  { type: "function", name: "getAgentWallet", stateMutability: "view", inputs: [{ name: "agentId", type: "uint256" }], outputs: [{ type: "address" }] },
+  { type: "function", name: "register", stateMutability: "nonpayable", inputs: [{ name: "agentURI", type: "string" }], outputs: [{ type: "uint256" }] },
+  { type: "event", name: "Registered", inputs: [{ name: "agentId", type: "uint256", indexed: true }, { name: "agentURI", type: "string", indexed: false }, { name: "owner", type: "address", indexed: true }] },
 ] as const;
 
 export interface Erc8004ResolverOptions {
@@ -109,15 +116,9 @@ export function createErc8004Resolver(opts: Erc8004ResolverOptions): IdentityRes
           cache.set(key, r);
           return r;
         }
-        let agentIds: bigint[] = [];
-        let metadataURI: string | null = null;
-        try {
-          const id = await client.readContract({ address: registry, abi: REGISTRY_ABI, functionName: "tokenOfOwnerByIndex", args: [address, 0n] });
-          agentIds = [id];
-          metadataURI = await client.readContract({ address: registry, abi: REGISTRY_ABI, functionName: "tokenURI", args: [id] });
-        } catch {
-          /* registry not enumerable: identity still verified by balance */
-        }
+        // Not enumerable: without an indexer we cannot list the ids cheaply. Verified by ownership.
+        const agentIds: bigint[] = [];
+        const metadataURI: string | null = null;
         const r = { ...base, verified: true, agentIds, metadataURI, error: null };
         cache.set(key, r);
         return r;
@@ -135,3 +136,34 @@ export const NULL_IDENTITY: IdentityResolver = {
     return { address, verified: false, agentIds: [], metadataURI: null, registry: null, checkedAt: new Date(), error: "identity checks disabled" };
   },
 };
+
+
+// ---------------------------------------------------------------------------
+// Registering our own identity (sellers and agents alike)
+// ---------------------------------------------------------------------------
+
+export interface RegisterIdentityOptions {
+  readonly network: ArcNetwork;
+  readonly signer: RailSigner;
+  /** Agent metadata URI (ERC-8004 agent card, e.g. https://cra-agent.tech/.well-known/agent.json). */
+  readonly agentURI: string;
+  readonly rpcUrl?: string;
+  readonly registry?: Address;
+}
+
+/** Mints an ERC-8004 identity for the signer. Costs gas (USDC on Arc). Returns the agentId from the Registered event. */
+export async function registerIdentity(opts: RegisterIdentityOptions): Promise<{ agentId: bigint; txHash: Hex; registry: Address }> {
+  const registry = opts.registry ?? ERC8004_IDENTITY_REGISTRY[opts.network];
+  if (!registry) throw new Error(`no ERC-8004 registry known for ${opts.network}`);
+  const chain = CHAINS[opts.network];
+  const transport = http(opts.rpcUrl);
+  const pub = createPublicClient({ chain, transport });
+  const wallet = createWalletClient({ chain, transport, account: opts.signer.account });
+  const { request } = await pub.simulateContract({ address: registry, abi: REGISTRY_ABI, functionName: "register", args: [opts.agentURI], account: opts.signer.account });
+  const txHash = await wallet.writeContract(request);
+  const receipt = await pub.waitForTransactionReceipt({ hash: txHash });
+  if (receipt.status !== "success") throw new Error(`register reverted in ${txHash}`);
+  const [ev] = parseEventLogs({ abi: REGISTRY_ABI, eventName: "Registered", logs: receipt.logs });
+  if (!ev) throw new Error("register: no Registered event in receipt");
+  return { agentId: ev.args.agentId, txHash, registry };
+}

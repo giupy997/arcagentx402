@@ -3,6 +3,8 @@ import { createErc8004Resolver, createSigner, type ArcNetwork } from "@cra-agent
 import { MemoryLedger, PgLedger, type Ledger } from "@cra-agent/ledger";
 import { DEFAULT_POLICY, parsePolicyString, type SpendPolicy } from "@cra-agent/policy";
 import { createRail, type Rail } from "@cra-agent/router";
+import { createEscrowClient, type EscrowClient } from "@cra-agent/escrow";
+import type { Address } from "viem";
 import type { Hex } from "viem";
 
 /**
@@ -14,8 +16,9 @@ import type { Hex } from "viem";
  *   CRA_RPC_URL       optional RPC (required for arc mainnet until public RPCs exist)
  *   CRA_IDENTITY      on | off  (default on)
  *   DATABASE_URL          optional; with it the ledger is Postgres, without it in-memory
+ *   CRA_EVALUATOR         optional address that evaluates ERC-8183 jobs this agent creates (default: the agent)
  */
-export interface RailFromEnv { rail: Rail; ledger: Ledger; policy: SpendPolicy; network: ArcNetwork; agentId: string }
+export interface RailFromEnv { rail: Rail; ledger: Ledger; policy: SpendPolicy; network: ArcNetwork; agentId: string; signer: ReturnType<typeof createSigner>; escrow: () => EscrowClient }
 
 /** Accept the pre-rename ARCRAIL_* variables so existing setups keep working. */
 function withLegacyNames(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -49,5 +52,6 @@ export async function railFromEnv(rawEnv: NodeJS.ProcessEnv = process.env): Prom
   }
   const identity = (env.CRA_IDENTITY ?? "on") === "off" ? null : createErc8004Resolver({ network, ...(env.CRA_RPC_URL ? { rpcUrl: env.CRA_RPC_URL } : {}) });
   const rail = createRail({ network, signer, policy, ledger, identity, agentId, ...(env.CRA_RPC_URL ? { rpcUrl: env.CRA_RPC_URL } : {}), log: (e, d) => console.error(JSON.stringify({ event: e, ...d })) });
-  return { rail, ledger, policy, network, agentId };
+  const escrow = () => createEscrowClient({ network, signer, ...(env.CRA_RPC_URL ? { rpcUrl: env.CRA_RPC_URL } : {}), ...(env.CRA_EVALUATOR ? { evaluator: env.CRA_EVALUATOR as Address } : {}) });
+  return { rail, ledger, policy, network, agentId, signer, escrow };
 }

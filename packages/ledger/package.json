@@ -1,3 +1,35 @@
-{ "name": "@cra-agent/ledger", "version": "0.0.1", "type": "module", "main": "./dist/index.js", "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } }, "scripts": { "build": "tsc -b" },
-  "dependencies": { "@cra-agent/accounting": "0.0.1", "pg": "^8.16.0" } }
+{
+  "name": "@cra-agent/ledger",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@cra-agent/accounting": "0.0.1",
+    "pg": "^8.16.0"
+  },
+  "files": [
+    "dist",
+    "sql",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/giupy997/arcagentx402.git",
+    "directory": "packages/ledger"
+  },
+  "homepage": "https://cra-agent.tech"
+}

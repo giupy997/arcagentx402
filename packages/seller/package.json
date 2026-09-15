@@ -1,3 +1,54 @@
-{ "name": "@cra-agent/seller", "version": "0.0.1", "type": "module", "main": "./dist/index.js", "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } }, "scripts": { "build": "tsc -b" },
-  "dependencies": { "@circle-fin/x402-batching": "^3.4.0", "@x402/core": "^2.25.0", "@x402/evm": "^2.25.0", "@x402/hono": "^2.25.0", "hono": "^4.7.0" } }
+{
+  "name": "@cra-agent/seller",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./express": {
+      "types": "./dist/express.d.ts",
+      "default": "./dist/express.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@circle-fin/x402-batching": "^3.4.0",
+    "@x402/core": "^2.25.0",
+    "@x402/evm": "^2.25.0",
+    "@x402/hono": "^2.25.0",
+    "hono": "^4.7.0",
+    "@x402/express": "^2.25.0"
+  },
+  "peerDependencies": {
+    "express": ">=4",
+    "hono": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "express": {
+      "optional": true
+    },
+    "hono": {
+      "optional": true
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/giupy997/arcagentx402.git",
+    "directory": "packages/seller"
+  },
+  "homepage": "https://cra-agent.tech"
+}

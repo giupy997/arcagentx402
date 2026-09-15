@@ -10,13 +10,16 @@ import { z } from "zod";
 import { formatUsdc6 } from "@cra-agent/accounting";
 import { describePolicy } from "@cra-agent/policy";
 import { EscrowNotImplemented, PolicyRejected } from "@cra-agent/router";
+import { evaluatePolicy } from "@cra-agent/policy";
+import { usdc6 } from "@cra-agent/accounting";
+import type { Address, Hex } from "viem";
 import { railFromEnv } from "./rail-from-env.js";
 
 const text = (v: unknown) => ({ content: [{ type: "text" as const, text: typeof v === "string" ? v : JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x), 2) }] });
 const fail = (msg: string) => ({ content: [{ type: "text" as const, text: msg }], isError: true });
 
 async function main(): Promise<void> {
-  const { rail, ledger, policy, network, agentId } = await railFromEnv();
+  const { rail, ledger, policy, network, agentId, escrow } = await railFromEnv();
   const server = new McpServer({ name: "cra-agent", version: "0.0.1" });
 
   server.registerTool("arc_quote", {
@@ -87,6 +90,76 @@ async function main(): Promise<void> {
     description: "The limits this rail enforces for the agent. Read-only: limits are set by the operator in the environment, not by the model.",
     inputSchema: {},
   }, async () => text({ agentId, network, address: rail.address, policy: describePolicy(policy) }));
+
+  // ---------------------------------------------------------------- ERC-8183 escrow rail (jobs)
+  server.registerTool("arc_job_create", {
+    title: "Open an ERC-8183 job (escrow rail)",
+    description: "For work that is too large or too slow for a per-call payment. Creates a job with a provider (seller) and an evaluator; the provider then sets the budget, you fund it with arc_job_fund, the provider submits, the evaluator completes or rejects. Costs gas in USDC.",
+    inputSchema: { provider: z.string().regex(/^0x[0-9a-fA-F]{40}$/), description: z.string().min(1).max(2000), expiresInSeconds: z.number().int().min(60).max(90 * 86400).optional(), evaluator: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional() },
+  }, async ({ provider, description, expiresInSeconds, evaluator }) => {
+    try {
+      const r = await escrow().createJob({ provider: provider as Address, description, expiresInSeconds: expiresInSeconds ?? 7 * 86400, ...(evaluator ? { evaluator: evaluator as Address } : {}) });
+      return text({ jobId: r.jobId.toString(), txHash: r.txHash, next: "provider calls setBudget, then arc_job_fund" });
+    } catch (err) { return fail(`job create failed: ${(err as Error).message}`); }
+  });
+
+  server.registerTool("arc_job_fund", {
+    title: "Fund an ERC-8183 job from escrow",
+    description: "Moves the job's budget (set by the provider) from the agent wallet into the escrow contract. The spending policy is applied to the budget as one payment, with the provider as counterparty. Recorded in the ledger on the escrow rail.",
+    inputSchema: { jobId: z.string().regex(/^\d+$/) },
+  }, async ({ jobId }) => {
+    const e = escrow();
+    try {
+      const job = await e.getJob(BigInt(jobId));
+      const since = new Date(Date.now() - 86_400_000);
+      const [spent, spentCp, count] = await Promise.all([ledger.spentSince(agentId, since), ledger.spentSince(agentId, since, job.provider), ledger.countSince(agentId, new Date(Date.now() - policy.rateLimit.windowMs))]);
+      const decision = evaluatePolicy(policy, { amount: job.budget, network: rail.network, payTo: job.provider, host: e.contract, spentInWindow: spent, spentInWindowWithCounterparty: spentCp, paymentsInRateWindow: count, identityVerified: null, sellerBond: null });
+      if (!decision.allow) {
+        await ledger.record({ agentId, rail: "escrow", url: `erc8183://${e.contract}/${jobId}`, host: e.contract, method: "FUND", network: rail.network, scheme: "erc8183", asset: "USDC", payTo: job.provider, amount: job.budget, status: "rejected", reason: `${decision.rule}: ${decision.reason}` });
+        return fail(`rejected by policy (${decision.rule}): ${decision.reason}`);
+      }
+      const rec = await ledger.record({ agentId, rail: "escrow", url: `erc8183://${e.contract}/${jobId}`, host: e.contract, method: "FUND", network: rail.network, scheme: "erc8183", asset: "USDC", payTo: job.provider, amount: job.budget, status: "signed" });
+      try {
+        const r = await e.fund(BigInt(jobId));
+        await ledger.update(rec.id, { txHash: r.txHash, meta: { approveTxHash: r.approveTxHash, escrow: true } });
+        return text({ jobId, funded: r.amount.toString(), fundedUsdc: job.budgetUsdc, txHash: r.txHash, ledgerId: rec.id, note: "escrowed: counts as open exposure until the evaluator completes or the job is refunded" });
+      } catch (err) {
+        await ledger.update(rec.id, { status: "failed", reason: (err as Error).message.slice(0, 300) });
+        throw err;
+      }
+    } catch (err) { return fail(`job fund failed: ${(err as Error).message}`); }
+  });
+
+  server.registerTool("arc_job_status", {
+    title: "Read an ERC-8183 job",
+    description: "Client, provider, evaluator, budget, expiry and state (Open, Funded, Submitted, Completed, Rejected, Expired).",
+    inputSchema: { jobId: z.string().regex(/^\d+$/) },
+  }, async ({ jobId }) => {
+    try { return text(await escrow().getJob(BigInt(jobId))); } catch (err) { return fail(`job status failed: ${(err as Error).message}`); }
+  });
+
+  server.registerTool("arc_job_decide", {
+    title: "Complete or reject a job (evaluator)",
+    description: "As the job's evaluator: complete releases the escrow to the provider, reject returns it to the client. The reason is stored on-chain as a hash.",
+    inputSchema: { jobId: z.string().regex(/^\d+$/), decision: z.enum(["complete", "reject"]), reason: z.string().min(1).max(200) },
+  }, async ({ jobId, decision, reason }) => {
+    try {
+      const e = escrow();
+      const r = decision === "complete" ? await e.complete(BigInt(jobId), reason) : await e.reject(BigInt(jobId), reason);
+      const rows = await ledger.recent(agentId, 200);
+      const rec = rows.find((x) => x.rail === "escrow" && x.url.endsWith(`/${jobId}`) && x.status === "signed");
+      if (rec) await ledger.update(rec.id, { status: decision === "complete" ? "settled" : "failed", reason: decision === "complete" ? null : `rejected: ${reason}`, settledAt: decision === "complete" ? new Date() : null, txHash: r.txHash });
+      return text({ jobId, decision, txHash: r.txHash });
+    } catch (err) { return fail(`job ${decision} failed: ${(err as Error).message}`); }
+  });
+
+  server.registerTool("arc_job_submit", {
+    title: "Submit a deliverable (provider)",
+    description: "As the job's provider: submits the keccak256 hash of the deliverable and moves the job to Submitted.",
+    inputSchema: { jobId: z.string().regex(/^\d+$/), deliverableHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/) },
+  }, async ({ jobId, deliverableHash }) => {
+    try { return text({ jobId, ...(await escrow().submit(BigInt(jobId), deliverableHash as Hex)) }); } catch (err) { return fail(`job submit failed: ${(err as Error).message}`); }
+  });
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
