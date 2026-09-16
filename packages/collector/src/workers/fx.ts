@@ -1,7 +1,7 @@
 /**
- * FX watcher: records every EURC <-> USDC swap on Arc with the rate it executed at.
- * Cheap by design: scan EURC transfer logs (few per block), then only fetch the receipts of those
- * transactions to see the USDC side. USDC alone moves hundreds of thousands of times a day.
+ * Price watcher: records every swap between a watched token and USDC on Arc, at the rate it executed.
+ * Cheap by design: scan the token's transfer logs (few per block), then only fetch the receipts of
+ * those transactions to see the USDC side. USDC alone moves hundreds of thousands of times a day.
  */
 import type { CollectorConfig } from "../config.js";
 import { getState, hexToBytes, setState, type Db } from "../db/index.js";
