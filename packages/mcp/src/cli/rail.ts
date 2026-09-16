@@ -70,7 +70,11 @@ async function main(): Promise<void> {
   await ledger.close();
 }
 
-main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
+main().catch((err: unknown) => {
+  // AggregateError (e.g. a database that is not listening) has an empty message: show the whole thing.
+  const e = err as { message?: string; stack?: string; errors?: unknown[]; cause?: unknown };
+  const msg = e?.message || (e?.errors?.length ? `${e.constructor?.name ?? "Error"}: ${e.errors.map((x) => (x as Error)?.message ?? String(x)).join("; ")}` : "") || String(err);
+  console.error(msg);
+  if (process.env.CRA_DEBUG) console.error(e?.stack ?? err);
   process.exit(1);
 });
