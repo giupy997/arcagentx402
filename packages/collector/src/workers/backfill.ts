@@ -63,10 +63,11 @@ export class BackfillWorker {
           await sleep(2000); // live ingestion is struggling: leave the RPCs alone
           continue;
         }
+        // Alternate: a steady trickle of failed blocks would otherwise starve the history backfill,
+        // because every loop would find a gap to fill and never reach the historical range.
         const didGap = await this.fillOneGap();
-        if (didGap) continue;
         const didHist = await this.backfillChunk();
-        if (!didHist) await sleep(5000);
+        if (!didGap && !didHist) await sleep(5000);
       } catch (err) {
         this.log.error({ err }, "backfill loop error");
         await sleep(2000);
