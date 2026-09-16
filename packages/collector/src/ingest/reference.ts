@@ -8,6 +8,8 @@
  */
 export class ReferencePrice {
   private readonly rates: number[] = [];
+  /** Rejected rates, kept in case the market has moved and it is the reference that is wrong. */
+  private pending: number[] = [];
 
   constructor(
     private readonly maxDeviation: number,
@@ -28,11 +30,33 @@ export class ReferencePrice {
     return sorted.length % 2 === 0 ? ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2 : (sorted[mid] ?? null);
   }
 
-  /** Accepts the rate and remembers it, or rejects it as too far from the running price. */
+  /**
+   * Accepts the rate and remembers it, or rejects it as too far from the running price.
+   *
+   * A price can move faster than the reference follows, and then every trade looks wrong and the
+   * reference would stay where it was for good. So rejected rates are kept: once enough of them
+   * agree with each other, the market has moved and they become the new reference. Scattered
+   * nonsense never agrees with itself, so it never takes over.
+   */
   accept(rate: number): boolean {
+    if (!Number.isFinite(rate) || rate <= 0) return false;
     const m = this.median;
-    if (m !== null && m > 0 && Math.abs(rate / m - 1) > this.maxDeviation) return false;
-    this.push(rate);
+    if (m === null || m <= 0 || Math.abs(rate / m - 1) <= this.maxDeviation) {
+      this.pending = [];
+      this.push(rate);
+      return true;
+    }
+    this.pending.push(rate);
+    if (this.pending.length < this.warmup) return false;
+    const lo = Math.min(...this.pending);
+    const hi = Math.max(...this.pending);
+    if (hi / lo - 1 > this.maxDeviation * 3) {
+      this.pending.shift(); // they disagree: bad legs, not a move
+      return false;
+    }
+    this.rates.length = 0;
+    for (const r of this.pending) this.push(r);
+    this.pending = [];
     return true;
   }
 
