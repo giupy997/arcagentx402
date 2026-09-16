@@ -64,8 +64,11 @@ async function refresh(): Promise<void> {
     if (p?.last) {
       $("t-price").textContent = price(p.last.rate);
       $("t-vol").textContent = `$${p.window.volumeUsdc}`;
-      const band = p.window.low !== null && p.window.high !== null ? `mostly ${price(p.window.low)}–${price(p.window.high)} over 24 h` : "from swaps on Arc";
-      $("t-price-note").textContent = `${fmtInt(p.window.trades)} swaps · ${band}`;
+      // A band would sit under the price on a day the token only went up, so show the move instead.
+      const open = p.series[0]?.vwap;
+      const move = open ? p.last.rate / open : null;
+      const shape = move === null ? "" : move >= 10 || move <= 0.1 ? ` · ×${move.toFixed(1)} over 24 h` : ` · ${move >= 1 ? "+" : ""}${((move - 1) * 100).toFixed(1)}% over 24 h`;
+      $("t-price-note").textContent = `${fmtInt(p.window.trades)} swaps${shape}`;
     } else {
       $("t-price").textContent = "—";
       $("t-price-note").textContent = "no swap seen yet";
