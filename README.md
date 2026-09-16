@@ -89,7 +89,13 @@ app.use(seller.middleware());   // Hono; createExpressSeller() for Express
 ```
 
 Setting `SELLER_ADDRESS` in `.env` turns on our own paid routes: the API then serves `/v1/paid/*`
-(catalogue at `/v1/paid`) priced per call.
+(catalogue at `/v1/paid`) priced per call, described for agents at `/openapi.json`.
+
+A route can also be offered on a second network at the same price. The x402 discovery catalogues are
+filled by the facilitator that settles a payment, and no facilitator settles Arc except Circle's,
+which does not catalogue: `DISCOVERY_FACILITATOR_URL` (or `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET`)
+adds that rail, and `scripts/pay-on-network.mts <url> [network]` buys a route there once so the
+catalogue picks it up. The Arc rail is untouched and our own buyer keeps choosing it.
 
 ## Two guarantees worth knowing
 
