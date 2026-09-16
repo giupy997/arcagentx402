@@ -236,3 +236,113 @@ export async function rpcStatus(db: Db) {
     lastSeen: e.last_seen,
   }));
 }
+
+
+// ---------------------------------------------------------------------------
+// Token: burns and payouts, straight from the chain via the collector's watcher
+// ---------------------------------------------------------------------------
+
+const CRA_DECIMALS = 18n;
+/** Format raw units with the given decimals, no floats. */
+function formatUnits(raw: string, decimals: bigint, maxFrac = 2): string {
+  const neg = raw.startsWith("-");
+  const v = BigInt(neg ? raw.slice(1) : raw);
+  const base = 10n ** decimals;
+  const int = (v / base).toString();
+  let frac = (v % base).toString().padStart(Number(decimals), "0").slice(0, maxFrac).replace(/0+$/, "");
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${neg ? "-" : ""}${grouped}${frac ? "." + frac : ""}`;
+}
+
+export interface TokenEvent {
+  kind: "burn" | "payout";
+  blockNumber: number;
+  timestamp: number;
+  txHash: string | null;
+  from: string | null;
+  to: string | null;
+  amount: string;
+  amountFormatted: string;
+}
+
+export interface TokenSummary {
+  token: { address: string; distributor: string; symbol: string; decimals: number } | null;
+  burned: { total: string; totalFormatted: string; supplyShare: number | null; events: number; last24h: string; last24hFormatted: string; lastAt: number | null };
+  payouts: { totalUsdc: string; last24hUsdc: string; events: number; recipients: number; lastAt: number | null };
+  perHour: Array<{ t: number; burned: string; burnedFormatted: string; payoutUsdc: string }>;
+  recent: TokenEvent[];
+}
+
+const TOTAL_SUPPLY = 1_000_000_000n * 10n ** 18n;
+
+export async function tokenSummary(db: Db, address: string | null, distributor: string | null): Promise<TokenSummary> {
+  const empty: TokenSummary = {
+    token: null,
+    burned: { total: "0", totalFormatted: "0", supplyShare: null, events: 0, last24h: "0", last24hFormatted: "0", lastAt: null },
+    payouts: { totalUsdc: "0", last24hUsdc: "0", events: 0, recipients: 0, lastAt: null },
+    perHour: [],
+    recent: [],
+  };
+  if (!address || !distributor) return empty;
+  const [burn, pay, perHour, recent] = await Promise.all([
+    db.query<{ total: string | null; n: string; last24h: string | null; last_at: string | null }>(
+      `SELECT sum(amount) AS total, count(*) AS n,
+              sum(amount) FILTER (WHERE "timestamp" > extract(epoch FROM now()) - 86400) AS last24h,
+              max("timestamp") AS last_at
+       FROM token_events WHERE kind = 'burn'`,
+    ),
+    db.query<{ total: string | null; n: string; last24h: string | null; recipients: string; last_at: string | null }>(
+      `SELECT sum(amount) AS total, count(*) AS n,
+              sum(amount) FILTER (WHERE "timestamp" > extract(epoch FROM now()) - 86400) AS last24h,
+              count(DISTINCT "to") AS recipients, max("timestamp") AS last_at
+       FROM token_events WHERE kind = 'payout'`,
+    ),
+    db.query<{ t: string; burned: string | null; payout: string | null }>(
+      `SELECT ("timestamp" / 3600) * 3600 AS t,
+              sum(amount) FILTER (WHERE kind = 'burn') AS burned,
+              sum(amount) FILTER (WHERE kind = 'payout') AS payout
+       FROM token_events WHERE "timestamp" > extract(epoch FROM now()) - 86400 * 3 GROUP BY 1 ORDER BY 1`,
+    ),
+    db.query<{ kind: "burn" | "payout"; block_number: string; timestamp: string; tx_hash: Buffer; from: Buffer; to: Buffer; amount: string }>(
+      `SELECT kind, block_number, "timestamp", tx_hash, "from", "to", amount FROM token_events ORDER BY "timestamp" DESC, log_index DESC LIMIT 25`,
+    ),
+  ]);
+  const b = burn.rows[0]!;
+  const p = pay.rows[0]!;
+  const burnedTotal = BigInt(b.total ?? "0");
+  return {
+    token: { address, distributor, symbol: "CRA", decimals: 18 },
+    burned: {
+      total: burnedTotal.toString(),
+      totalFormatted: formatUnits(burnedTotal.toString(), CRA_DECIMALS, 0),
+      supplyShare: Number((burnedTotal * 1_000_000n) / TOTAL_SUPPLY) / 10_000,
+      events: Number(b.n),
+      last24h: (b.last24h ?? "0").toString(),
+      last24hFormatted: formatUnits(b.last24h ?? "0", CRA_DECIMALS, 0),
+      lastAt: b.last_at === null ? null : Number(b.last_at),
+    },
+    payouts: {
+      totalUsdc: usd(p.total ?? "0") ?? "0",
+      last24hUsdc: usd(p.last24h ?? "0") ?? "0",
+      events: Number(p.n),
+      recipients: Number(p.recipients),
+      lastAt: p.last_at === null ? null : Number(p.last_at),
+    },
+    perHour: perHour.rows.map((r) => ({
+      t: Number(r.t),
+      burned: (r.burned ?? "0").toString(),
+      burnedFormatted: formatUnits(r.burned ?? "0", CRA_DECIMALS, 0),
+      payoutUsdc: usd(r.payout ?? "0") ?? "0",
+    })),
+    recent: recent.rows.map((r) => ({
+      kind: r.kind,
+      blockNumber: Number(r.block_number),
+      timestamp: Number(r.timestamp),
+      txHash: hex(r.tx_hash),
+      from: hex(r.from),
+      to: hex(r.to),
+      amount: r.amount,
+      amountFormatted: r.kind === "burn" ? formatUnits(r.amount, CRA_DECIMALS, 0) : (usd(r.amount) ?? "0"),
+    })),
+  };
+}

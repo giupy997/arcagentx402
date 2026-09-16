@@ -80,6 +80,9 @@ const EnvSchema = z.object({
   COLLECTOR_DISK_ALERT_GB: intEnv(40),
   COLLECTOR_RPC_TIMEOUT_MS: intEnv(15_000),
   COLLECTOR_ENDPOINT_LAG_TOLERANCE: intEnv(20),
+  TOKEN_ADDRESS: z.string().optional(),
+  TOKEN_DISTRIBUTOR: z.string().optional(),
+  TOKEN_START_BLOCK: intEnv(0),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_CHAT_ID: z.string().optional(),
   LOG_LEVEL: z.string().default("info"),
@@ -120,6 +123,8 @@ export interface CollectorConfig {
   readonly diskAlertGb: number;
   readonly rpcTimeoutMs: number;
   readonly endpointLagTolerance: number;
+  /** Optional: the project token whose burns and payouts are published. Off when TOKEN_ADDRESS is unset. */
+  readonly token: { address: string; distributor: string; usdc: string; startBlock: number } | null;
   readonly telegram: { botToken: string; chatId: string } | null;
   readonly logLevel: string;
 }
@@ -135,6 +140,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
   if (!Number.isInteger(chainId) || chainId <= 0) throw new Error(`ARC_CHAIN_ID invalid: ${e.ARC_CHAIN_ID}`);
   const rpcUrls = [...csv(e.ARC_RPC_URLS)];
   if (rpcUrls.length === 0) rpcUrls.push(...DEFAULT_RPC_URLS[e.ARC_NETWORK]);
+  const tokenAddr = clean(e.TOKEN_ADDRESS);
+  const distributor = clean(e.TOKEN_DISTRIBUTOR);
+  if ((tokenAddr && !distributor) || (distributor && !tokenAddr)) throw new Error("TOKEN_ADDRESS and TOKEN_DISTRIBUTOR must be set together");
+  for (const a of [tokenAddr, distributor]) if (a && !/^0x[0-9a-fA-F]{40}$/.test(a)) throw new Error(`token address must be a 0x address: ${a}`);
   const alchemy = clean(e.ALCHEMY_ARC_URL);
   if (alchemy) rpcUrls.push(alchemy);
   if (rpcUrls.length === 0) throw new Error("No RPC endpoints configured (ARC_RPC_URLS)");
@@ -167,6 +176,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
     diskAlertGb: e.COLLECTOR_DISK_ALERT_GB,
     rpcTimeoutMs: e.COLLECTOR_RPC_TIMEOUT_MS,
     endpointLagTolerance: e.COLLECTOR_ENDPOINT_LAG_TOLERANCE,
+    token: tokenAddr && distributor ? { address: tokenAddr.toLowerCase(), distributor: distributor.toLowerCase(), usdc: "0x3600000000000000000000000000000000000000", startBlock: e.TOKEN_START_BLOCK } : null,
     telegram: clean(e.TELEGRAM_BOT_TOKEN) && clean(e.TELEGRAM_CHAT_ID) ? { botToken: clean(e.TELEGRAM_BOT_TOKEN)!, chatId: clean(e.TELEGRAM_CHAT_ID)! } : null,
     logLevel: e.LOG_LEVEL,
   };

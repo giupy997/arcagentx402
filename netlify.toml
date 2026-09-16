@@ -15,6 +15,11 @@
   status = 200
 
 [[redirects]]
+  from = "/token"
+  to = "/token.html"
+  status = 200
+
+[[redirects]]
   from = "/dashboard"
   to = "/network"
   status = 301

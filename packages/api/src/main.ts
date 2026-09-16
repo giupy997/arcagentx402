@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pino from "pino";
 import { createPool } from "./db.js";
-import { activity, deployStats, feeEstimate, feeSummary, networkSummary, recentDeploys, rpcStatus } from "./queries.js";
+import { activity, deployStats, feeEstimate, feeSummary, networkSummary, recentDeploys, rpcStatus, tokenSummary } from "./queries.js";
 import { mountPaidRoutes } from "./paid.js";
 
 const log = pino({ level: process.env.LOG_LEVEL ?? "info", base: { app: "cra-agent-api" } });
@@ -53,6 +53,9 @@ app.get("/v1/deploys", async (c) => {
   return c.json(await cached(`deploys:${limit}`, 5000, async () => ({ recent: await recentDeploys(db, limit, NETWORK), perHour: await deployStats(db) })));
 });
 app.get("/v1/rpc", async (c) => c.json(await cached("rpc", 5000, () => rpcStatus(db))));
+const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS ?? null;
+const TOKEN_DISTRIBUTOR = process.env.TOKEN_DISTRIBUTOR ?? null;
+app.get("/v1/token", async (c) => c.json(await cached("token", 10_000, () => tokenSummary(db, TOKEN_ADDRESS, TOKEN_DISTRIBUTOR))));
 app.get("/v1/health", async (c) => {
   try {
     const n = await cached("network", 2000, () => networkSummary(db, NETWORK, CHAIN_ID));
@@ -71,7 +74,7 @@ app.onError((err, c) => {
 
 if (existsSync(WEB_DIR)) {
   const rel = WEB_DIR.startsWith(process.cwd()) ? WEB_DIR.slice(process.cwd().length + 1) : WEB_DIR;
-  app.use("/*", serveStatic({ root: rel, rewriteRequestPath: (p) => (p === "/dashboard" || p === "/network" ? "/dashboard.html" : p) }));
+  app.use("/*", serveStatic({ root: rel, rewriteRequestPath: (p) => (p === "/dashboard" || p === "/network" ? "/dashboard.html" : p === "/token" ? "/token.html" : p) }));
   log.info({ webDir: WEB_DIR }, "serving web");
 } else {
   log.warn({ webDir: WEB_DIR }, "web dist not found: API only");

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRA AGENT — token, live</title>
+<meta name="description" content="CRA tokenomics in public: every buyback burn and every USDC payout, read from Arc as it happens.">
+<meta name="theme-color" content="#061a42">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="nav" id="nav">
+  <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+  <div class="nav-right">
+    <span class="net-pill" id="netpill"><span class="dot" id="netdot"></span><span id="netlabel">Arc mainnet</span></span>
+    <button class="menu-btn" type="button" data-menu-open aria-label="Open menu" aria-controls="menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+</header>
+<div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="Menu">
+  <div class="menu-top">
+    <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+    <button class="menu-btn" type="button" data-menu-close aria-label="Close menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3.5 3.5l11 11M14.5 3.5l-11 11" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+  <ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="/#how">How it works</a></li>
+    <li><a href="/#install">Install the agent</a></li>
+    <li><a href="/#sell">Sell an endpoint</a></li>
+    <li><a href="/network">Network</a></li>
+    <li><a href="/token">Token</a></li>
+    <li><a href="https://x.com/Craagentarc" rel="noopener">X</a></li>
+    <li><a href="https://github.com/giupy997/arcagentx402" rel="noopener">GitHub</a></li>
+  </ul>
+  <div class="menu-foot">x402 · Circle Gateway · USDC on Arc</div>
+</div>
+
+<section class="page-head">
+  <div class="marks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div class="wrap">
+    <p class="kicker" style="color:rgba(255,255,255,.8)">Token</p>
+    <h1>Tokenomics, in public</h1>
+    <div class="meta" id="meta">1% on every buy and sell · 40% liquidity · 20% buyback and burn · 20% USDC to holders · 20% marketing</div>
+  </div>
+</section>
+
+<main class="wrap dash">
+  <div class="offline hidden" id="offline">
+    <h2>Live token data is coming online</h2>
+    <p>This page reads the Arc chain directly: every burn and every USDC payout, with its transaction. It needs the API, which is still starting up.</p>
+    <p><a class="btn" href="/">← Back to CRA AGENT</a></p>
+  </div>
+
+  <div class="tiles">
+    <div class="tile hero-figure">
+      <div>
+        <div class="label">CRA burned so far</div>
+        <div class="value" id="t-burned">—</div>
+      </div>
+      <div class="aside">of a 1,000,000,000 supply <b id="t-burned-pct">—</b><br>last burn <b id="t-burn-last">—</b></div>
+    </div>
+    <div class="tile"><div class="label">Burned, last 24 h</div><div class="value" id="t-burn-24">—</div><div class="delta" id="t-burn-n">&nbsp;</div></div>
+    <div class="tile"><div class="label">USDC paid out</div><div class="value" id="t-pay">—</div><div class="delta" id="t-pay-n">&nbsp;</div></div>
+    <div class="tile"><div class="label">Paid out, last 24 h</div><div class="value" id="t-pay-24">—</div><div class="delta" id="t-pay-last">&nbsp;</div></div>
+    <div class="tile"><div class="label">Recipients</div><div class="value" id="t-recipients">—</div><div class="delta">distinct addresses paid</div></div>
+  </div>
+
+  <div class="charts">
+    <div class="chart-card" id="c-burn">
+      <div class="head"><div><h2>Burned per hour</h2><div class="sub">CRA bought back and sent to the dead address</div></div><button class="tbl-toggle">table</button></div>
+      <div class="viz"></div>
+    </div>
+    <div class="chart-card" id="c-pay">
+      <div class="head"><div><h2>USDC paid out per hour</h2><div class="sub">leaving the fee distributor</div></div><button class="tbl-toggle">table</button></div>
+      <div class="viz"></div>
+    </div>
+    <div class="chart-card wide" id="c-events">
+      <div class="head"><div><h2>Latest events</h2><div class="sub">read from Arc, with the transaction that did it</div></div></div>
+      <div class="tbl-wrap" id="events-table"></div>
+    </div>
+    <div class="chart-card wide">
+      <div class="head"><div><h2>Addresses</h2><div class="sub">check any of it yourself on the explorer</div></div></div>
+      <div class="tbl-wrap">
+        <table class="data">
+          <tbody>
+            <tr><td>CRA token</td><td class="mono"><a href="https://explorer.arc.io/token/0x70857041Fef0CED97F9e01E7Ccc21889AFe3F6F4" rel="noopener">0x70857041Fef0CED97F9e01E7Ccc21889AFe3F6F4</a></td></tr>
+            <tr><td>Fee distributor</td><td class="mono"><a href="https://explorer.arc.io/address/0xE1B6BA192d0aE5B964db0bb743E615c29648BFF8" rel="noopener">0xE1B6BA192d0aE5B964db0bb743E615c29648BFF8</a></td></tr>
+            <tr><td>Burn address</td><td class="mono"><a href="https://explorer.arc.io/address/0x000000000000000000000000000000000000dEaD" rel="noopener">0x000000000000000000000000000000000000dEaD</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer class="site light">
+  <span>Read from Arc mainnet · refreshes every 15 s · <span id="token-note"></span></span>
+  <span><a href="/">Home</a> · <a href="/network">Network</a> · <a href="https://x.com/Craagentarc" rel="noopener">X</a> · <a href="/v1/token">/v1/token</a></span>
+</footer>
+<script src="/config.js"></script>
+<script type="module" src="/js/token.js"></script>
+</body>
+</html>
