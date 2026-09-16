@@ -29,11 +29,16 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
   // no facilitator catalogues Arc today. The Arc price stays exactly the same.
   const cdpKeyId = process.env.CDP_API_KEY_ID;
   const cdpKeySecret = process.env.CDP_API_KEY_SECRET;
+  // An open facilitator needs no credentials, so either of the two switches the rail on.
+  const discoveryFacilitator = process.env.DISCOVERY_FACILITATOR_URL;
   const basePayTo = process.env.BASE_SELLER_ADDRESS ?? sellerAddress;
+  const shared = { payTo: basePayTo, iconUrl: "https://cra-agent.tech/brand/favicon-32.png", tags: ["arc", "chain-data", "fx", "gas"] };
   const discovery =
     cdpKeyId && cdpKeySecret
-      ? { payTo: basePayTo, cdpKeyId, cdpKeySecret, iconUrl: "https://cra-agent.tech/brand/favicon-32.png", tags: ["arc", "chain-data", "fx", "gas"] }
-      : undefined;
+      ? { ...shared, cdpKeyId, cdpKeySecret }
+      : discoveryFacilitator
+        ? { ...shared, facilitatorUrl: discoveryFacilitator }
+        : undefined;
 
   // Priced from the shared catalogue, so the OpenAPI document and the 402 always agree.
   const seller = createSeller({
@@ -78,5 +83,5 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
   app.get("/v1/paid/selftest/fail", (c) => c.json({ error: "this endpoint always fails on purpose", charged: false }, 500));
 
   app.get("/v1/paid", (c) => c.json({ seller: seller.sellerAddress, network: seller.network, facilitator: seller.facilitatorUrl, routes: Object.entries(seller.routes).map(([k, v]) => ({ route: k, price: String((Array.isArray(v.accepts) ? v.accepts[0] : v.accepts)?.price), description: v.description ?? null })) }));
-  log.info({ seller: sellerAddress, network: seller.network, routes: Object.keys(seller.routes).length, discovery: discovery ? basePayTo : "off" }, "paid endpoints mounted");
+  log.info({ seller: sellerAddress, network: seller.network, routes: Object.keys(seller.routes).length, discovery: discovery ? `${basePayTo} via ${discoveryFacilitator ?? "coinbase"}` : "off" }, "paid endpoints mounted");
 }

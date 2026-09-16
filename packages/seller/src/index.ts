@@ -35,9 +35,11 @@ const FACILITATOR: Record<SellerNetwork, string> = { arc: "https://gateway-api.c
 export interface DiscoveryRail {
   /** Address paid on that network. */
   readonly payTo: string;
-  /** CDP API credentials, from the environment. Never hard-code them. */
-  readonly cdpKeyId: string;
-  readonly cdpKeySecret: string;
+  /** Facilitator that settles and catalogues this rail. Defaults to Coinbase's. */
+  readonly facilitatorUrl?: string;
+  /** Coinbase credentials, from the environment. Never hard-code them. Some facilitators need none. */
+  readonly cdpKeyId?: string;
+  readonly cdpKeySecret?: string;
   /** Defaults to Base mainnet. */
   readonly network?: Network;
   readonly iconUrl?: string;
@@ -118,8 +120,13 @@ export function buildServer(cfg: SellerConfig, network: Network, facilitatorUrl:
   const circle = new BatchFacilitatorClient({ url: facilitatorUrl }) as unknown as FacilitatorClient;
   const rail = cfg.discovery;
   if (!rail) return new x402ResourceServer(circle).register(network, new GatewayEvmScheme());
-  const cdp = new HTTPFacilitatorClient(createFacilitatorConfig(rail.cdpKeyId, rail.cdpKeySecret));
-  return new x402ResourceServer([circle, cdp])
+  // Credentials when the facilitator wants them, plain HTTP when it is open to anyone.
+  const catalogued = new HTTPFacilitatorClient(
+    rail.cdpKeyId && rail.cdpKeySecret
+      ? createFacilitatorConfig(rail.cdpKeyId, rail.cdpKeySecret)
+      : { url: rail.facilitatorUrl ?? (() => { throw new Error("discovery rail needs either CDP credentials or a facilitatorUrl"); })() },
+  );
+  return new x402ResourceServer([circle, catalogued])
     .register(network, new GatewayEvmScheme())
     .register(rail.network ?? BASE_MAINNET, new ExactEvmScheme())
     .registerExtension(bazaarResourceServerExtension);

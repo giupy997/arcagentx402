@@ -10,6 +10,13 @@ const withRail: SellerConfig = {
 const arc = resolveNetwork(base).network;
 
 describe("what a priced route advertises", () => {
+  it("takes a facilitator that needs no credentials", () => {
+    const open: SellerConfig = { ...base, discovery: { payTo: SELLER, facilitatorUrl: "https://facilitator.example/x402" } };
+    const r = buildRoutes(open, arc, "GET /v1/paid/x", "$0.001", {});
+    expect((r.accepts as any[]).map((a) => a.network)).toEqual(["eip155:5042", BASE_MAINNET]);
+    expect((r as any).extensions).toBeTruthy();
+  });
+
   it("offers Arc alone when there is no discovery rail", () => {
     const r = buildRoutes(base, arc, "GET /v1/paid/x", "$0.001", {});
     expect(Array.isArray(r.accepts)).toBe(false);
