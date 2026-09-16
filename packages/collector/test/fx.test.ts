@@ -30,8 +30,22 @@ describe("extractFxTrade", () => {
     expect(extractFxTrade([transfer(EURC, TRADER, POOL, 1_000_000n), transfer(USDC, "0x3333333333333333333333333333333333333333", "0x4444444444444444444444444444444444444444", 1n)], EURC, USDC)).toBeNull();
   });
 
-  it("ignores zero-value legs", () => {
+  it("ignores zero-value and dust legs", () => {
     expect(extractFxTrade([transfer(EURC, TRADER, POOL, 0n), transfer(USDC, POOL, TRADER, 1_000n)], EURC, USDC)).toBeNull();
+    // 0.1 EURC: too small to price anything
+    expect(extractFxTrade([transfer(EURC, TRADER, POOL, 100_000n), transfer(USDC, POOL, TRADER, 117_000n)], EURC, USDC)).toBeNull();
+  });
+
+  it("requires both legs to move between the same two addresses", () => {
+    // EURC goes trader → pool, USDC goes pool → someone else: not a swap for this trader
+    const other = "0x5555555555555555555555555555555555555555";
+    expect(extractFxTrade([transfer(EURC, TRADER, POOL, 10_000_000n), transfer(USDC, POOL, other, 11_700_000n)], EURC, USDC)).toBeNull();
+  });
+
+  it("rejects rates outside the plausible EUR/USD band", () => {
+    // a router that also moved unrelated USDC would otherwise produce a nonsense rate
+    expect(extractFxTrade([transfer(EURC, TRADER, POOL, 10_000_000n), transfer(USDC, POOL, TRADER, 2n)], EURC, USDC)).toBeNull();
+    expect(extractFxTrade([transfer(EURC, TRADER, POOL, 10_000_000n), transfer(USDC, POOL, TRADER, 900_000_000n)], EURC, USDC)).toBeNull();
   });
 });
 
