@@ -41,3 +41,14 @@ describe("backfill flag", () => {
     expect(loadConfig({ DATABASE_URL: "postgres://x", COLLECTOR_BACKFILL_HISTORY: "0" }).backfillHistory).toBe(false);
   });
 });
+
+describe("systemd-style inline comments", () => {
+  it("are stripped: a commented flag must not read as enabled", () => {
+    const c = loadConfig({ DATABASE_URL: "postgres://x  # the db", COLLECTOR_BACKFILL_HISTORY: "0   # needs a keyed RPC", COLLECTOR_MODE: "light  # cheap", ARC_CHAIN_ID: "5042 # mainnet", COLLECTOR_CONCURRENCY: "3  # be gentle" });
+    expect(c.backfillHistory).toBe(false);
+    expect(c.mode).toBe("light");
+    expect(c.chainId).toBe(5042);
+    expect(c.concurrency).toBe(3);
+    expect(c.databaseUrl).toBe("postgres://x");
+  });
+});

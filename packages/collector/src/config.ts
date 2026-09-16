@@ -20,8 +20,18 @@ export const DEFAULT_RPC_URLS = {
   mainnet: [] as string[],
 } as const;
 
+/**
+ * systemd EnvironmentFile does not strip trailing comments, so `KEY=0  # note` arrives as "0  # note".
+ * Cut at the first " #" and trim, otherwise a commented-out flag silently reads as enabled.
+ */
+const clean = (v: string | undefined): string | undefined => {
+  if (v === undefined) return undefined;
+  const cut = v.replace(/\s+#.*$/, "").trim();
+  return cut.length > 0 ? cut : undefined;
+};
+
 const csv = (s: string | undefined) =>
-  (s ?? "")
+  (clean(s) ?? "")
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
@@ -30,20 +40,26 @@ const intEnv = (def: number) =>
   z
     .string()
     .optional()
-    .transform((v) => (v === undefined || v === "" ? def : Number(v)))
+    .transform((v) => {
+      const c = clean(v);
+      return c === undefined ? def : Number(c);
+    })
     .pipe(z.number().int().nonnegative());
 
 const boolEnv = (def: boolean) =>
   z
     .string()
     .optional()
-    .transform((v) => (v === undefined || v === "" ? def : !["0", "false", "no", "off"].includes(v.toLowerCase())));
+    .transform((v) => {
+      const c = clean(v);
+      return c === undefined ? def : !["0", "false", "no", "off"].includes(c.toLowerCase());
+    });
 
 const EnvSchema = z.object({
-  ARC_NETWORK: z.enum(["testnet", "mainnet"]).default("testnet"),
+  ARC_NETWORK: z.string().optional().transform((v) => clean(v) ?? "testnet").pipe(z.enum(["testnet", "mainnet"])),
   ARC_CHAIN_ID: z.string().optional(),
   ARC_RPC_URLS: z.string().optional(),
-  ALCHEMY_ARC_URL: z.string().url().optional(),
+  ALCHEMY_ARC_URL: z.string().optional(),
   DATABASE_URL: z.string().min(1),
   COLLECTOR_START_BLOCK: intEnv(0),
   COLLECTOR_CONCURRENCY: intEnv(4),
@@ -58,8 +74,8 @@ const EnvSchema = z.object({
   COLLECTOR_HEALTH_PORT: intEnv(8790),
   COLLECTOR_ENRICH_REVERTS: boolEnv(true),
   COLLECTOR_ENRICH_CODE: boolEnv(true),
-  COLLECTOR_RAW_MODE: z.enum(["full", "compact"]).default("compact"),
-  COLLECTOR_MODE: z.enum(["full", "light"]).default("full"),
+  COLLECTOR_RAW_MODE: z.string().optional().transform((v) => clean(v) ?? "compact").pipe(z.enum(["full", "compact"])),
+  COLLECTOR_MODE: z.string().optional().transform((v) => clean(v) ?? "full").pipe(z.enum(["full", "light"])),
   COLLECTOR_DISK_PATH: z.string().default("/"),
   COLLECTOR_DISK_ALERT_GB: intEnv(40),
   COLLECTOR_RPC_TIMEOUT_MS: intEnv(15_000),
@@ -114,11 +130,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
     throw new Error(`Invalid environment: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
   }
   const e = parsed.data;
-  const chainId = e.ARC_CHAIN_ID ? Number(e.ARC_CHAIN_ID) : DEFAULT_CHAIN_IDS[e.ARC_NETWORK];
+  const chainIdRaw = clean(e.ARC_CHAIN_ID);
+  const chainId = chainIdRaw ? Number(chainIdRaw) : DEFAULT_CHAIN_IDS[e.ARC_NETWORK];
   if (!Number.isInteger(chainId) || chainId <= 0) throw new Error(`ARC_CHAIN_ID invalid: ${e.ARC_CHAIN_ID}`);
   const rpcUrls = [...csv(e.ARC_RPC_URLS)];
   if (rpcUrls.length === 0) rpcUrls.push(...DEFAULT_RPC_URLS[e.ARC_NETWORK]);
-  if (e.ALCHEMY_ARC_URL) rpcUrls.push(e.ALCHEMY_ARC_URL);
+  const alchemy = clean(e.ALCHEMY_ARC_URL);
+  if (alchemy) rpcUrls.push(alchemy);
   if (rpcUrls.length === 0) throw new Error("No RPC endpoints configured (ARC_RPC_URLS)");
   for (const u of rpcUrls) {
     if (!/^https?:\/\//.test(u)) throw new Error(`RPC url must be http(s): ${u}`);
@@ -129,7 +147,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
     network: e.ARC_NETWORK,
     chainId,
     rpcUrls,
-    databaseUrl: e.DATABASE_URL,
+    databaseUrl: clean(e.DATABASE_URL)!,
     startBlock: e.COLLECTOR_START_BLOCK,
     concurrency: e.COLLECTOR_CONCURRENCY,
     batchBlocks: e.COLLECTOR_BATCH_BLOCKS,
@@ -145,11 +163,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
     enrichCode: e.COLLECTOR_ENRICH_CODE,
     rawMode: e.COLLECTOR_RAW_MODE,
     mode: e.COLLECTOR_MODE,
-    diskPath: e.COLLECTOR_DISK_PATH,
+    diskPath: clean(e.COLLECTOR_DISK_PATH) ?? "/",
     diskAlertGb: e.COLLECTOR_DISK_ALERT_GB,
     rpcTimeoutMs: e.COLLECTOR_RPC_TIMEOUT_MS,
     endpointLagTolerance: e.COLLECTOR_ENDPOINT_LAG_TOLERANCE,
-    telegram: e.TELEGRAM_BOT_TOKEN && e.TELEGRAM_CHAT_ID ? { botToken: e.TELEGRAM_BOT_TOKEN, chatId: e.TELEGRAM_CHAT_ID } : null,
+    telegram: clean(e.TELEGRAM_BOT_TOKEN) && clean(e.TELEGRAM_CHAT_ID) ? { botToken: clean(e.TELEGRAM_BOT_TOKEN)!, chatId: clean(e.TELEGRAM_CHAT_ID)! } : null,
     logLevel: e.LOG_LEVEL,
   };
 }
