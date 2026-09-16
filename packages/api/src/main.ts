@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pino from "pino";
 import { createPool } from "./db.js";
-import { activity, deployStats, feeEstimate, feeSummary, networkSummary, recentDeploys, rpcStatus, tokenSummary } from "./queries.js";
+import { activity, deployStats, feeEstimate, feeSummary, fxSummary, networkSummary, recentDeploys, rpcStatus, tokenSummary } from "./queries.js";
 import { mountPaidRoutes } from "./paid.js";
 
 const log = pino({ level: process.env.LOG_LEVEL ?? "info", base: { app: "cra-agent-api" } });
@@ -55,6 +55,12 @@ app.get("/v1/deploys", async (c) => {
 app.get("/v1/rpc", async (c) => c.json(await cached("rpc", 5000, () => rpcStatus(db))));
 const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS ?? null;
 const TOKEN_DISTRIBUTOR = process.env.TOKEN_DISTRIBUTOR ?? null;
+app.get("/v1/fx", async (c) => {
+  const w = Math.min(1440, Math.max(5, Number(c.req.query("window") ?? 60)));
+  const full = await cached(`fx:${w}`, 10_000, () => fxSummary(db, w));
+  // Free tier: the headline rate and the window, without the size curve or the venue breakdown.
+  return c.json({ pair: full.pair, last: full.last, window: full.window, paid: "/v1/paid/fx/execution" });
+});
 app.get("/v1/token", async (c) => c.json(await cached("token", 10_000, () => tokenSummary(db, TOKEN_ADDRESS, TOKEN_DISTRIBUTOR))));
 app.get("/v1/health", async (c) => {
   try {

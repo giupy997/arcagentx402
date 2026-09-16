@@ -348,3 +348,74 @@ export async function tokenSummary(db: Db, address: string | null, distributor: 
     })),
   };
 }
+
+
+// ---------------------------------------------------------------------------
+// FX: EURC <-> USDC as actually executed on Arc
+// ---------------------------------------------------------------------------
+
+export interface FxSummary {
+  pair: "EURC/USDC";
+  /** Last executed rate, USDC per EURC. */
+  last: { rate: number; side: string; at: number; sizeEurc: string } | null;
+  window: { minutes: number; trades: number; vwap: number | null; min: number | null; max: number | null; volumeEurc: string; volumeUsdc: string };
+  /** Executed rate by trade size: what a conversion of that size actually got. */
+  bySize: Array<{ bucket: string; trades: number; vwap: number | null; spreadBps: number | null }>;
+  venues: Array<{ venue: string | null; trades: number; vwap: number | null; volumeEurc: string }>;
+  series: Array<{ t: number; vwap: number; trades: number; volumeEurc: string }>;
+}
+
+const bucketLabel = "CASE WHEN eurc_amount < 100000000 THEN '<100' WHEN eurc_amount < 1000000000 THEN '100-1k' WHEN eurc_amount < 10000000000 THEN '1k-10k' ELSE '10k+' END";
+
+export async function fxSummary(db: Db, windowMinutes = 60): Promise<FxSummary> {
+  const since = `extract(epoch FROM now()) - ${windowMinutes * 60}`;
+  const [last, agg, bySize, venues, series] = await Promise.all([
+    db.query<{ rate: number; side: string; timestamp: string; eurc_amount: string }>(
+      'SELECT rate, side, "timestamp", eurc_amount FROM fx_trades ORDER BY "timestamp" DESC LIMIT 1',
+    ),
+    db.query<{ n: string; vwap: number | null; mn: number | null; mx: number | null; veurc: string | null; vusdc: string | null }>(
+      `SELECT count(*) AS n, sum(usdc_amount) / nullif(sum(eurc_amount), 0) AS vwap, min(rate) AS mn, max(rate) AS mx,
+              sum(eurc_amount) AS veurc, sum(usdc_amount) AS vusdc
+       FROM fx_trades WHERE "timestamp" > ${since}`,
+    ),
+    db.query<{ bucket: string; n: string; vwap: number | null }>(
+      `SELECT ${bucketLabel} AS bucket, count(*) AS n, sum(usdc_amount) / nullif(sum(eurc_amount), 0) AS vwap
+       FROM fx_trades WHERE "timestamp" > ${since} GROUP BY 1`,
+    ),
+    db.query<{ venue: Buffer | null; n: string; vwap: number | null; veurc: string | null }>(
+      `SELECT venue, count(*) AS n, sum(usdc_amount) / nullif(sum(eurc_amount), 0) AS vwap, sum(eurc_amount) AS veurc
+       FROM fx_trades WHERE "timestamp" > ${since} GROUP BY 1 ORDER BY 2 DESC LIMIT 5`,
+    ),
+    db.query<{ t: string; vwap: number; n: string; veurc: string }>(
+      `SELECT ("timestamp" / 300) * 300 AS t, sum(usdc_amount) / nullif(sum(eurc_amount), 0) AS vwap, count(*) AS n, sum(eurc_amount) AS veurc
+       FROM fx_trades WHERE "timestamp" > ${since} GROUP BY 1 ORDER BY 1`,
+    ),
+  ]);
+  const l = last.rows[0];
+  const a = agg.rows[0]!;
+  const reference = a.vwap;
+  return {
+    pair: "EURC/USDC",
+    last: l ? { rate: Number(l.rate), side: l.side, at: Number(l.timestamp), sizeEurc: usd6(l.eurc_amount) } : null,
+    window: {
+      minutes: windowMinutes,
+      trades: Number(a.n),
+      vwap: a.vwap === null ? null : Number(a.vwap),
+      min: a.mn === null ? null : Number(a.mn),
+      max: a.mx === null ? null : Number(a.mx),
+      volumeEurc: usd6(a.veurc),
+      volumeUsdc: usd6(a.vusdc),
+    },
+    bySize: bySize.rows
+      .map((r) => ({
+        bucket: r.bucket,
+        trades: Number(r.n),
+        vwap: r.vwap === null ? null : Number(r.vwap),
+        // How far this size executed from the window's volume-weighted rate, in basis points.
+        spreadBps: r.vwap === null || reference === null ? null : Math.round(((Number(r.vwap) - Number(reference)) / Number(reference)) * 10_000),
+      }))
+      .sort((x, y) => ["<100", "100-1k", "1k-10k", "10k+"].indexOf(x.bucket) - ["<100", "100-1k", "1k-10k", "10k+"].indexOf(y.bucket)),
+    venues: venues.rows.map((r) => ({ venue: hex(r.venue), trades: Number(r.n), vwap: r.vwap === null ? null : Number(r.vwap), volumeEurc: usd6(r.veurc) })),
+    series: series.rows.map((r) => ({ t: Number(r.t), vwap: Number(r.vwap), trades: Number(r.n), volumeEurc: usd6(r.veurc) })),
+  };
+}
