@@ -91,7 +91,16 @@ export class BackfillWorker {
     const failed = await this.ingest(numbers);
     if (failed.length === 0) {
       if (chunkEnd === to) await this.db.query("DELETE FROM block_gaps WHERE from_block = $1", [from]);
-      else await this.db.query("UPDATE block_gaps SET from_block = $2 WHERE from_block = $1", [from, chunkEnd + 1]); // shrink
+      // Shrink the gap to what is left. The remainder can start exactly where another gap already
+      // starts, so merge into it instead of colliding with the primary key.
+      else
+        await this.db.query(
+          `WITH gone AS (DELETE FROM block_gaps WHERE from_block = $1 RETURNING to_block, attempts, last_error)
+           INSERT INTO block_gaps (from_block, to_block, attempts, last_error)
+           SELECT $2, to_block, attempts, last_error FROM gone
+           ON CONFLICT (from_block) DO UPDATE SET to_block = GREATEST(block_gaps.to_block, EXCLUDED.to_block)`,
+          [from, chunkEnd + 1],
+        );
       this.log.info({ from, to: chunkEnd }, "gap filled");
     } else {
       await this.db.query("UPDATE block_gaps SET attempts = attempts + 1, last_error = $2 WHERE from_block = $1", [from, `still failing: ${failed.join(",")}`]);
