@@ -91,6 +91,16 @@ app.use(seller.middleware());   // Hono; createExpressSeller() for Express
 Setting `SELLER_ADDRESS` in `.env` turns on our own paid routes: the API then serves `/v1/paid/*`
 (catalogue at `/v1/paid`) priced per call.
 
+## Two guarantees worth knowing
+
+- **A broken endpoint costs the buyer nothing.** x402's default flow verifies the payment, runs the
+  handler, and settles only if it succeeded. Our own API exposes `GET /v1/paid/selftest/fail`, a priced
+  route that always answers 500, so anyone can check it: the response is 500, the receipt reads
+  `not_charged`, and the Gateway balance does not move.
+- **Every settled payment ends with a transaction anyone can check.** Circle Gateway settles in batches,
+  so the transfer reaches the seller after the response. `cra-agent proof` (MCP: `arc_proof`) matches
+  settled payments to the on-chain USDC transfer that carried them and stores the hash in the ledger.
+
 ## Collector
 
 - **Head worker**: follows the chain head (250 ms poll), ingests in batches (two JSON-RPC calls per block:

@@ -100,7 +100,7 @@
         <div class="cell"><span class="n">[01]</span><h3>Quote</h3><p>Fetch the URL. On <code>402</code>, read the x402 terms: price, asset, network, seller.</p></div>
         <div class="cell"><span class="n">[02]</span><h3>Check</h3><p>Caps per payment, per day and per seller, rate limit, allowlist. Seller identity resolved on ERC-8004; unknown seller, no payment.</p></div>
         <div class="cell"><span class="n">[03]</span><h3>Pay</h3><p>Sign a USDC authorization for Circle Gateway: off-chain, gas-free, settled in batches on Arc. Large jobs route to ERC-8183 escrow.</p></div>
-        <div class="cell"><span class="n">[04]</span><h3>Record</h3><p>Every attempt lands in the ledger with price, seller, latency and outcome. Exposure per seller is a query.</p></div>
+        <div class="cell"><span class="n">[04]</span><h3>Record</h3><p>Every attempt lands in the ledger with price, seller, latency and outcome, and the receipt says which of the three happened: settled, not charged because the seller failed, or failed outright.</p></div>
       </div>
     </div>
   </section>
@@ -155,6 +155,7 @@ app.use(seller.middleware());</pre>
         <p class="sub">Buyers pay through Circle Gateway and you receive USDC on Arc in batched settlements. No invoices, no API keys to leak, no chargebacks. Your prices, latency and uptime become your reputation.</p>
         <ul class="checks">
           <li>Standard x402: any x402 buyer can pay you</li>
+          <li>Broken call, no charge: payment settles only after your handler succeeds</li>
           <li>Hono today, Express next</li>
           <li>Settlement guarantee and seller bonds in phase 2</li>
         </ul>
