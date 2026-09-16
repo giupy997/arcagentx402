@@ -1,5 +1,5 @@
 import { ApiUnavailable, fmtInt, getJson, short, timeHM, ago } from "./api.js";
-import { columnChart, tableTwin } from "./charts.js";
+import { columnChart, lineChart, tableTwin } from "./charts.js";
 import { initChrome } from "./menu.js";
 
 initChrome();
@@ -11,6 +11,19 @@ interface Token {
   payouts: { totalUsdc: string; last24hUsdc: string; events: number; recipients: number; lastAt: number | null };
   perHour: Array<{ t: number; burned: string; burnedFormatted: string; payoutUsdc: string }>;
   recent: TokenEvent[];
+  price: {
+    pair: string;
+    last: { rate: number; direction: string; at: number; sizeBase: string; sizeUsdc: string } | null;
+    window: { minutes: number; trades: number; vwap: number | null; min: number | null; max: number | null; volumeBase: string; volumeUsdc: string };
+    series: Array<{ t: number; vwap: number; trades: number; volumeUsdc: string }>;
+  } | null;
+}
+
+/** A price in USDC, with enough digits to be readable however small it is. */
+function price(v: number): string {
+  if (v >= 1) return `$${v.toFixed(4)}`;
+  const digits = Math.min(12, Math.max(4, 3 - Math.floor(Math.log10(v))));
+  return `$${v.toFixed(digits)}`;
 }
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -46,6 +59,21 @@ async function refresh(): Promise<void> {
     $("t-pay-24").textContent = `$${d.payouts.last24hUsdc}`;
     $("t-pay-last").textContent = d.payouts.lastAt ? `last ${ago(d.payouts.lastAt)}` : "";
     $("t-recipients").textContent = fmtInt(d.payouts.recipients);
+
+    const p = d.price;
+    if (p?.last) {
+      $("t-price").textContent = price(p.last.rate);
+      $("t-vol").textContent = `$${p.window.volumeUsdc}`;
+      const band = p.window.min !== null && p.window.max !== null ? `${price(p.window.min)}–${price(p.window.max)} over 24 h` : "from swaps on Arc";
+      $("t-price-note").textContent = `${fmtInt(p.window.trades)} swaps · ${band}`;
+    } else {
+      $("t-price").textContent = "—";
+      $("t-price-note").textContent = "no swap seen yet";
+    }
+
+    const pricePts = (p?.series ?? []).map((s) => ({ x: s.t, y: s.vwap, label: timeHM(s.t) }));
+    lineChart(viz("c-price"), { points: pricePts, area: true, yFormat: (v) => price(v), xFormat: (v) => timeHM(v), color: "var(--series-2)" });
+    tableTwin($("c-price"), ["Time", "Rate", "Swaps", "Volume"], (p?.series ?? []).map((s) => [timeHM(s.t), price(s.vwap), s.trades, `$${s.volumeUsdc}`]), [1, 2, 3]);
 
     const burnCols = d.perHour.map((p) => ({ x: p.t, value: Number(p.burned) / 1e18, label: timeHM(p.t) }));
     columnChart(viz("c-burn"), { columns: burnCols, format: (v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(Math.round(v))), xFormat: (v) => timeHM(v) });

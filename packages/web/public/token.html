@@ -58,6 +58,13 @@
   <div class="tiles">
     <div class="tile hero-figure">
       <div>
+        <div class="label">CRA price, last trade</div>
+        <div class="value" id="t-price">—</div>
+      </div>
+      <div class="aside">24 h volume <b id="t-vol">—</b><br><span id="t-price-note">from swaps on Arc</span></div>
+    </div>
+    <div class="tile hero-figure">
+      <div>
         <div class="label">CRA burned so far</div>
         <div class="value" id="t-burned">—</div>
       </div>
@@ -70,6 +77,10 @@
   </div>
 
   <div class="charts">
+    <div class="chart-card" id="c-price">
+      <div class="head"><div><h2>CRA/USDC, executed</h2><div class="sub">volume-weighted rate of real swaps, 5-minute buckets</div></div><button class="tbl-toggle">table</button></div>
+      <div class="viz"></div>
+    </div>
     <div class="chart-card" id="c-burn">
       <div class="head"><div><h2>Burned per hour</h2><div class="sub">CRA bought back and sent to the dead address</div></div><button class="tbl-toggle">table</button></div>
       <div class="viz"></div>
@@ -99,7 +110,7 @@
 
 <footer class="site light">
   <span>Read from Arc mainnet · refreshes every 15 s · <span id="token-note"></span></span>
-  <span><a href="/">Home</a> · <a href="/network">Network</a> · <a href="https://x.com/Craagentarc" rel="noopener">X</a> · <a href="/v1/token">/v1/token</a></span>
+  <span><a href="/">Home</a> · <a href="/network">Network</a> · <a href="https://x.com/Craagentarc" rel="noopener">X</a> · <a href="/v1/token">/v1/token</a> · <a href="/v1/fx?symbol=CRA">/v1/fx</a></span>
 </footer>
 <script src="/config.js"></script>
 <script type="module" src="/js/token.js"></script>

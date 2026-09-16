@@ -53,15 +53,34 @@ app.get("/v1/deploys", async (c) => {
   return c.json(await cached(`deploys:${limit}`, 5000, async () => ({ recent: await recentDeploys(db, limit, NETWORK), perHour: await deployStats(db) })));
 });
 app.get("/v1/rpc", async (c) => c.json(await cached("rpc", 5000, () => rpcStatus(db))));
+/** Pairs the collector prices. The base token decimals decide how a rate is scaled. */
+const PAIRS: Record<string, number> = { EURC: 6, [process.env.TOKEN_SYMBOL ?? "CRA"]: 18 };
+const resolvePair = (q: string | undefined): { symbol: string; decimals: number } => {
+  const symbol = (q ?? "EURC").toUpperCase();
+  return { symbol, decimals: PAIRS[symbol] ?? 6 };
+};
 const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS ?? null;
 const TOKEN_DISTRIBUTOR = process.env.TOKEN_DISTRIBUTOR ?? null;
 app.get("/v1/fx", async (c) => {
   const w = Math.min(1440, Math.max(5, Number(c.req.query("window") ?? 60)));
-  const full = await cached(`fx:${w}`, 10_000, () => fxSummary(db, w));
+  const { symbol, decimals } = resolvePair(c.req.query("symbol"));
+  const full = await cached(`fx:${symbol}:${w}`, 10_000, () => fxSummary(db, w, symbol, decimals));
   // Free tier: the headline rate and the window, without the size curve or the venue breakdown.
   return c.json({ pair: full.pair, last: full.last, window: full.window, paid: "/v1/paid/fx/execution" });
 });
-app.get("/v1/token", async (c) => c.json(await cached("token", 10_000, () => tokenSummary(db, TOKEN_ADDRESS, TOKEN_DISTRIBUTOR))));
+app.get("/v1/token", async (c) =>
+  c.json(
+    await cached("token", 10_000, async () => {
+      const summary = await tokenSummary(db, TOKEN_ADDRESS, TOKEN_DISTRIBUTOR);
+      const symbol = summary.token?.symbol;
+      if (!symbol) return { ...summary, price: null };
+      // The same execution data as /v1/fx, for the project token: real swaps, not a quote.
+      const fx = await fxSummary(db, 1440, symbol, summary.token?.decimals ?? 18);
+      // The size curve and venue breakdown stay in the paid route; the page shows price, window and shape.
+      return { ...summary, price: { pair: fx.pair, last: fx.last, window: fx.window, series: fx.series } };
+    }),
+  ),
+);
 app.get("/v1/health", async (c) => {
   try {
     const n = await cached("network", 2000, () => networkSummary(db, NETWORK, CHAIN_ID));

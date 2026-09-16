@@ -45,11 +45,14 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
     return c.json({ recent: await recentDeploys(db, limit, network), perHour: await deployStats(db) });
   });
   app.get("/v1/paid/rpc/health", async (c) => c.json(await rpcStatus(db)));
-  // Deliberately broken, and public: anyone can check that a failed handler is not charged.
+  // Executed prices for any pair the collector watches against USDC: ?symbol=EURC (default) or the project token.
   app.get("/v1/paid/fx/execution", async (c) => {
     const w = Math.min(1440, Math.max(5, Number(c.req.query("window") ?? 60)));
-    return c.json(await fxSummary(db, w));
+    const symbol = (c.req.query("symbol") ?? "EURC").toUpperCase();
+    const decimals = symbol === "EURC" ? 6 : 18;
+    return c.json(await fxSummary(db, w, symbol, decimals));
   });
+  // Deliberately broken, and public: anyone can check that a failed handler is not charged.
   app.get("/v1/paid/selftest/fail", (c) => c.json({ error: "this endpoint always fails on purpose", charged: false }, 500));
 
   app.get("/v1/paid", (c) => c.json({ seller: seller.sellerAddress, network: seller.network, facilitator: seller.facilitatorUrl, routes: Object.entries(seller.routes).map(([k, v]) => ({ route: k, price: String((Array.isArray(v.accepts) ? v.accepts[0] : v.accepts)?.price), description: v.description ?? null })) }));

@@ -82,6 +82,7 @@ const EnvSchema = z.object({
   COLLECTOR_ENDPOINT_LAG_TOLERANCE: intEnv(20),
   FX_ENABLED: boolEnv(false),
   TOKEN_ADDRESS: z.string().optional(),
+  TOKEN_SYMBOL: z.string().optional(),
   TOKEN_DISTRIBUTOR: z.string().optional(),
   TOKEN_START_BLOCK: intEnv(0),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
@@ -127,7 +128,8 @@ export interface CollectorConfig {
   /** Optional: the project token whose burns and payouts are published. Off when TOKEN_ADDRESS is unset. */
   readonly token: { address: string; distributor: string; usdc: string; startBlock: number } | null;
   /** EURC/USDC swap watching. Mainnet addresses from docs.arc.io (2026-09-16). */
-  readonly fx: { eurc: string; usdc: string } | null;
+  /** Pairs priced in USDC. EURC is on by default on mainnet; the project token is added when TOKEN_ADDRESS is set. */
+  readonly fx: { usdc: string; pairs: Array<{ symbol: string; token: string; decimals: number; minPrice: number; maxPrice: number; minBaseUnits: string }> } | null;
   readonly telegram: { botToken: string; chatId: string } | null;
   readonly logLevel: string;
 }
@@ -180,7 +182,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
     rpcTimeoutMs: e.COLLECTOR_RPC_TIMEOUT_MS,
     endpointLagTolerance: e.COLLECTOR_ENDPOINT_LAG_TOLERANCE,
     token: tokenAddr && distributor ? { address: tokenAddr.toLowerCase(), distributor: distributor.toLowerCase(), usdc: "0x3600000000000000000000000000000000000000", startBlock: e.TOKEN_START_BLOCK } : null,
-    fx: e.FX_ENABLED ? { eurc: e.ARC_NETWORK === "mainnet" ? "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1" : "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a", usdc: "0x3600000000000000000000000000000000000000" } : null,
+    fx: e.FX_ENABLED
+      ? {
+          usdc: "0x3600000000000000000000000000000000000000",
+          pairs: [
+            // Stablecoin pair: tight band, one euro floor.
+            { symbol: "EURC", token: e.ARC_NETWORK === "mainnet" ? "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1" : "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a", decimals: 6, minPrice: 0.5, maxPrice: 2, minBaseUnits: "1000000" },
+            // The project token, when configured: 18 decimals, wide band because it is volatile.
+            ...(tokenAddr ? [{ symbol: clean(e.TOKEN_SYMBOL) ?? "CRA", token: tokenAddr, decimals: 18, minPrice: 1e-9, maxPrice: 1e6, minBaseUnits: (1000n * 10n ** 18n).toString() }] : []),
+          ],
+        }
+      : null,
     telegram: clean(e.TELEGRAM_BOT_TOKEN) && clean(e.TELEGRAM_CHAT_ID) ? { botToken: clean(e.TELEGRAM_BOT_TOKEN)!, chatId: clean(e.TELEGRAM_CHAT_ID)! } : null,
     logLevel: e.LOG_LEVEL,
   };

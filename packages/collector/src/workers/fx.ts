@@ -5,7 +5,7 @@
  */
 import type { CollectorConfig } from "../config.js";
 import { getState, hexToBytes, setState, type Db } from "../db/index.js";
-import { extractFxTrade, TRANSFER_TOPIC, type MinimalLog } from "../ingest/fx.js";
+import { extractFxTrade, TRANSFER_TOPIC, type MinimalLog, type PairRules } from "../ingest/fx.js";
 import type { Logger } from "../log.js";
 import type { RpcPool } from "../rpc/pool.js";
 import type { RuntimeState } from "../state.js";
@@ -40,7 +40,7 @@ export class FxWorker {
     if (!fx) return;
     let cursor = (await getState<{ cursor: number }>(this.db, "fx"))?.cursor ?? 0;
     if (cursor === 0) cursor = (this.state.chainHead ?? 0) - 20_000; // start from roughly the last three hours
-    this.log.info({ eurc: fx.eurc, from: cursor }, "fx watcher started");
+    this.log.info({ pairs: fx.pairs.map((p) => p.symbol), from: cursor }, "fx watcher started");
     while (!this.stopped) {
       try {
         const head = this.state.chainHead;
@@ -49,13 +49,15 @@ export class FxWorker {
           continue;
         }
         const to = Math.min(head, cursor + 1999);
-        const logs = await this.pool.callResult<RawLog[]>(
-          "eth_getLogs",
-          [{ address: fx.eurc, topics: [TRANSFER_TOPIC], fromBlock: `0x${cursor.toString(16)}`, toBlock: `0x${to.toString(16)}` }],
-          { maxAttempts: 3, quiet: true },
-        );
-        const txs = [...new Set((logs ?? []).map((l) => l.transactionHash))];
-        if (txs.length > 0) await this.recordSwaps(txs, fx);
+        for (const pair of fx.pairs) {
+          const logs = await this.pool.callResult<RawLog[]>(
+            "eth_getLogs",
+            [{ address: pair.token, topics: [TRANSFER_TOPIC], fromBlock: `0x${cursor.toString(16)}`, toBlock: `0x${to.toString(16)}` }],
+            { maxAttempts: 3, quiet: true },
+          );
+          const txs = [...new Set((logs ?? []).map((l) => l.transactionHash))];
+          if (txs.length > 0) await this.recordSwaps(txs, { ...pair, minBaseUnits: BigInt(pair.minBaseUnits) }, fx.usdc);
+        }
         cursor = to + 1;
         await setState(this.db, "fx", { cursor });
         if (to === head) await sleep(10_000);
@@ -66,7 +68,7 @@ export class FxWorker {
     }
   }
 
-  private async recordSwaps(txHashes: string[], fx: { eurc: string; usdc: string }): Promise<void> {
+  private async recordSwaps(txHashes: string[], rules: PairRules, usdc: string): Promise<void> {
     const rows: { hash: string; block: number; ts: number; trade: ReturnType<typeof extractFxTrade> }[] = [];
     for (let i = 0; i < txHashes.length; i += 20) {
       const chunk = txHashes.slice(i, i + 20);
@@ -74,7 +76,7 @@ export class FxWorker {
       for (const outcome of routed.outcomes) {
         if (!outcome.ok || !outcome.result) continue;
         const r = outcome.result;
-        const trade = extractFxTrade(r.logs ?? [], fx.eurc, fx.usdc);
+        const trade = extractFxTrade(r.logs ?? [], rules.token, usdc, rules);
         if (!trade) continue;
         const block = Number(BigInt(r.blockNumber));
         const tsLog = (r.logs ?? []).find((l) => l.blockTimestamp)?.blockTimestamp;
@@ -88,21 +90,24 @@ export class FxWorker {
     }
     if (rows.length === 0) return;
     await this.db.query(
-      `INSERT INTO fx_trades (tx_hash, block_number, "timestamp", side, trader, venue, eurc_amount, usdc_amount, rate)
-       SELECT * FROM unnest($1::bytea[], $2::bigint[], $3::bigint[], $4::text[], $5::bytea[], $6::bytea[], $7::numeric[], $8::numeric[], $9::float8[])
+      `INSERT INTO fx_trades (tx_hash, block_number, "timestamp", side, direction, base, base_symbol, trader, venue, eurc_amount, usdc_amount, rate)
+       SELECT * FROM unnest($1::bytea[], $2::bigint[], $3::bigint[], $4::text[], $5::text[], $6::bytea[], $7::text[], $8::bytea[], $9::bytea[], $10::numeric[], $11::numeric[], $12::float8[])
        ON CONFLICT DO NOTHING`,
       [
         rows.map((r) => hexToBytes(r.hash)),
         rows.map((r) => r.block),
         rows.map((r) => r.ts),
-        rows.map((r) => r.trade!.side),
+        rows.map((r) => `${r.trade!.symbol}${r.trade!.direction === "sell" ? "->USDC" : "<-USDC"}`),
+        rows.map((r) => r.trade!.direction),
+        rows.map(() => hexToBytes(rules.token)),
+        rows.map((r) => r.trade!.symbol),
         rows.map((r) => hexToBytes(r.trade!.trader)),
         rows.map((r) => (r.trade!.venue ? hexToBytes(r.trade!.venue) : null)),
-        rows.map((r) => r.trade!.eurcAmount.toString()),
+        rows.map((r) => r.trade!.baseAmount.toString()),
         rows.map((r) => r.trade!.usdcAmount.toString()),
         rows.map((r) => r.trade!.rate),
       ],
     );
-    this.log.info({ swaps: rows.length }, "fx trades recorded");
+    this.log.info({ swaps: rows.length, pair: rules.symbol }, "fx trades recorded");
   }
 }
