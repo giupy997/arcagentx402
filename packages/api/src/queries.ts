@@ -1,4 +1,4 @@
-import { formatUsdc18, txFee18, usdc18, type Usdc18 } from "@cra-agent/accounting";
+import { formatUsdc18, formatUsdc6, txFee18, usdc18, usdc6, type Usdc18 } from "@cra-agent/accounting";
 import { hex, type Db } from "./db.js";
 
 const usd = (wei18: string | bigint | null, digits = 6): string | null =>
@@ -243,6 +243,8 @@ export async function rpcStatus(db: Db) {
 // ---------------------------------------------------------------------------
 
 const CRA_DECIMALS = 18n;
+/** Payout amounts come from the USDC ERC-20 interface: 6 decimals, not the 18-decimal gas view. */
+const usd6 = (raw: string | null): string => formatUsdc6(usdc6(BigInt(raw ?? "0")), { maxFractionDigits: 2 });
 /** Format raw units with the given decimals, no floats. */
 function formatUnits(raw: string, decimals: bigint, maxFrac = 2): string {
   const neg = raw.startsWith("-");
@@ -322,8 +324,8 @@ export async function tokenSummary(db: Db, address: string | null, distributor: 
       lastAt: b.last_at === null ? null : Number(b.last_at),
     },
     payouts: {
-      totalUsdc: usd(p.total ?? "0") ?? "0",
-      last24hUsdc: usd(p.last24h ?? "0") ?? "0",
+      totalUsdc: usd6(p.total),
+      last24hUsdc: usd6(p.last24h),
       events: Number(p.n),
       recipients: Number(p.recipients),
       lastAt: p.last_at === null ? null : Number(p.last_at),
@@ -332,7 +334,7 @@ export async function tokenSummary(db: Db, address: string | null, distributor: 
       t: Number(r.t),
       burned: (r.burned ?? "0").toString(),
       burnedFormatted: formatUnits(r.burned ?? "0", CRA_DECIMALS, 0),
-      payoutUsdc: usd(r.payout ?? "0") ?? "0",
+      payoutUsdc: usd6(r.payout),
     })),
     recent: recent.rows.map((r) => ({
       kind: r.kind,
@@ -342,7 +344,7 @@ export async function tokenSummary(db: Db, address: string | null, distributor: 
       from: hex(r.from),
       to: hex(r.to),
       amount: r.amount,
-      amountFormatted: r.kind === "burn" ? formatUnits(r.amount, CRA_DECIMALS, 0) : (usd(r.amount) ?? "0"),
+      amountFormatted: r.kind === "burn" ? formatUnits(r.amount, CRA_DECIMALS, 0) : usd6(r.amount),
     })),
   };
 }
