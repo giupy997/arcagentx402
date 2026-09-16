@@ -1,13 +1,12 @@
 /**
- * Express flavour of the seller: same route table, same Circle Gateway settlement.
+ * Express flavour of the seller: same route table, same settlement, same discovery rail.
  *
  *   const seller = createExpressSeller({ sellerAddress, network: "arc" }).route("GET /v1/forecast", "$0.001");
  *   app.use(seller.middleware());
  */
-import { BatchFacilitatorClient, GatewayEvmScheme } from "@circle-fin/x402-batching/server";
-import type { FacilitatorClient, RouteConfig } from "@x402/core/server";
-import { paymentMiddleware, x402ResourceServer } from "@x402/express";
-import { buildRoutes, resolveNetwork, type RouteOptions, type SellerConfig } from "./index.js";
+import type { RouteConfig } from "@x402/core/server";
+import { paymentMiddleware, type x402ResourceServer } from "@x402/express";
+import { buildRoutes, buildServer, resolveNetwork, type RouteOptions, type SellerConfig } from "./index.js";
 
 type ExpressMiddleware = ReturnType<typeof paymentMiddleware>;
 
@@ -29,11 +28,8 @@ export function createExpressSeller(cfg: SellerConfig): ExpressSeller {
       return seller;
     },
     middleware() {
-      if (!mw) {
-        const facilitator = new BatchFacilitatorClient({ url: facilitatorUrl }) as unknown as FacilitatorClient;
-        const server = new x402ResourceServer(facilitator).register(network, new GatewayEvmScheme());
-        mw = paymentMiddleware(routes, server);
-      }
+      // Same server as the Hono flavour: Arc through Circle, and the discovery rail when configured.
+      if (!mw) mw = paymentMiddleware(routes, buildServer(cfg, network, facilitatorUrl) as unknown as x402ResourceServer);
       return mw;
     },
   };

@@ -3,7 +3,16 @@ import type { Logger } from "pino";
 import { createSeller } from "@cra-agent/seller";
 import type { Db } from "./db.js";
 import { deployStats, feeEstimate, feeSummary, fxSummary, recentDeploys, rpcStatus } from "./queries.js";
-import { PAID_ROUTES } from "./routes.js";
+import { PAID_ROUTES, type QueryParam } from "./routes.js";
+
+/** The query a route takes, as JSON Schema, for the discovery catalogue. */
+function querySchema(params: readonly QueryParam[]): Record<string, unknown> {
+  return {
+    type: "object",
+    properties: Object.fromEntries(params.map((p) => [p.name, { type: p.type, description: p.description, ...(p.example === undefined ? {} : { example: p.example })}])),
+    required: [],
+  };
+}
 
 /**
  * The first paid endpoints on the rail: our own Arc data, priced per call, paid via x402 + Circle Gateway.
@@ -15,10 +24,30 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
     log.warn("SELLER_ADDRESS not set: paid endpoints disabled");
     return;
   }
+  // A second rail on Base, only when the credentials for it are configured. It exists so the
+  // discovery catalogue, which is filled by the facilitator that settles, can list these routes:
+  // no facilitator catalogues Arc today. The Arc price stays exactly the same.
+  const cdpKeyId = process.env.CDP_API_KEY_ID;
+  const cdpKeySecret = process.env.CDP_API_KEY_SECRET;
+  const basePayTo = process.env.BASE_SELLER_ADDRESS ?? sellerAddress;
+  const discovery =
+    cdpKeyId && cdpKeySecret
+      ? { payTo: basePayTo, cdpKeyId, cdpKeySecret, iconUrl: "https://cra-agent.tech/brand/favicon-32.png", tags: ["arc", "chain-data", "fx", "gas"] }
+      : undefined;
+
   // Priced from the shared catalogue, so the OpenAPI document and the 402 always agree.
-  const seller = createSeller({ sellerAddress, network: network === "mainnet" ? "arc" : "arcTestnet", serviceName: "CRA AGENT data" });
+  const seller = createSeller({
+    sellerAddress,
+    network: network === "mainnet" ? "arc" : "arcTestnet",
+    serviceName: "CRA AGENT data",
+    ...(discovery ? { discovery } : {}),
+  });
   for (const r of PAID_ROUTES) {
-    seller.route(`GET ${r.path}`, r.price, { description: r.description, ...(r.preview === undefined ? {} : { preview: r.preview }) });
+    seller.route(`GET ${r.path}`, r.price, {
+      description: r.description,
+      ...(r.preview === undefined ? {} : { preview: r.preview }),
+      ...(r.params ? { inputSchema: querySchema(r.params) } : {}),
+    });
   }
   app.use("/v1/paid/*", seller.middleware());
 
@@ -49,5 +78,5 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
   app.get("/v1/paid/selftest/fail", (c) => c.json({ error: "this endpoint always fails on purpose", charged: false }, 500));
 
   app.get("/v1/paid", (c) => c.json({ seller: seller.sellerAddress, network: seller.network, facilitator: seller.facilitatorUrl, routes: Object.entries(seller.routes).map(([k, v]) => ({ route: k, price: String((Array.isArray(v.accepts) ? v.accepts[0] : v.accepts)?.price), description: v.description ?? null })) }));
-  log.info({ seller: sellerAddress, network: seller.network, routes: Object.keys(seller.routes).length }, "paid endpoints mounted");
+  log.info({ seller: sellerAddress, network: seller.network, routes: Object.keys(seller.routes).length, discovery: discovery ? basePayTo : "off" }, "paid endpoints mounted");
 }

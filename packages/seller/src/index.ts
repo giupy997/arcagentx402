@@ -11,9 +11,12 @@
  * Payments are verified and settled by Circle Gateway (batched, gas-free for the buyer); the
  * x402 "exact" scheme is what gets registered, so any x402 buyer can pay, not only CRA AGENT agents.
  */
+import { createFacilitatorConfig } from "@coinbase/x402";
 import { BatchFacilitatorClient, GatewayEvmScheme } from "@circle-fin/x402-batching/server";
 import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
-import type { FacilitatorClient, RouteConfig } from "@x402/core/server";
+import { HTTPFacilitatorClient, type FacilitatorClient, type RouteConfig } from "@x402/core/server";
+import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions";
 import type { Network } from "@x402/core/types";
 import type { MiddlewareHandler } from "hono";
 
@@ -21,11 +24,32 @@ export type SellerNetwork = "arc" | "arcTestnet";
 const CAIP2: Record<SellerNetwork, Network> = { arc: "eip155:5042", arcTestnet: "eip155:5042002" };
 const FACILITATOR: Record<SellerNetwork, string> = { arc: "https://gateway-api.circle.com", arcTestnet: "https://gateway-api-testnet.circle.com" };
 
+/**
+ * A second rail, alongside Arc, on a network whose facilitator catalogues what it settles.
+ *
+ * The x402 discovery catalogue (the Bazaar) is filled by the facilitator that verifies a payment,
+ * and no facilitator settles Arc except Circle's, which does not catalogue. Offering the same
+ * resource on a catalogued network gets it listed, Arc price and all, without taking anything away
+ * from the Arc rail: the buyer picks.
+ */
+export interface DiscoveryRail {
+  /** Address paid on that network. */
+  readonly payTo: string;
+  /** CDP API credentials, from the environment. Never hard-code them. */
+  readonly cdpKeyId: string;
+  readonly cdpKeySecret: string;
+  /** Defaults to Base mainnet. */
+  readonly network?: Network;
+  readonly iconUrl?: string;
+  readonly tags?: readonly string[];
+}
+
 export interface SellerConfig {
   readonly sellerAddress: string;
   readonly network: SellerNetwork;
   readonly facilitatorUrl?: string;
   readonly serviceName?: string;
+  readonly discovery?: DiscoveryRail;
 }
 
 export interface RouteOptions {
@@ -34,6 +58,10 @@ export interface RouteOptions {
   readonly maxTimeoutSeconds?: number;
   /** Body returned to unpaid API callers next to the 402 (preview, docs pointer). */
   readonly preview?: unknown;
+  /** JSON Schema of the query this route takes, published to the discovery catalogue. */
+  readonly inputSchema?: Record<string, unknown>;
+  /** An example of what the route answers, published to the discovery catalogue. */
+  readonly outputExample?: unknown;
 }
 
 export interface Seller {
@@ -52,14 +80,49 @@ export function resolveNetwork(cfg: SellerConfig): { network: Network; facilitat
   return { network: CAIP2[cfg.network], facilitatorUrl: cfg.facilitatorUrl ?? FACILITATOR[cfg.network] };
 }
 
-export function buildRoutes(cfg: SellerConfig, network: Network, _pattern: string, price: string, opts: RouteOptions): RouteConfig {
+export const BASE_MAINNET: Network = "eip155:8453";
+
+export function buildRoutes(cfg: SellerConfig, network: Network, pattern: string, price: string, opts: RouteOptions): RouteConfig {
+  const timeout = opts.maxTimeoutSeconds ? { maxTimeoutSeconds: opts.maxTimeoutSeconds } : {};
+  const arc = { scheme: "exact", network, payTo: cfg.sellerAddress, price, ...timeout };
+  const rail = cfg.discovery;
+  const method = pattern.split(" ")[0] ?? "GET";
   return {
-    accepts: { scheme: "exact", network, payTo: cfg.sellerAddress, price, ...(opts.maxTimeoutSeconds ? { maxTimeoutSeconds: opts.maxTimeoutSeconds } : {}) },
+    accepts: rail ? [arc, { scheme: "exact", network: rail.network ?? BASE_MAINNET, payTo: rail.payTo, price, ...timeout }] : arc,
+    ...(rail
+      ? {
+          // What the catalogue shows about this route: how to call it and what comes back.
+          extensions: declareDiscoveryExtension({
+            ...(method === "GET" ? {} : { bodyType: "json" as const }),
+            ...(opts.inputSchema ? { inputSchema: opts.inputSchema } : {}),
+            ...(opts.outputExample !== undefined ? { output: { example: opts.outputExample } } : {}),
+          }),
+          ...(rail.tags ? { tags: [...rail.tags] } : {}),
+          ...(rail.iconUrl ? { iconUrl: rail.iconUrl } : {}),
+        }
+      : {}),
     ...(opts.description ? { description: opts.description } : {}),
     mimeType: opts.mimeType ?? "application/json",
     ...(cfg.serviceName ? { serviceName: cfg.serviceName } : {}),
     ...(opts.preview !== undefined ? { unpaidResponseBody: async () => ({ contentType: "application/json", body: opts.preview }) } : {}),
   };
+}
+
+/**
+ * The resource server: Circle's batching facilitator for Arc, and when a discovery rail is
+ * configured, the CDP facilitator for that network plus the extension that catalogues what it
+ * settles.
+ */
+export function buildServer(cfg: SellerConfig, network: Network, facilitatorUrl: string): x402ResourceServer {
+  // The SDK declares its own structural PaymentPayload/Requirements; identical at runtime, stricter under exactOptionalPropertyTypes.
+  const circle = new BatchFacilitatorClient({ url: facilitatorUrl }) as unknown as FacilitatorClient;
+  const rail = cfg.discovery;
+  if (!rail) return new x402ResourceServer(circle).register(network, new GatewayEvmScheme());
+  const cdp = new HTTPFacilitatorClient(createFacilitatorConfig(rail.cdpKeyId, rail.cdpKeySecret));
+  return new x402ResourceServer([circle, cdp])
+    .register(network, new GatewayEvmScheme())
+    .register(rail.network ?? BASE_MAINNET, new ExactEvmScheme())
+    .registerExtension(bazaarResourceServerExtension);
 }
 
 export function createSeller(cfg: SellerConfig): Seller {
@@ -77,12 +140,7 @@ export function createSeller(cfg: SellerConfig): Seller {
       return seller;
     },
     middleware() {
-      if (!mw) {
-        // The SDK declares its own structural PaymentPayload/Requirements; identical at runtime, stricter under exactOptionalPropertyTypes.
-        const facilitator = new BatchFacilitatorClient({ url: facilitatorUrl }) as unknown as FacilitatorClient;
-        const server = new x402ResourceServer(facilitator).register(network, new GatewayEvmScheme());
-        mw = paymentMiddleware(routes, server);
-      }
+      if (!mw) mw = paymentMiddleware(routes, buildServer(cfg, network, facilitatorUrl));
       return mw;
     },
   };
