@@ -60,17 +60,16 @@ interface Flow {
 const baseSenderOf = (f: Flow): string => (f.base > 0n ? f.a : f.b);
 const usdcSenderOf = (f: Flow): string => (f.usdc > 0n ? f.a : f.b);
 
-/** True when `sender` was handed almost everything it sent, by anyone other than its counterparty. */
-function forwarded(
+/** True when `receiver` passes almost all of what it got on to somebody else in the same transaction. */
+function passesOn(
   moves: ReadonlyArray<{ token: "base" | "usdc"; from: string; to: string; value: bigint }>,
-  token: "base" | "usdc",
-  sender: string,
+  receiver: string,
   peer: string,
-  sent: bigint,
+  received: bigint,
 ): boolean {
-  let received = 0n;
-  for (const m of moves) if (m.token === token && m.to === sender && m.from !== peer) received += m.value;
-  return received * 10n >= sent * 9n;
+  let onward = 0n;
+  for (const m of moves) if (m.token === "base" && m.from === receiver && m.to !== peer) onward += m.value;
+  return onward * 10n >= received * 9n;
 }
 
 /**
@@ -125,11 +124,11 @@ export function extractFxTrade(logs: readonly MinimalLog[], base: string, usdc: 
     const rate = (Number(usdcAmount) / Number(baseAmount)) * scale;
     if (!Number.isFinite(rate) || rate < rules.minPrice || rate > rules.maxPrice) continue;
     if (usdcAmount <= bestUsdc) continue; // when a transaction touches several pools, price the biggest leg
-    // A multi-hop route hands the same tokens along, and a hop of it looks exactly like a swap.
-    // The giveaway is that the sender was handed almost all of what it sent by someone else in the
-    // same transaction: a pool pays out of its own inventory, a hop only forwards.
-    if (forwarded(moves, "base", baseSenderOf(f), usdcSenderOf(f), baseAmount)) continue;
-    if (forwarded(moves, "usdc", usdcSenderOf(f), baseSenderOf(f), usdcAmount)) continue;
+    // A multi-hop route hands the same tokens along, and each hop looks exactly like a swap. The
+    // giveaway is that whoever took the base token passes it straight on to somebody else: a pool
+    // keeps what it is given, a hop only forwards it. When a trade goes through a router both legs
+    // are seen, this drops the router's leg, and the one against the pool is kept.
+    if (passesOn(moves, usdcSenderOf(f), baseSenderOf(f), baseAmount)) continue;
     // Who is the trader: the side that put the base token in is selling it, and the leg logged
     // first is the one paid in.
     const baseSender = baseSenderOf(f);
