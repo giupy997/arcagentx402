@@ -57,6 +57,22 @@ interface Flow {
   firstUsdcIndex: number;
 }
 
+const baseSenderOf = (f: Flow): string => (f.base > 0n ? f.a : f.b);
+const usdcSenderOf = (f: Flow): string => (f.usdc > 0n ? f.a : f.b);
+
+/** True when `sender` was handed almost everything it sent, by anyone other than its counterparty. */
+function forwarded(
+  moves: ReadonlyArray<{ token: "base" | "usdc"; from: string; to: string; value: bigint }>,
+  token: "base" | "usdc",
+  sender: string,
+  peer: string,
+  sent: bigint,
+): boolean {
+  let received = 0n;
+  for (const m of moves) if (m.token === token && m.to === sender && m.from !== peer) received += m.value;
+  return received * 10n >= sent * 9n;
+}
+
 /**
  * Returns the swap in this receipt's logs, or null when it is not a clean two-sided swap.
  *
@@ -67,7 +83,7 @@ interface Flow {
  */
 export function extractFxTrade(logs: readonly MinimalLog[], base: string, usdc: string, rules: PairRules): FxTrade | null {
   const flows = new Map<string, Flow>();
-  let baseMoved = 0n; // every base transfer in the transaction, to spot a token being routed on
+  const moves: Array<{ token: "base" | "usdc"; from: string; to: string; value: bigint }> = [];
   const baseAddr = base.toLowerCase();
   const usdcAddr = usdc.toLowerCase();
   logs.forEach((l, index) => {
@@ -83,8 +99,8 @@ export function extractFxTrade(logs: readonly MinimalLog[], base: string, usdc: 
     const signed = from === a ? value : -value;
     const key = `${a}:${b}`;
     const f = flows.get(key) ?? { a: a!, b: b!, base: 0n, usdc: 0n, firstBaseIndex: -1, firstUsdcIndex: -1 };
+    moves.push({ token: token === baseAddr ? "base" : "usdc", from, to, value });
     if (token === baseAddr) {
-      baseMoved += value;
       f.base += signed;
       if (f.firstBaseIndex < 0) f.firstBaseIndex = index;
     } else {
@@ -105,17 +121,19 @@ export function extractFxTrade(logs: readonly MinimalLog[], base: string, usdc: 
     const baseAmount = f.base < 0n ? -f.base : f.base;
     const usdcAmount = f.usdc < 0n ? -f.usdc : f.usdc;
     if (baseAmount < rules.minBaseUnits || usdcAmount < minUsdc) continue;
-    // A multi-hop route hands the same tokens on from address to address, and any single hop of it
-    // prices whatever that hop happened to carry, not the trade. One swap moves the base token
-    // once, twice with a transfer tax; more than that and this is a route, so it is skipped.
-    if (baseAmount * 2n < baseMoved) continue;
+
     const rate = (Number(usdcAmount) / Number(baseAmount)) * scale;
     if (!Number.isFinite(rate) || rate < rules.minPrice || rate > rules.maxPrice) continue;
-    if (usdcAmount <= bestUsdc) continue; // when a route touches several pools, price the biggest leg
+    if (usdcAmount <= bestUsdc) continue; // when a transaction touches several pools, price the biggest leg
+    // A multi-hop route hands the same tokens along, and a hop of it looks exactly like a swap.
+    // The giveaway is that the sender was handed almost all of what it sent by someone else in the
+    // same transaction: a pool pays out of its own inventory, a hop only forwards.
+    if (forwarded(moves, "base", baseSenderOf(f), usdcSenderOf(f), baseAmount)) continue;
+    if (forwarded(moves, "usdc", usdcSenderOf(f), baseSenderOf(f), usdcAmount)) continue;
     // Who is the trader: the side that put the base token in is selling it, and the leg logged
     // first is the one paid in.
-    const baseSender = f.base > 0n ? f.a : f.b;
-    const baseReceiver = f.base > 0n ? f.b : f.a;
+    const baseSender = baseSenderOf(f);
+    const baseReceiver = usdcSenderOf(f);
     const sell = f.firstBaseIndex < f.firstUsdcIndex;
     best = sell
       ? { direction: "sell", symbol: rules.symbol, trader: baseSender, venue: baseReceiver, baseAmount, usdcAmount, rate }

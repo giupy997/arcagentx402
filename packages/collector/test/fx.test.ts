@@ -94,10 +94,12 @@ describe("a token that taxes its transfers", () => {
     // USDC comes from somewhere else. The middle hop looked like a swap at four times the price.
     const hop = "0x6666666666666666666666666666666666666666";
     const sink = "0x7777777777777777777777777777777777777777";
+    const source = "0x8888888888888888888888888888888888888888";
     const logs = [
       transfer(CRA, TRADER, hop, cra(175_404)),
       transfer(CRA, hop, POOL, cra(175_404)),
       transfer(CRA, POOL, sink, cra(175_404)),
+      transfer(USDC, source, POOL, 159_200_000n),
       transfer(USDC, POOL, hop, 159_200_000n),
     ];
     expect(extractFxTrade(logs, CRA, USDC, CRA_RULES)).toBeNull();
