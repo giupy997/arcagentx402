@@ -18,7 +18,11 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
     .route("GET /v1/paid/fees/forecast", "$0.001", { description: "Base fee now and next block, 24h band, utilisation trend, cost per operation type", preview: { hint: "pay $0.001 USDC via x402 to get the forecast; free summary at /v1/fees" } })
     .route("GET /v1/paid/fees/estimate", "$0.0005", { description: "Cost in USDC of a transaction with the given gas at current and next base fee (?gas=21000)" })
     .route("GET /v1/paid/deploys/history", "$0.002", { description: "Recent contract deploys with labels and per-hour history (?limit=200)" })
-    .route("GET /v1/paid/rpc/health", "$0.0005", { description: "Per-provider RPC latency, head lag and error rates, last 15 minutes" });
+    .route("GET /v1/paid/rpc/health", "$0.0005", { description: "Per-provider RPC latency, head lag and error rates, last 15 minutes" })
+    .route("GET /v1/paid/selftest/fail", "$0.001", {
+      description: "Always fails on purpose. Proves the rule: the payment is only settled when the handler succeeds, so a broken endpoint costs the buyer nothing.",
+      preview: { hint: "this route always returns 500 after payment is verified; your payment is never settled" },
+    });
   app.use("/v1/paid/*", seller.middleware());
 
   app.get("/v1/paid/fees/forecast", async (c) => {
@@ -37,6 +41,8 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
     return c.json({ recent: await recentDeploys(db, limit, network), perHour: await deployStats(db) });
   });
   app.get("/v1/paid/rpc/health", async (c) => c.json(await rpcStatus(db)));
+  // Deliberately broken, and public: anyone can check that a failed handler is not charged.
+  app.get("/v1/paid/selftest/fail", (c) => c.json({ error: "this endpoint always fails on purpose", charged: false }, 500));
 
   app.get("/v1/paid", (c) => c.json({ seller: seller.sellerAddress, network: seller.network, facilitator: seller.facilitatorUrl, routes: Object.entries(seller.routes).map(([k, v]) => ({ route: k, price: String((Array.isArray(v.accepts) ? v.accepts[0] : v.accepts)?.price), description: v.description ?? null })) }));
   log.info({ seller: sellerAddress, network: seller.network, routes: Object.keys(seller.routes).length }, "paid endpoints mounted");

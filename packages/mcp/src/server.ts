@@ -85,6 +85,17 @@ async function main(): Promise<void> {
     return text({ agentId, spentLast24hUsdc: formatUsdc6(spent), payments: rows.map((r) => ({ ...r, amount: formatUsdc6(r.amount) })) });
   });
 
+  server.registerTool("arc_proof", {
+    title: "Find the on-chain transaction for past payments",
+    description: "Gateway settles in batches, so the transfer to the seller reaches the chain after the response. This matches settled payments in the ledger to the on-chain USDC transfer that carried them and stores the transaction hash.",
+    inputSchema: { limit: z.number().int().min(1).max(50).optional() },
+  }, async ({ limit }) => {
+    try {
+      const proofs = await rail.resolveSettlements({ limit: limit ?? 20 });
+      return text(proofs.length ? proofs : { matched: 0, note: "nothing new on chain yet" });
+    } catch (err) { return fail(`proof lookup failed: ${(err as Error).message}`); }
+  });
+
   server.registerTool("arc_policy", {
     title: "Spending policy in force",
     description: "The limits this rail enforces for the agent. Read-only: limits are set by the operator in the environment, not by the model.",

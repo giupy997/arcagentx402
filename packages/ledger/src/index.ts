@@ -28,11 +28,14 @@ export interface PaymentRecord {
   payer: string | null;
   settledAt: Date | null;
   meta: Record<string, unknown> | null;
+  /** The on-chain transaction that actually moved the money, once the batch settles. */
+  settlementTx: string | null;
+  settledOnchainAt: Date | null;
 }
 
-export type NewPayment = Omit<PaymentRecord, "id" | "at" | "reason" | "httpStatus" | "latencyMs" | "txHash" | "payer" | "settledAt" | "meta"> &
+export type NewPayment = Omit<PaymentRecord, "id" | "at" | "reason" | "httpStatus" | "latencyMs" | "txHash" | "payer" | "settledAt" | "meta" | "settlementTx" | "settledOnchainAt"> &
   Partial<Pick<PaymentRecord, "reason" | "httpStatus" | "latencyMs" | "txHash" | "payer" | "meta">>;
-export type PaymentPatch = Partial<Pick<PaymentRecord, "status" | "reason" | "httpStatus" | "latencyMs" | "txHash" | "payer" | "settledAt" | "meta">>;
+export type PaymentPatch = Partial<Pick<PaymentRecord, "status" | "reason" | "httpStatus" | "latencyMs" | "txHash" | "payer" | "settledAt" | "meta" | "settlementTx" | "settledOnchainAt">>;
 
 export interface Exposure {
   readonly payTo: string;
@@ -47,6 +50,8 @@ export interface Ledger {
   spentSince(agentId: string, since: Date, payTo?: string): Promise<Usdc6>;
   countSince(agentId: string, since: Date): Promise<number>;
   recent(agentId: string, limit: number): Promise<PaymentRecord[]>;
+  /** Settled payments whose on-chain settlement has not been matched yet. */
+  awaitingProof(agentId: string, limit: number): Promise<PaymentRecord[]>;
   /** Open exposure per counterparty: signed, not yet settled or failed. Phase 2 reads this in real time. */
   exposure(): Promise<Exposure[]>;
   close(): Promise<void>;
@@ -59,7 +64,7 @@ export class MemoryLedger implements Ledger {
   private nextId = 1;
   async record(p: NewPayment): Promise<PaymentRecord> {
     const rec: PaymentRecord = {
-      id: this.nextId++, at: new Date(), reason: null, httpStatus: null, latencyMs: null, txHash: null, payer: null, settledAt: null, meta: null, ...p,
+      id: this.nextId++, at: new Date(), reason: null, httpStatus: null, latencyMs: null, txHash: null, payer: null, settledAt: null, meta: null, settlementTx: null, settledOnchainAt: null, ...p,
       payTo: p.payTo.toLowerCase(),
     };
     this.rows.push(rec);
@@ -78,6 +83,9 @@ export class MemoryLedger implements Ledger {
   }
   async recent(agentId: string, limit: number): Promise<PaymentRecord[]> {
     return this.rows.filter((r) => r.agentId === agentId).slice(-limit).reverse();
+  }
+  async awaitingProof(agentId: string, limit: number): Promise<PaymentRecord[]> {
+    return this.rows.filter((r) => r.agentId === agentId && r.status === "settled" && r.settlementTx === null).slice(-limit).reverse();
   }
   async exposure(): Promise<Exposure[]> {
     const m = new Map<string, { open: bigint; count: number }>();
@@ -100,10 +108,12 @@ types.setTypeParser(1700, (v) => v);
 interface Row {
   id: string; at: Date; agent_id: string; rail: RailKind; url: string; host: string; method: string; network: string; scheme: string; asset: string; pay_to: string;
   amount_usdc6: string; status: PaymentStatus; reason: string | null; http_status: number | null; latency_ms: number | null; tx_hash: string | null; payer: string | null; settled_at: Date | null; meta: Record<string, unknown> | null;
+  settlement_tx: string | null; settled_onchain_at: Date | null;
 }
 const fromRow = (r: Row): PaymentRecord => ({
   id: Number(r.id), at: r.at, agentId: r.agent_id, rail: r.rail, url: r.url, host: r.host, method: r.method, network: r.network, scheme: r.scheme, asset: r.asset, payTo: r.pay_to,
   amount: usdc6(BigInt(r.amount_usdc6)), status: r.status, reason: r.reason, httpStatus: r.http_status, latencyMs: r.latency_ms, txHash: r.tx_hash, payer: r.payer, settledAt: r.settled_at, meta: r.meta,
+  settlementTx: r.settlement_tx ?? null, settledOnchainAt: r.settled_onchain_at ?? null,
 });
 
 export class PgLedger implements Ledger {
@@ -113,8 +123,8 @@ export class PgLedger implements Ledger {
   }
   /** Idempotent. */
   async migrate(): Promise<void> {
-    const sql = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "sql", "001_ledger.sql"), "utf8");
-    await this.pool.query(sql);
+    const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "sql");
+    for (const f of ["001_ledger.sql", "002_settlement.sql"]) await this.pool.query(readFileSync(join(dir, f), "utf8"));
   }
   async record(p: NewPayment): Promise<PaymentRecord> {
     const r = await this.pool.query<Row>(
@@ -136,6 +146,8 @@ export class PgLedger implements Ledger {
     if (patch.payer !== undefined) add("payer", patch.payer);
     if (patch.settledAt !== undefined) add("settled_at", patch.settledAt);
     if (patch.meta !== undefined) add("meta", patch.meta ? JSON.stringify(patch.meta) : null);
+    if (patch.settlementTx !== undefined) add("settlement_tx", patch.settlementTx);
+    if (patch.settledOnchainAt !== undefined) add("settled_onchain_at", patch.settledOnchainAt);
     if (sets.length === 0) return;
     vals.push(id);
     await this.pool.query(`UPDATE rail_payments SET ${sets.join(", ")} WHERE id = $${vals.length}`, vals);
@@ -153,6 +165,13 @@ export class PgLedger implements Ledger {
   }
   async recent(agentId: string, limit: number): Promise<PaymentRecord[]> {
     const r = await this.pool.query<Row>("SELECT * FROM rail_payments WHERE agent_id = $1 ORDER BY id DESC LIMIT $2", [agentId, limit]);
+    return r.rows.map(fromRow);
+  }
+  async awaitingProof(agentId: string, limit: number): Promise<PaymentRecord[]> {
+    const r = await this.pool.query<Row>(
+      "SELECT * FROM rail_payments WHERE agent_id = $1 AND status = 'settled' AND settlement_tx IS NULL ORDER BY id DESC LIMIT $2",
+      [agentId, limit],
+    );
     return r.rows.map(fromRow);
   }
   async exposure(): Promise<Exposure[]> {

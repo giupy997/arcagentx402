@@ -1,6 +1,9 @@
 /**
  * @cra-agent/seller — put a USDC price on a Hono route.
  *
+ * Settlement happens AFTER the handler: x402's default flow verifies the payment first, runs the
+ * handler, and only then settles. A handler that throws or answers 5xx leaves the buyer uncharged.
+ *
  *   const seller = createSeller({ sellerAddress, network: "arcTestnet" });
  *   seller.route("GET /v1/paid/forecast", "$0.001", { description: "..." });
  *   app.use(seller.middleware());

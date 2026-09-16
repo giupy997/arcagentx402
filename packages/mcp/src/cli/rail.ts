@@ -46,6 +46,11 @@ async function main(): Promise<void> {
       break;
     }
     case "policy": out({ agentId, network, address: rail.address, policy: describePolicy(policy) }); break;
+    case "proof": {
+      const proofs = await rail.resolveSettlements({ limit: Number(arg ?? 20) });
+      out(proofs.length ? proofs : { message: "no new on-chain settlement matched yet; batched settlement can take a while" });
+      break;
+    }
     case "identity-register": {
       if (!arg) throw new Error("usage: identity-register <agentURI>");
       const r = await registerIdentity({ network, signer, agentURI: arg, ...(process.env.CRA_RPC_URL ? { rpcUrl: process.env.CRA_RPC_URL } : {}) });

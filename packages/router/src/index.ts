@@ -18,7 +18,8 @@ import { x402Client, x402HTTPClient } from "@x402/core/client";
 import type { PaymentPayload, PaymentRequired, PaymentRequirements } from "@x402/core/types";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { wrapFetchWithPayment } from "@x402/fetch";
-import type { Address, Hex } from "viem";
+import { createPublicClient, http, parseAbiItem, type Address, type Hex } from "viem";
+import { CHAINS } from "@cra-agent/identity";
 import { chooseRail, DEFAULT_THRESHOLDS, type RouteDecision, type RouteThresholds } from "./decide.js";
 
 export { chooseRail, DEFAULT_THRESHOLDS, type RailChoice, type RouteDecision, type RouteInput, type RouteThresholds } from "./decide.js";
@@ -91,10 +92,25 @@ export const ARC_USDC = "0x3600000000000000000000000000000000000000";
 const DAY_MS = 24 * 3600 * 1000;
 const hostOf = (url: string): string => { try { return new URL(url).host.toLowerCase(); } catch { return url; } };
 
+export interface SettlementProof {
+  readonly ledgerId: number;
+  readonly amountUsdc: string;
+  readonly payTo: string;
+  readonly txHash: Hex;
+  readonly blockNumber: number;
+  readonly at: Date;
+}
+
 export interface Rail {
   quote(url: string, init?: RequestInit): Promise<Quote | null>;
   fetch(url: string, init?: RequestInit): Promise<RailResponse>;
   balances(): Promise<{ address: Address; wallet: string; gatewayAvailable: string; gatewayTotal: string }>;
+  /**
+   * Batched settlement means the money reaches the seller on chain later than the response.
+   * This matches those on-chain transfers back to ledger rows, so every receipt ends up with a
+   * transaction hash anyone can check. Returns the proofs found in this pass.
+   */
+  resolveSettlements(opts?: { limit?: number; lookbackBlocks?: number }): Promise<SettlementProof[]>;
   deposit(amountUsdc: string): Promise<{ txHash: Hex; amount: string }>;
   readonly address: Address;
   readonly network: string;
@@ -237,6 +253,41 @@ export function createRail(cfg: RailConfig): Rail {
       } finally {
         if (current === mine) current = null;
       }
+    },
+
+    async resolveSettlements(opts = {}) {
+      const pending = await cfg.ledger.awaitingProof(cfg.agentId, opts.limit ?? 20);
+      if (pending.length === 0) return [];
+      const pub = createPublicClient({ chain: CHAINS[cfg.network], transport: http(cfg.rpcUrl) });
+      const transferEvent = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
+      const head = await pub.getBlockNumber();
+      const lookback = BigInt(opts.lookbackBlocks ?? 200_000); // ~28 h at 0.5 s blocks
+      const proofs: SettlementProof[] = [];
+      const seen = new Set<string>();
+      for (const payTo of new Set(pending.map((p) => p.payTo))) {
+        const rows = pending.filter((p) => p.payTo === payTo);
+        const logs: { txHash: Hex; blockNumber: bigint; value: bigint }[] = [];
+        for (let to = head; to > head - lookback; to -= 9_000n) {
+          const from = to - 8_999n > 0n ? to - 8_999n : 0n;
+          const found = await pub
+            .getLogs({ address: ARC_USDC as Address, event: transferEvent, args: { to: payTo as Address }, fromBlock: from, toBlock: to })
+            .catch(() => []);
+          for (const l of found) logs.push({ txHash: l.transactionHash, blockNumber: l.blockNumber, value: l.args.value ?? 0n });
+          if (logs.length >= rows.length * 4) break;
+        }
+        for (const row of rows) {
+          // A batch can carry several payments: match on the exact amount, oldest unmatched first.
+          const hit = logs.find((l) => l.value === row.amount && !seen.has(l.txHash + l.value.toString()));
+          if (!hit) continue;
+          seen.add(hit.txHash + hit.value.toString());
+          const block = await pub.getBlock({ blockNumber: hit.blockNumber });
+          const at = new Date(Number(block.timestamp) * 1000);
+          await cfg.ledger.update(row.id, { settlementTx: hit.txHash, settledOnchainAt: at });
+          proofs.push({ ledgerId: row.id, amountUsdc: formatUsdc6(row.amount), payTo: row.payTo, txHash: hit.txHash, blockNumber: Number(hit.blockNumber), at });
+          log("settlement.proved", { ledgerId: row.id, txHash: hit.txHash });
+        }
+      }
+      return proofs;
     },
 
     async balances() {
