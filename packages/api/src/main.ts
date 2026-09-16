@@ -105,4 +105,15 @@ if (existsSync(WEB_DIR)) {
   log.warn({ webDir: WEB_DIR }, "web dist not found: API only");
 }
 
-serve({ fetch: app.fetch, port: PORT }, (info) => log.info({ port: info.port, network: NETWORK }, "cra-agent api listening"));
+/**
+ * Behind Caddy the process is reached over plain HTTP, so every URL the app derives from the
+ * request says http://, including the resource URL x402 advertises in its 402 challenge. Buyers
+ * and directories read that URL, so the scheme the client actually used is put back here.
+ */
+const fetchWithRealScheme: typeof app.fetch = (request, ...rest) => {
+  const proto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  if (proto !== "https" || !request.url.startsWith("http://")) return app.fetch(request, ...rest);
+  return app.fetch(new Request(`https://${request.url.slice("http://".length)}`, request), ...rest);
+};
+
+serve({ fetch: fetchWithRealScheme, port: PORT }, (info) => log.info({ port: info.port, network: NETWORK }, "cra-agent api listening"));
