@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pino from "pino";
 import { createPool } from "./db.js";
+import { buildOpenApi } from "./openapi.js";
 import { activity, deployStats, feeEstimate, feeSummary, fxSummary, networkSummary, recentDeploys, rpcStatus, tokenSummary } from "./queries.js";
 import { mountPaidRoutes } from "./paid.js";
 
@@ -21,6 +22,8 @@ const WEB_DIR = process.env.WEB_DIR ?? join(here, "..", "..", "web", "dist");
 
 const db = createPool(DATABASE_URL);
 const app = new Hono();
+/** Published in the OpenAPI document; kept in step with the package version. */
+const API_VERSION = "0.1.0";
 app.use("*", cors({ origin: "*", allowMethods: ["GET"] }));
 
 /** Tiny TTL cache: the dashboard polls every few seconds; the DB should not feel it. */
@@ -78,6 +81,17 @@ app.get("/v1/token", async (c) =>
       const fx = await fxSummary(db, 1440, symbol, summary.token?.decimals ?? 18);
       // The size curve and venue breakdown stay in the paid route; the page shows price, window and shape.
       return { ...summary, price: { pair: fx.pair, last: fx.last, window: fx.window, series: fx.series } };
+    }),
+  ),
+);
+app.get("/openapi.json", (c) =>
+  c.json(
+    buildOpenApi({
+      origin: new URL(c.req.url).origin,
+      network: NETWORK === "mainnet" ? "eip155:5042" : "eip155:5042002",
+      sellerAddress: process.env.SELLER_ADDRESS ?? null,
+      usdcAddress: "0x3600000000000000000000000000000000000000",
+      version: API_VERSION,
     }),
   ),
 );

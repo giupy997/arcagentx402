@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import { createSeller } from "@cra-agent/seller";
 import type { Db } from "./db.js";
 import { deployStats, feeEstimate, feeSummary, fxSummary, recentDeploys, rpcStatus } from "./queries.js";
+import { PAID_ROUTES } from "./routes.js";
 
 /**
  * The first paid endpoints on the rail: our own Arc data, priced per call, paid via x402 + Circle Gateway.
@@ -14,19 +15,11 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
     log.warn("SELLER_ADDRESS not set: paid endpoints disabled");
     return;
   }
-  const seller = createSeller({ sellerAddress, network: network === "mainnet" ? "arc" : "arcTestnet", serviceName: "CRA AGENT data" })
-    .route("GET /v1/paid/fees/forecast", "$0.001", { description: "Base fee now and next block, 24h band, utilisation trend, cost per operation type", preview: { hint: "pay $0.001 USDC via x402 to get the forecast; free summary at /v1/fees" } })
-    .route("GET /v1/paid/fees/estimate", "$0.0005", { description: "Cost in USDC of a transaction with the given gas at current and next base fee (?gas=21000)" })
-    .route("GET /v1/paid/deploys/history", "$0.002", { description: "Recent contract deploys with labels and per-hour history (?limit=200)" })
-    .route("GET /v1/paid/rpc/health", "$0.0005", { description: "Per-provider RPC latency, head lag and error rates, last 15 minutes" })
-    .route("GET /v1/paid/fx/execution", "$0.001", {
-      description: "EURC/USDC on Arc as executed: volume-weighted rate, range, the rate by trade size, and where the volume traded (?window=60)",
-      preview: { hint: "pay $0.001 USDC via x402 for the size curve and venue breakdown; the headline rate is free at /v1/fx" },
-    })
-    .route("GET /v1/paid/selftest/fail", "$0.001", {
-      description: "Always fails on purpose. Proves the rule: the payment is only settled when the handler succeeds, so a broken endpoint costs the buyer nothing.",
-      preview: { hint: "this route always returns 500 after payment is verified; your payment is never settled" },
-    });
+  // Priced from the shared catalogue, so the OpenAPI document and the 402 always agree.
+  const seller = createSeller({ sellerAddress, network: network === "mainnet" ? "arc" : "arcTestnet", serviceName: "CRA AGENT data" });
+  for (const r of PAID_ROUTES) {
+    seller.route(`GET ${r.path}`, r.price, { description: r.description, ...(r.preview === undefined ? {} : { preview: r.preview }) });
+  }
   app.use("/v1/paid/*", seller.middleware());
 
   app.get("/v1/paid/fees/forecast", async (c) => {
