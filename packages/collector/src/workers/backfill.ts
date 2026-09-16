@@ -29,7 +29,10 @@ export class BackfillWorker {
   async init(): Promise<void> {
     const saved = await getState<{ cursor: number; target: number }>(this.db, "backfill");
     if (saved) {
-      this.state.backfill = { ...saved, active: saved.cursor <= saved.target };
+      // The flag gates a resumed backfill too: turning it off must stop an already-scheduled history run.
+      const active = this.cfg.backfillHistory && saved.cursor <= saved.target;
+      if (!active && saved.cursor <= saved.target) this.log.warn({ cursor: saved.cursor, target: saved.target }, "COLLECTOR_BACKFILL_HISTORY=0: paused the history backfill (state kept, set it back to 1 to resume)");
+      this.state.backfill = { ...saved, active };
       return;
     }
     const start = this.state.headStart ?? this.cfg.startBlock;

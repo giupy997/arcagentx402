@@ -34,3 +34,10 @@ describe("redactUrl", () => {
     expect(redactUrl("https://rpc.testnet.arc.io")).toBe("https://rpc.testnet.arc.io/");
   });
 });
+
+describe("backfill flag", () => {
+  it("is off only when explicitly disabled", () => {
+    expect(loadConfig({ DATABASE_URL: "postgres://x" }).backfillHistory).toBe(true);
+    expect(loadConfig({ DATABASE_URL: "postgres://x", COLLECTOR_BACKFILL_HISTORY: "0" }).backfillHistory).toBe(false);
+  });
+});
