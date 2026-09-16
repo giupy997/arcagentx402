@@ -13,6 +13,8 @@ export interface KnownContract {
 
 const DOCS = "docs.arc.io/arc/references/contract-addresses (2026-09-14)";
 const T = (address: string, label: string, protocol: string, source = DOCS): KnownContract => ({ network: "testnet", address, label, protocol, source });
+const MAINNET_DOCS = "docs.arc.io/arc/references/contract-addresses, mainnet tab (2026-09-16)";
+const M = (address: string, label: string, protocol: string, source = MAINNET_DOCS): KnownContract => ({ network: "mainnet", address, label, protocol, source });
 
 export const KNOWN_CONTRACTS: readonly KnownContract[] = [
   T("0x3600000000000000000000000000000000000000", "USDC", "circle"),
@@ -37,6 +39,23 @@ export const KNOWN_CONTRACTS: readonly KnownContract[] = [
   T("0x8004Cb1BF31DAf7788923b405b754f57acEB4272", "ERC-8004 ValidationRegistry", "erc8004", "docs.arc.io/arc/tutorials/register-your-first-ai-agent (2026-09-14)"),
   T("0x0747EEf0706327138c69792bF28Cd525089e4583", "ERC-8183 AgenticCommerce (reference)", "erc8183", "docs.arc.io/arc/tutorials/create-your-first-erc-8183-job (2026-09-14)"),
   T("0xfffffffffffffffffffffffffffffffffffffffe", "System address (EIP-7708 native Transfer logs)", "arc-system", "observed in testnet receipts (2026-09-14)"),
-  { network: "mainnet", address: "0x3600000000000000000000000000000000000000", label: "USDC (UNVERIFIED: assumed same predeploy as testnet)", protocol: "circle", source: "assumption; verify on docs.arc.io at launch" },
-  { network: "mainnet", address: "0xfffffffffffffffffffffffffffffffffffffffe", label: "System address (EIP-7708 native Transfer logs)", protocol: "arc-system", source: "observed on testnet; verify on mainnet" },
+  // Mainnet, from docs.arc.io/arc/references/contract-addresses read 2026-09-16 (launch day).
+  M("0x3600000000000000000000000000000000000000", "USDC", "circle"),
+  M("0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1", "EURC", "circle"),
+  M("0x8a5D989Bbb96929F689B0200f435f53dA42bF490", "USYC", "circle"),
+  M("0xb69ecb156Dc0028198028c501340d5367845ca72", "USYC Entitlements", "circle"),
+  M("0x51A8CE47dC08ba5CD19c7aa84EA6fD6664f60f9b", "USYC Teller", "circle"),
+  M("0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d", "TokenMessengerV2", "cctp"),
+  M("0x81D40F21F12A8F0E3252Bccb954D722d4c464B64", "MessageTransmitterV2", "cctp"),
+  M("0xfd78EE919681417d192449715b2594ab58f5D002", "TokenMinterV2", "cctp"),
+  M("0xec546b6B005471ECf012e5aF77FBeC07e0FD8f78", "MessageV2", "cctp"),
+  M("0x77777777Dcc4d5A8B6E418Fd04D8997ef11000eE", "GatewayWallet", "gateway"),
+  M("0x2222222d7164433c4C09B0b0D809a9b52C04C205", "GatewayMinter", "gateway"),
+  M("0xe2E5F173576B513d994073CCbDaCBE027d43DFe6", "FxEscrow", "stablefx"),
+  M("0x5294E9927c3306DcBaDb03fe70b92e01cCede505", "Memo", "arc-extensions"),
+  M("0x522fAf9A91c41c443c66765030741e4AaCe147D0", "Multicall3From", "arc-extensions"),
+  M("0x4e59b44847b379578588920cA78FbF26c0B4956C", "CREATE2 Factory (Arachnid)", "common"),
+  M("0xcA11bde05977b3631167028862bE2a173976CA11", "Multicall3", "common"),
+  M("0x000000000022D473030F116dDEE9F6B43aC78BA3", "Permit2", "common"),
+  M("0xfffffffffffffffffffffffffffffffffffffffe", "System address (EIP-7708 native Transfer logs)", "arc-system", "observed on testnet; same predeploy expected on mainnet"),
 ];

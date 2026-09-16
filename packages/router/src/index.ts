@@ -86,7 +86,7 @@ export class EscrowNotImplemented extends Error {
   }
 }
 
-/** USDC predeploy on Arc (docs.arc.io contract addresses, testnet; same address assumed on mainnet, verified at startup by the collector). */
+/** USDC predeploy on Arc: same address on testnet and mainnet (docs.arc.io contract addresses, both tabs, 2026-09-16). */
 export const ARC_USDC = "0x3600000000000000000000000000000000000000";
 const DAY_MS = 24 * 3600 * 1000;
 const hostOf = (url: string): string => { try { return new URL(url).host.toLowerCase(); } catch { return url; } };

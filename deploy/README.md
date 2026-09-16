@@ -1,43 +1,56 @@
-# Deploy del collettore
+# Deploying the collector and the API
 
-Requisiti server: 4 vCPU, 8 GB RAM, **disco: misurato su testnet ~95 KB/blocco con ~18 tx/blocco
-(raw JSON di tx e receipt inclusi) → ~16 GB/giorno a 0.5 s/blocco.** Mainnet al lancio potrebbe
-essere più o meno denso: partire con **1 TB NVMe**, monitorare `pg_database_size` dal giorno 1.
-Se serve tagliare: il raw dei receipt duplica i log (tabella `logs`); è la prima cosa da comprimere,
-ma NON prima di aver visto i dati reali.
+Server requirements: 4 vCPU, 8 GB RAM. Disk depends on the collector mode, measured on Arc testnet at
+roughly 17 transactions per block:
 
-## VPS con Caddy già presente (bare metal, consigliato se il server ospita altro)
+| Mode | Per block | Per day |
+|---|---|---|
+| `light` (default) | ~2 KB | ~0.5 GB |
+| `full` (raw transactions, receipts, logs) | ~75 KB | 12-16 GB |
+
+Start with `light`. `full` is worth it only when you need transaction-level data, and then plan the disk
+accordingly.
+
+## On a VPS that already runs Caddy (recommended)
 
 ```bash
 ssh root@<vps>
-curl -fsSL https://raw.githubusercontent.com/giupy997/arcagentx402/main/deploy/setup.sh | DOMAIN=arc.tuodominio.com bash
-# senza DOMAIN: sito su http://<ip>:8081
+curl -fsSL https://raw.githubusercontent.com/giupy997/arcagentx402/main/deploy/setup.sh | DOMAIN=api.example.com bash
+# without DOMAIN the site is served on http://<ip>:8081
 nano /opt/cra-agent/.env && systemctl restart cra-agent-collector cra-agent-api
 journalctl -u cra-agent-collector -f
 ```
 
+The script is idempotent: it installs Node 22, Postgres 17, a system user, the repository in
+`/opt/cra-agent`, systemd units for the collector and the API, and a Caddy site. It keeps an existing
+`.env` and database.
+
+## Launch checklist
+
+1. Read <https://docs.arc.io/arc/references/connect-to-arc> and
+   <https://docs.arc.io/arc/references/contract-addresses>.
+2. Put the chain id and the RPC URLs in `.env`. Use at least two providers besides the public endpoint,
+   with the API keys ready in advance.
+3. Set `COLLECTOR_START_BLOCK=0` and `COLLECTOR_BACKFILL_HISTORY=1`.
+4. Start, then check the log for `endpoint verified` on every URL and for `database bound to chain`.
+5. Watch `/health`: `head.lag` should fall to zero and `gapsOpen` should stay at zero.
+
 ## Docker
 
+An alternative to the bare-metal script, for a server that has nothing else on it:
+
 ```bash
-git clone <repo> /opt/cra-agent && cd /opt/cra-agent/deploy
-cp ../.env.example .env
-# nel .env: ARC_NETWORK=mainnet, ARC_RPC_URLS=<endpoint mainnet verificati>, ARC_CHAIN_ID=<da docs.arc.io>,
-# DATABASE_URL=postgres://arc:<pw>@db:5432/arc_rail, POSTGRES_PASSWORD=<pw>, TELEGRAM_*
+cd deploy
+cp ../.env.example .env   # set POSTGRES_PASSWORD and DATABASE_URL=postgres://arc:<pw>@db:5432/arc_rail
 docker compose up -d --build
 curl -s localhost:8790/health
-docker compose logs -f collector
 ```
 
-## Checklist lancio (16/09)
+## Backups
 
-1. Leggere https://docs.arc.io/arc/references/connect-to-arc e https://docs.arc.io/arc/references/contract-addresses.
-2. Mettere chain id + URL RPC nel `.env`. Almeno 2 provider oltre al pubblico (chiavi API pronte prima).
-3. `COLLECTOR_START_BLOCK=0`, `COLLECTOR_BACKFILL_HISTORY=1`.
-4. Avviare; verificare nel log `endpoint verified` per ogni URL e `database bound to chain`.
-5. Guardare `/health`: `head.lag` deve scendere a ~0; `gapsOpen` deve restare 0.
-6. Se la chain era già viva prima del lancio pubblico, il backfill da 0 parte da solo: `backfill.cursor` cresce.
+```bash
+pg_dump -Fc arc_rail > arc_rail_$(date +%F).dump
+```
 
-## Backup
-
-`pg_dump -Fc arc_rail > arc_rail_$(date +%F).dump` giornaliero, copiato fuori dal server. Il dato dei
-primi blocchi non si ricompra.
+Daily, copied off the server. Live observations (finality latency, per-provider RPC behaviour) cannot be
+re-fetched from the chain.

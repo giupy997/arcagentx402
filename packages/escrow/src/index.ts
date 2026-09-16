@@ -12,7 +12,8 @@ import { AGENTIC_COMMERCE_ABI, ERC20_ABI } from "./abi.js";
 
 export { AGENTIC_COMMERCE_ABI, ERC20_ABI } from "./abi.js";
 
-/** From docs.arc.io/arc/tutorials/create-your-first-erc-8183-job (2026-09-14). Mainnet: not published. */
+/** From docs.arc.io/arc/tutorials/create-your-first-erc-8183-job (2026-09-14). Mainnet: no bytecode at this address
+ * on chain 5042 (checked 2026-09-16), so the escrow rail is testnet-only until Circle deploys it. */
 export const AGENTIC_COMMERCE: Record<ArcNetwork, Address | null> = {
   arcTestnet: "0x0747EEf0706327138c69792bF28Cd525089e4583",
   arc: null,

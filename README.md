@@ -2,99 +2,143 @@
 
 [![ci](https://github.com/giupy997/arcagentx402/actions/workflows/ci.yml/badge.svg)](https://github.com/giupy997/arcagentx402/actions/workflows/ci.yml)
 
-Rail di pagamento agentico su Arc (L1 di Circle, gas in USDC). Monorepo TypeScript, npm workspaces, Node 22.
+Payments for AI agents on [Arc](https://arc.io), Circle's USDC-native L1. One tool call and an agent can
+buy an API call for a fraction of a cent: the rail reads the [x402](https://x402.org) price, applies a
+spending policy the model cannot change, verifies the seller, pays gas-free through Circle Gateway, and
+writes the receipt to a ledger.
 
-Stato: fase 0 (collettore) fatta; **fase 1 (agente x402) in corso**: quote → policy → identità →
-nanopagamento via Circle Gateway → ledger, esposto come server MCP. Vedi `docs/arc-verification.md`
-per cosa è verificato contro docs.arc.io e cosa resta da confermare al lancio mainnet (16/09/2026).
+TypeScript monorepo, npm workspaces, Node 22. Site: [cra-agent.tech](https://cra-agent.tech).
 
-## Package
+Status: the buyer agent, the seller middleware and the MCP server are built and exercised end to end on
+Arc testnet. See `docs/arc-verification.md` for every value verified against docs.arc.io.
 
-| Package | Cosa |
+## Packages
+
+| Package | What it does |
 |---|---|
-| `packages/accounting` | Unico modulo che fa aritmetica su USDC. Tipi branded `Usdc6` (ERC-20) / `Usdc18` (gas). Test di proprietà |
-| `packages/collector` | Collettore: blocchi, tx, receipt, log, deploy, revert, base fee, osservazioni di testa per RPC. Postgres append-only con raw JSON |
-| `packages/api` | API di lettura sul DB del collettore (Hono). `/v1/network`, `/v1/fees`, `/v1/fees/estimate`, `/v1/activity`, `/v1/deploys`, `/v1/rpc`, `/v1/health`. Serve anche il sito. In fase 1 diventa il lato venditore (stesse rotte, a pagamento via x402) |
-| `packages/web` | Sito: landing sul prodotto (`/`) e pagina rete live (`/network`). HTML/CSS/TS senza framework, grafici SVG |
-| `packages/policy` | Controllo spesa, puro: cap per pagamento / giorno / controparte, rate limit, allow/deny, identità richiesta, gancio bond (fase 2). Sintassi `daily=5,per_seller=0.5,...` |
-| `packages/ledger` | Ogni tentativo di pagamento (quoted/rejected/signed/settled/failed) con importo, controparte, latenza, tx. `MemoryLedger` e `PgLedger`; `exposure()` per controparte |
-| `packages/identity` | Firma con schema esplicito (`secp256k1` oggi, PQ riservato) e risoluzione ERC-8004 (fail closed) |
-| `packages/router` | Il binario compratore: `rail.quote(url)`, `rail.fetch(url)` con x402 + Circle Gateway (batched, gas-free) o `exact` on-chain; `chooseRail()` pura (nanopagamento vs escrow) |
-| `packages/escrow` | Binario ERC-8183 (job con escrow): createJob, setBudget, fund (con approve USDC), submit, complete/reject, claimRefund. ABI dall'implementazione verificata su testnet; evaluator iniettato |
-| `packages/seller` | `createSeller().route("GET /x", "$0.001")` su Hono e `createExpressSeller()` su Express (`@cra-agent/seller/express`): 402 x402 verificato e regolato da Circle Gateway |
-| `packages/mcp` | Server MCP (stdio): `arc_quote`, `arc_pay`, `arc_balance`, `arc_deposit`, `arc_ledger`, `arc_policy`, più i job escrow `arc_job_create/fund/status/decide/submit`. CLI `npm run rail -- <quote|pay|balance|deposit|ledger|policy|identity-register|job>` |
+| `packages/accounting` | The only module allowed to do arithmetic on USDC amounts. Branded types `Usdc6` (ERC-20 interface) and `Usdc18` (native/gas interface), dust-preserving conversions, property tests |
+| `packages/policy` | Pure spend control: caps per payment, per day and per counterparty, rate limit, allow/deny lists, required identity, seller-bond hook. Compact syntax `daily=5,per_seller=0.5,…` |
+| `packages/ledger` | Every payment attempt (quoted / rejected / signed / settled / failed) with amount, counterparty, latency and transaction. `MemoryLedger` and `PgLedger`; `exposure()` per counterparty |
+| `packages/identity` | Signing with an explicit scheme parameter (`secp256k1` today, post-quantum reserved) and ERC-8004 resolution, fail closed. `registerIdentity()` mints the agent identity |
+| `packages/router` | The buyer rail: `rail.quote(url)` and `rail.fetch(url)` over x402 with Circle Gateway batched settlement (gas-free) or the standard on-chain `exact` scheme. `chooseRail()` is pure: nanopayment vs escrow |
+| `packages/escrow` | The ERC-8183 rail for jobs: createJob, setBudget, fund (with USDC approval), submit, complete/reject, claimRefund. ABI taken from the verified implementation on chain; the evaluator is injected |
+| `packages/seller` | `createSeller().route("GET /x", "$0.001")` for Hono, `createExpressSeller()` for Express. Payments verified and settled by Circle Gateway; any x402 buyer can pay |
+| `packages/collector` | Block-zero collector: blocks, per-block stats by operation, contract deploys, base fee inputs, per-provider RPC observations. Optionally transactions, receipts, logs and revert reasons. Append-only Postgres with the raw JSON-RPC preserved |
+| `packages/api` | Read API over the collector database (Hono): `/v1/network`, `/v1/fees`, `/v1/fees/estimate`, `/v1/activity`, `/v1/deploys`, `/v1/rpc`, `/v1/health`, plus the paid `/v1/paid/*` routes. Also serves the website |
+| `packages/web` | The site: product landing (`/`) and live network page (`/network`). Plain HTML, CSS and TypeScript, hand-drawn SVG charts |
+| `packages/mcp` | MCP server over stdio: `arc_quote`, `arc_pay`, `arc_balance`, `arc_deposit`, `arc_ledger`, `arc_policy`, plus the escrow tools `arc_job_create`, `arc_job_fund`, `arc_job_status`, `arc_job_decide`, `arc_job_submit`. Also a CLI |
 
 ## Setup
 
 ```bash
 nvm use            # Node 22
 npm install
-cp .env.example .env   # poi modifica DATABASE_URL / ARC_RPC_URLS
+cp .env.example .env   # then set DATABASE_URL and ARC_RPC_URLS
 npm test
 npm run db:migrate
 npm run collector
 npm run web:build && npm run api   # http://localhost:8791
 ```
 
-Postgres locale (Homebrew, keg-only):
+Local Postgres (Homebrew, keg-only):
 
 ```bash
 LC_ALL=en_US.UTF-8 /opt/homebrew/opt/postgresql@17/bin/pg_ctl -D /opt/homebrew/var/postgresql@17 -l /opt/homebrew/var/postgresql@17/server.log start
 ```
 
-## Collettore
-
-- **Head worker**: segue la testa (poll ogni 250ms), ingest in batch (2 chiamate JSON-RPC per blocco:
-  blocco completo + tutti i receipt), cursore contiguo salvato in `collector_state`.
-- **Backfill worker**: se il DB non parte da 0, backfilla da 0 in parallelo a bassa priorità; riempie
-  i buchi lasciati dalla testa (`block_gaps`). Si ferma da solo quando la testa è in ritardo.
-- **Scanner**: ogni 10 min cerca buchi numerici e rotture di continuità `parent_hash` (mai auto-fix).
-- **Probe**: ogni 5s chiede `latest/finalized/safe` a ogni endpoint → `head_observations`
-  (dataset lag/latenza per provider) e valuta gli alert.
-- **Enrich**: motivo dei revert via `eth_call` al blocco padre; hash/size del bytecode dei deploy.
-- **Startup guard**: ogni endpoint deve rispondere il chain id atteso e lo stesso hash di genesi; il DB
-  si lega alla genesi e rifiuta chain diverse.
-- **Modalità**: `COLLECTOR_MODE=light` (default consigliato: blocchi, statistiche per blocco per tipo di operazione,
-  deploy, osservazioni RPC; ~0,4 GB/giorno) o `full` (anche tx, receipt, log e revert; 12-16 GB/giorno).
-- **Health**: `GET :8790/health` (JSON, 503 se in ritardo/stallo), `GET :8790/metrics` (Prometheus).
-- **Alert**: log + Telegram (opzionale) su lag > N blocchi, stallo, tutti gli RPC giù, troppi gap.
-
-Stato dal DB: `npm run status -w @cra-agent/collector`.
-
-## Agente x402 in locale
+## The agent
 
 ```bash
-# .env: CRA_NETWORK=arcTestnet, CRA_KEY_FILE=.secrets/agent.key (chmod 600), CRA_POLICY=...
+# .env: CRA_NETWORK=arc, CRA_KEY_FILE=.secrets/agent.key (chmod 600), CRA_POLICY=…
 npm run rail -- policy
-npm run rail -- quote http://localhost:8791/v1/paid/fees/forecast
-npm run rail -- deposit 1      # USDC dal wallet al saldo Gateway (serve USDC di testnet dal faucet Circle)
-npm run rail -- pay   http://localhost:8791/v1/paid/fees/forecast
+npm run rail -- quote https://api.cra-agent.tech/v1/paid/fees/forecast
+npm run rail -- deposit 1      # wallet USDC into the Gateway balance
+npm run rail -- pay   https://api.cra-agent.tech/v1/paid/fees/forecast
 npm run rail -- ledger
-npm run mcp                    # server MCP su stdio
-npm run rail -- identity-register https://cra-agent.tech/.well-known/agent.json   # ERC-8004 (costa gas)
-npm run rail -- job status 1   # ERC-8183
+npm run mcp                    # MCP server on stdio
 
-# pubblicazione su npm (dopo `npm login`): scripts/publish.sh --dry-run, poi senza flag
+npm run rail -- identity-register https://cra-agent.tech/.well-known/agent.json   # ERC-8004, costs gas
+npm run rail -- job status 1                                                      # ERC-8183
 ```
 
-Il venditore si attiva con `SELLER_ADDRESS` nel `.env`: l'API espone `/v1/paid/*` a pagamento (catalogo su `/v1/paid`).
+As an MCP server, for any MCP client:
+
+```json
+{ "mcpServers": { "cra-agent": {
+    "command": "cra-agent-mcp",
+    "env": {
+      "CRA_NETWORK": "arc",
+      "CRA_KEY_FILE": "/etc/cra-agent/agent.key",
+      "CRA_POLICY": "daily=5,per_seller=0.5,per_payment=0.05,identity=required"
+    }
+} } }
+```
+
+The policy is read from the environment, not from the conversation: the model cannot raise its own limit,
+and never sees the key.
+
+## Selling
+
+```ts
+import { createSeller } from "@cra-agent/seller";
+
+const seller = createSeller({ sellerAddress, network: "arc" })
+  .route("GET /v1/forecast", "$0.001", { description: "Weather forecast, per call" });
+
+app.use(seller.middleware());   // Hono; createExpressSeller() for Express
+```
+
+Setting `SELLER_ADDRESS` in `.env` turns on our own paid routes: the API then serves `/v1/paid/*`
+(catalogue at `/v1/paid`) priced per call.
+
+## Collector
+
+- **Head worker**: follows the chain head (250 ms poll), ingests in batches (two JSON-RPC calls per block:
+  the full block and all its receipts), keeps a contiguous cursor in `collector_state`.
+- **Backfill worker**: fills the history down to block zero and any gap the head left behind, at low
+  priority; it pauses whenever the head worker falls behind.
+- **Scanner**: every 10 minutes, looks for numeric holes and `parent_hash` discontinuities. Never auto-fixes.
+- **Probe**: every 5 seconds asks every endpoint for `latest`, `finalized` and `safe`, storing
+  `head_observations` (per-provider lag and latency) and evaluating alerts.
+- **Enrich**: revert reasons by replaying failed transactions with `eth_call` against the parent block;
+  runtime bytecode size and hash for deploys.
+- **Startup guard**: every endpoint must report the expected chain id and the same genesis hash; the
+  database binds itself to that genesis and refuses any other chain.
+- **Modes**: `COLLECTOR_MODE=light` (default: blocks, per-block stats by operation, deploys, RPC
+  observations, around 0.5 GB/day) or `full` (also transactions, receipts, logs and reverts).
+- **Health**: `GET :8790/health` (JSON, 503 when lagging or stalled), `GET :8790/metrics` (Prometheus).
+- **Alerts**: log plus optional Telegram on lag, stall, all RPCs down, open gaps, low disk.
+
+Database summary: `npm run status -w @cra-agent/collector`.
 
 ## Deploy
 
-`deploy/setup.sh` installa tutto su un VPS Ubuntu con Caddy (Node 22, Postgres 17, systemd, sito Caddy).
-Vedi `deploy/README.md`.
+`deploy/setup.sh` installs everything on an Ubuntu VPS running Caddy (Node 22, Postgres 17, systemd units
+for the collector and the API, a Caddy site). See `deploy/README.md`.
 
-## Test e migrazioni
+## Tests and migrations
 
-- `npm test`: 53 test (vitest) in `packages/*/test`: proprietà sull'accounting (fast-check), parser dei blocchi,
-  failover del pool RPC, policy di spesa, scelta del binario, firma. La CI li esegue a ogni push, insieme a un
-  test di round-trip del ledger su Postgres reale.
-- Migrazioni: `packages/collector/sql/NNN_*.sql`, applicate in ordine da `packages/collector/src/db/migrate.ts`
-  (tabella `schema_migrations`), automaticamente all'avvio del collettore o con `npm run db:migrate`.
-  Il ledger ha le sue in `packages/ledger/sql`, applicate da `PgLedger.migrate()`.
+- `npm test` runs the vitest suites in `packages/*/test`: property tests on the accounting module
+  (fast-check), block parsing, RPC pool failover, spend policy, rail choice, signing, escrow mapping.
+  CI runs them on every push together with a ledger round-trip against a real Postgres.
+- Migrations live in `packages/collector/sql/NNN_*.sql` and are applied in order by
+  `packages/collector/src/db/migrate.ts` (table `schema_migrations`), automatically when the collector
+  starts or via `npm run db:migrate`. The ledger has its own in `packages/ledger/sql`, applied by
+  `PgLedger.migrate()`.
 
-## Regole del repo
+## Publishing
 
-- Nessuna aritmetica su importi USDC fuori da `packages/accounting`.
-- Nessun deploy mainnet senza conferma esplicita.
-- Chiavi/API key solo in `.env` (gitignorato), mai in chat o nel codice.
+```bash
+npm login
+scripts/publish.sh --dry-run   # then without the flag
+```
+
+## House rules
+
+- No arithmetic on USDC amounts outside `packages/accounting`.
+- No mainnet deployment without explicit confirmation.
+- Keys and API keys only in `.env` (git-ignored) or a file with `chmod 600`, never in chat or in code.
+
+## License
+
+MIT.

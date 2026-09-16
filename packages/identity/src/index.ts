@@ -45,7 +45,8 @@ export function createSigner(opts: CreateSignerOptions): RailSigner {
 
 export type ArcNetwork = "arc" | "arcTestnet";
 
-/** From docs.arc.io/arc/tutorials/register-your-first-ai-agent (2026-09-14). Mainnet: not published yet. */
+/** From docs.arc.io/arc/tutorials/register-your-first-ai-agent (2026-09-14). Mainnet: the testnet addresses have
+ * no bytecode on chain 5042 (checked 2026-09-16, launch day) and the docs publish none, so identity stays testnet-only. */
 export const ERC8004_IDENTITY_REGISTRY: Record<ArcNetwork, Address | null> = {
   arcTestnet: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
   arc: null,
