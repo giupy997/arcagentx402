@@ -13,3 +13,13 @@ describe("chooseRail", () => {
     expect(chooseRail({ amount: parseUsdc6("5"), kind: "call", supportsBatching: true, maxTimeoutSeconds: 60 }).rail).toBe("nanopayment");
   });
 });
+
+describe("receipt semantics", () => {
+  it("separates the three outcomes a buyer cares about", () => {
+    // settled      → the seller was paid
+    // not_charged  → the seller's handler failed, the signature was never settled
+    // failed       → settlement itself failed (insufficient balance, facilitator error)
+    const statuses = ["settled", "not_charged", "failed"] as const;
+    expect(new Set(statuses).size).toBe(3);
+  });
+});

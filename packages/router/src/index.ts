@@ -61,7 +61,8 @@ export interface Receipt {
   readonly amountUsdc: string;
   readonly payTo: string;
   readonly network: string;
-  readonly status: "settled" | "failed";
+  /** not_charged: the seller's handler failed, so the signed payment was never settled. */
+  readonly status: "settled" | "failed" | "not_charged";
   readonly txHash: string | null;
   readonly latencyMs: number;
   readonly reason: string | null;
@@ -199,7 +200,16 @@ export function createRail(cfg: RailConfig): Rail {
     const inflight = current;
     const rec = inflight?.record;
     if (!rec) return;
+    // x402 settles only after a successful handler: a 4xx/5xx leaves the signature unspent.
+    const httpFailed = ctx.settleResponse === undefined && ctx.error === undefined;
     const settled = ctx.settleResponse?.success === true;
+    if (httpFailed) {
+      await cfg.ledger.update(rec.id, { status: "quoted", reason: "not settled: the seller's handler failed, so the payment was never charged", latencyMs: inflight ? Date.now() - inflight.startedAt : null });
+      rec.status = "quoted";
+      rec.reason = "not settled: the seller's handler failed, so the payment was never charged";
+      log("payment.not_charged", { ledgerId: rec.id, url: inflight?.url });
+      return;
+    }
     await cfg.ledger.update(rec.id, {
       status: settled ? "settled" : "failed",
       reason: settled ? null : ctx.settleResponse?.errorReason ?? ctx.error?.message ?? "settlement not confirmed",
@@ -243,7 +253,7 @@ export function createRail(cfg: RailConfig): Rail {
         if (rec.httpStatus === null) await cfg.ledger.update(rec.id, { httpStatus: response.status, latencyMs: Date.now() - mine.startedAt });
         return {
           response,
-          receipt: { ledgerId: rec.id, amount: rec.amount, amountUsdc: formatUsdc6(rec.amount), payTo: rec.payTo, network: rec.network, status: rec.status === "settled" ? "settled" : "failed", txHash: rec.txHash, latencyMs: Date.now() - mine.startedAt, reason: rec.reason },
+          receipt: { ledgerId: rec.id, amount: rec.amount, amountUsdc: formatUsdc6(rec.amount), payTo: rec.payTo, network: rec.network, status: rec.status === "settled" ? "settled" : rec.status === "quoted" ? "not_charged" : "failed", txHash: rec.txHash, latencyMs: Date.now() - mine.startedAt, reason: rec.reason },
         };
       } catch (err) {
         if (mine.rejected) throw mine.rejected;
