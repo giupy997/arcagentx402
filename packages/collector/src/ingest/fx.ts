@@ -67,6 +67,7 @@ interface Flow {
  */
 export function extractFxTrade(logs: readonly MinimalLog[], base: string, usdc: string, rules: PairRules): FxTrade | null {
   const flows = new Map<string, Flow>();
+  let baseMoved = 0n; // every base transfer in the transaction, to spot a token being routed on
   const baseAddr = base.toLowerCase();
   const usdcAddr = usdc.toLowerCase();
   logs.forEach((l, index) => {
@@ -83,6 +84,7 @@ export function extractFxTrade(logs: readonly MinimalLog[], base: string, usdc: 
     const key = `${a}:${b}`;
     const f = flows.get(key) ?? { a: a!, b: b!, base: 0n, usdc: 0n, firstBaseIndex: -1, firstUsdcIndex: -1 };
     if (token === baseAddr) {
+      baseMoved += value;
       f.base += signed;
       if (f.firstBaseIndex < 0) f.firstBaseIndex = index;
     } else {
@@ -103,6 +105,10 @@ export function extractFxTrade(logs: readonly MinimalLog[], base: string, usdc: 
     const baseAmount = f.base < 0n ? -f.base : f.base;
     const usdcAmount = f.usdc < 0n ? -f.usdc : f.usdc;
     if (baseAmount < rules.minBaseUnits || usdcAmount < minUsdc) continue;
+    // A multi-hop route hands the same tokens on from address to address, and any single hop of it
+    // prices whatever that hop happened to carry, not the trade. One swap moves the base token
+    // once, twice with a transfer tax; more than that and this is a route, so it is skipped.
+    if (baseAmount * 2n < baseMoved) continue;
     const rate = (Number(usdcAmount) / Number(baseAmount)) * scale;
     if (!Number.isFinite(rate) || rate < rules.minPrice || rate > rules.maxPrice) continue;
     if (usdcAmount <= bestUsdc) continue; // when a route touches several pools, price the biggest leg

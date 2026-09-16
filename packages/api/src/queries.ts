@@ -361,7 +361,8 @@ export interface FxSummary {
   decimals: number;
   /** Last executed rate, USDC per whole base unit. */
   last: { rate: number; direction: string; at: number; sizeBase: string; sizeUsdc: string } | null;
-  window: { minutes: number; trades: number; vwap: number | null; min: number | null; max: number | null; volumeBase: string; volumeUsdc: string };
+  /** `low`/`high` are the 5th and 95th percentile: the range most of the volume executed in, without a single odd fill setting it. */
+  window: { minutes: number; trades: number; vwap: number | null; min: number | null; max: number | null; low: number | null; high: number | null; volumeBase: string; volumeUsdc: string };
   /** Executed rate by trade size in USDC: what a conversion of that size actually got. */
   bySize: Array<{ bucket: string; trades: number; vwap: number | null; spreadBps: number | null }>;
   venues: Array<{ venue: string | null; trades: number; vwap: number | null; volumeUsdc: string }>;
@@ -387,8 +388,10 @@ export async function fxSummary(db: Db, windowMinutes = 60, symbol = "EURC", dec
       'SELECT rate, direction, "timestamp", eurc_amount, usdc_amount FROM fx_trades WHERE base_symbol = $1 ORDER BY "timestamp" DESC LIMIT 1',
       [symbol],
     ),
-    db.query<{ n: string; vwap: number | null; mn: number | null; mx: number | null; vbase: string | null; vusdc: string | null }>(
+    db.query<{ n: string; vwap: number | null; mn: number | null; mx: number | null; lo: number | null; hi: number | null; vbase: string | null; vusdc: string | null }>(
       `SELECT count(*) AS n, ${rate} AS vwap, min(rate) AS mn, max(rate) AS mx,
+              percentile_cont(0.05) WITHIN GROUP (ORDER BY rate) AS lo,
+              percentile_cont(0.95) WITHIN GROUP (ORDER BY rate) AS hi,
               sum(eurc_amount) AS vbase, sum(usdc_amount) AS vusdc
        FROM fx_trades WHERE ${where}`,
       [symbol],
@@ -425,6 +428,8 @@ export async function fxSummary(db: Db, windowMinutes = 60, symbol = "EURC", dec
       vwap: a.vwap === null ? null : Number(a.vwap),
       min: a.mn === null ? null : Number(a.mn),
       max: a.mx === null ? null : Number(a.mx),
+      low: a.lo === null ? null : Number(a.lo),
+      high: a.hi === null ? null : Number(a.hi),
       volumeBase: formatUnits(a.vbase ?? "0", BigInt(decimals)),
       volumeUsdc: usd6(a.vusdc),
     },

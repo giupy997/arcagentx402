@@ -70,7 +70,7 @@ describe("a token that taxes its transfers", () => {
   const cra = (whole: number) => BigInt(Math.round(whole * 1e6)) * 10n ** 12n;
 
   it("nets a split USDC leg instead of pricing the fee on its own", () => {
-    // Taken from Arc mainnet 0xc1c1faf8…3f13: the buyer's USDC arrives as a 1% fee transfer and
+    // The shape of Arc mainnet 0xc1c1faf8…3f13: the buyer's USDC arrives as a 1% fee transfer and
     // the rest. Pricing the fee transfer alone reported a rate a hundred times too low.
     const logs = [
       transfer(USDC, TRADER, POOL, 1_215_261n),
@@ -89,16 +89,17 @@ describe("a token that taxes its transfers", () => {
     expect(extractFxTrade(logs, CRA, USDC, CRA_RULES)).toBeNull();
   });
 
-  it("prices the largest leg when a route touches two pools", () => {
-    const other = "0x6666666666666666666666666666666666666666";
+  it("skips a multi-hop route rather than pricing one of its hops", () => {
+    // Arc mainnet 0xd2fc4970…42e7 in shape: the token is passed along three addresses while the
+    // USDC comes from somewhere else. The middle hop looked like a swap at four times the price.
+    const hop = "0x6666666666666666666666666666666666666666";
+    const sink = "0x7777777777777777777777777777777777777777";
     const logs = [
-      transfer(CRA, TRADER, POOL, cra(10_000)),
-      transfer(USDC, POOL, TRADER, 2_000_000n),
-      transfer(CRA, TRADER, other, cra(100_000)),
-      transfer(USDC, other, TRADER, 22_000_000n),
+      transfer(CRA, TRADER, hop, cra(175_404)),
+      transfer(CRA, hop, POOL, cra(175_404)),
+      transfer(CRA, POOL, sink, cra(175_404)),
+      transfer(USDC, POOL, hop, 159_200_000n),
     ];
-    const t = extractFxTrade(logs, CRA, USDC, CRA_RULES)!;
-    expect(t.venue).toBe(other.toLowerCase());
-    expect(t.usdcAmount).toBe(22_000_000n);
+    expect(extractFxTrade(logs, CRA, USDC, CRA_RULES)).toBeNull();
   });
 });

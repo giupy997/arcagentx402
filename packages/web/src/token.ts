@@ -14,7 +14,7 @@ interface Token {
   price: {
     pair: string;
     last: { rate: number; direction: string; at: number; sizeBase: string; sizeUsdc: string } | null;
-    window: { minutes: number; trades: number; vwap: number | null; min: number | null; max: number | null; volumeBase: string; volumeUsdc: string };
+    window: { minutes: number; trades: number; vwap: number | null; min: number | null; max: number | null; low: number | null; high: number | null; volumeBase: string; volumeUsdc: string };
     series: Array<{ t: number; vwap: number; trades: number; volumeUsdc: string }>;
   } | null;
 }
@@ -64,7 +64,7 @@ async function refresh(): Promise<void> {
     if (p?.last) {
       $("t-price").textContent = price(p.last.rate);
       $("t-vol").textContent = `$${p.window.volumeUsdc}`;
-      const band = p.window.min !== null && p.window.max !== null ? `${price(p.window.min)}–${price(p.window.max)} over 24 h` : "from swaps on Arc";
+      const band = p.window.low !== null && p.window.high !== null ? `mostly ${price(p.window.low)}–${price(p.window.high)} over 24 h` : "from swaps on Arc";
       $("t-price-note").textContent = `${fmtInt(p.window.trades)} swaps · ${band}`;
     } else {
       $("t-price").textContent = "—";
