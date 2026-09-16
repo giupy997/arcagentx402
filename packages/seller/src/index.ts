@@ -126,7 +126,9 @@ export function buildServer(cfg: SellerConfig, network: Network, facilitatorUrl:
       ? createFacilitatorConfig(rail.cdpKeyId, rail.cdpKeySecret)
       : { url: rail.facilitatorUrl ?? (() => { throw new Error("discovery rail needs either CDP credentials or a facilitatorUrl"); })() },
   );
-  return new x402ResourceServer([circle, catalogued])
+  // Order matters: the first facilitator that claims a network gets it. Circle claims Base too, so
+  // the catalogued one goes first and Arc still lands on Circle, which is the only one that has it.
+  return new x402ResourceServer([catalogued, circle])
     .register(network, new GatewayEvmScheme())
     .register(rail.network ?? BASE_MAINNET, new ExactEvmScheme())
     .registerExtension(bazaarResourceServerExtension);
