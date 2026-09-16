@@ -4,11 +4,15 @@ import { ReferencePrice } from "../src/ingest/reference.js";
 const seedOf = (value: number, n = 10): number[] => Array.from({ length: n }, () => value);
 
 describe("running reference price", () => {
-  it("accepts everything until it has seen enough", () => {
+  it("publishes nothing until enough rates agree on a price", () => {
     const ref = new ReferencePrice(0.05);
     expect(ref.median).toBeNull();
-    for (let i = 0; i < 8; i++) expect(ref.accept(0.0001 * (i + 1))).toBe(true);
-    expect(ref.median).not.toBeNull();
+    // A cold start with one bad leg among good ones: none of these is published, and the bad one
+    // does not become the price.
+    for (const r of [1.15, 0.92, 1.152, 1.148, 1.151, 1.155, 1.149, 1.153]) expect(ref.accept(r)).toBe(false);
+    expect(ref.median).toBeCloseTo(1.151, 3);
+    expect(ref.accept(1.156)).toBe(true);
+    expect(ref.accept(0.92)).toBe(false);
   });
 
   it("rejects a rate far from the running price, and keeps one near it", () => {
