@@ -6,6 +6,7 @@
 import type { CollectorConfig } from "../config.js";
 import { getState, hexToBytes, setState, type Db } from "../db/index.js";
 import { extractFxTrade, TRANSFER_TOPIC, type MinimalLog, type PairRules } from "../ingest/fx.js";
+import { ReferencePrice } from "../ingest/reference.js";
 import type { Logger } from "../log.js";
 import type { RpcPool } from "../rpc/pool.js";
 import type { RuntimeState } from "../state.js";
@@ -18,6 +19,7 @@ interface RawReceipt { transactionHash: string; blockNumber: string; logs: RawLo
 export class FxWorker {
   private stopped = false;
   private done: Promise<void> | null = null;
+  private readonly reference = new Map<string, ReferencePrice>();
 
   constructor(
     private readonly cfg: CollectorConfig,
@@ -40,6 +42,12 @@ export class FxWorker {
     if (!fx) return;
     let cursor = (await getState<{ cursor: number }>(this.db, "fx"))?.cursor ?? 0;
     if (cursor === 0) cursor = (this.state.chainHead ?? 0) - 20_000; // start from roughly the last three hours
+    for (const pair of fx.pairs) {
+      const ref = new ReferencePrice(pair.maxDeviation);
+      const seen = await this.db.query<{ rate: number }>('SELECT rate FROM fx_trades WHERE base_symbol = $1 ORDER BY "timestamp" DESC LIMIT 25', [pair.symbol]);
+      ref.seed(seen.rows.map((r) => Number(r.rate)));
+      this.reference.set(pair.symbol, ref);
+    }
     this.log.info({ pairs: fx.pairs.map((p) => p.symbol), from: cursor }, "fx watcher started");
     while (!this.stopped) {
       try {
@@ -88,6 +96,14 @@ export class FxWorker {
         rows.push({ hash: r.transactionHash, block, ts, trade });
       }
     }
+    // In block order, so the running price follows the market rather than the order receipts came back.
+    rows.sort((a, b) => a.block - b.block);
+    const ref = this.reference.get(rules.symbol);
+    const kept = ref ? rows.filter((r) => ref.accept(r.trade!.rate)) : rows;
+    const dropped = rows.length - kept.length;
+    rows.length = 0;
+    rows.push(...kept);
+    if (dropped > 0) this.log.debug({ dropped, pair: rules.symbol }, "fx legs too far from the running price");
     if (rows.length === 0) return;
     await this.db.query(
       `INSERT INTO fx_trades (tx_hash, block_number, "timestamp", side, direction, base, base_symbol, trader, venue, eurc_amount, usdc_amount, rate)

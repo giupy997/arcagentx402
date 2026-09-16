@@ -26,10 +26,12 @@ export interface PairRules {
   readonly minBaseUnits: bigint;
   /** Smallest USDC amount worth pricing, in raw units. Default $0.50. */
   readonly minUsdcUnits?: bigint;
+  /** How far from the running price a rate may sit before it is treated as a mispriced leg. */
+  readonly maxDeviation: number;
 }
 
 /** EUR/USD has not left this band in modern history. */
-export const EURC_RULES: PairRules = { symbol: "EURC", token: "", decimals: 6, minPrice: 0.5, maxPrice: 2, minBaseUnits: 1_000_000n };
+export const EURC_RULES: PairRules = { symbol: "EURC", token: "", decimals: 6, minPrice: 0.5, maxPrice: 2, minBaseUnits: 1_000_000n, maxDeviation: 0.05 };
 
 export interface FxTrade {
   /** sell: the trader gave the base token and took USDC. buy: the other way round. */

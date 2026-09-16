@@ -129,7 +129,7 @@ export interface CollectorConfig {
   readonly token: { address: string; distributor: string; usdc: string; startBlock: number } | null;
   /** EURC/USDC swap watching. Mainnet addresses from docs.arc.io (2026-09-16). */
   /** Pairs priced in USDC. EURC is on by default on mainnet; the project token is added when TOKEN_ADDRESS is set. */
-  readonly fx: { usdc: string; pairs: Array<{ symbol: string; token: string; decimals: number; minPrice: number; maxPrice: number; minBaseUnits: string }> } | null;
+  readonly fx: { usdc: string; pairs: Array<{ symbol: string; token: string; decimals: number; minPrice: number; maxPrice: number; minBaseUnits: string; maxDeviation: number }> } | null;
   readonly telegram: { botToken: string; chatId: string } | null;
   readonly logLevel: string;
 }
@@ -187,9 +187,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
           usdc: "0x3600000000000000000000000000000000000000",
           pairs: [
             // Stablecoin pair: tight band, one euro floor.
-            { symbol: "EURC", token: e.ARC_NETWORK === "mainnet" ? "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1" : "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a", decimals: 6, minPrice: 0.5, maxPrice: 2, minBaseUnits: "1000000" },
+            { symbol: "EURC", token: e.ARC_NETWORK === "mainnet" ? "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1" : "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a", decimals: 6, minPrice: 0.5, maxPrice: 2, minBaseUnits: "1000000", maxDeviation: 0.05 },
             // The project token, when configured: 18 decimals, wide band because it is volatile.
-            ...(tokenAddr ? [{ symbol: clean(e.TOKEN_SYMBOL) ?? "CRA", token: tokenAddr, decimals: 18, minPrice: 1e-9, maxPrice: 1e6, minBaseUnits: (1000n * 10n ** 18n).toString() }] : []),
+            ...(tokenAddr ? [{ symbol: clean(e.TOKEN_SYMBOL) ?? "CRA", token: tokenAddr, decimals: 18, minPrice: 1e-9, maxPrice: 1e6, minBaseUnits: (1000n * 10n ** 18n).toString(), maxDeviation: 0.35 }] : []),
           ],
         }
       : null,
