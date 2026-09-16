@@ -18,7 +18,7 @@ import { x402Client, x402HTTPClient } from "@x402/core/client";
 import type { PaymentPayload, PaymentRequired, PaymentRequirements } from "@x402/core/types";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { wrapFetchWithPayment } from "@x402/fetch";
-import { createPublicClient, http, parseAbiItem, type Address, type Hex } from "viem";
+import { createPublicClient, http, type Address, type Hex } from "viem";
 import { CHAINS } from "@cra-agent/identity";
 import { chooseRail, DEFAULT_THRESHOLDS, type RouteDecision, type RouteThresholds } from "./decide.js";
 
@@ -268,34 +268,37 @@ export function createRail(cfg: RailConfig): Rail {
     async resolveSettlements(opts = {}) {
       const pending = await cfg.ledger.awaitingProof(cfg.agentId, opts.limit ?? 20);
       if (pending.length === 0) return [];
+      const gw = gatewayClient();
       const pub = createPublicClient({ chain: CHAINS[cfg.network], transport: http(cfg.rpcUrl) });
-      const transferEvent = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
-      const head = await pub.getBlockNumber();
-      const lookback = BigInt(opts.lookbackBlocks ?? 200_000); // ~28 h at 0.5 s blocks
       const proofs: SettlementProof[] = [];
-      const seen = new Set<string>();
-      for (const payTo of new Set(pending.map((p) => p.payTo))) {
-        const rows = pending.filter((p) => p.payTo === payTo);
-        const logs: { txHash: Hex; blockNumber: bigint; value: bigint }[] = [];
-        for (let to = head; to > head - lookback; to -= 9_000n) {
-          const from = to - 8_999n > 0n ? to - 8_999n : 0n;
-          const found = await pub
-            .getLogs({ address: ARC_USDC as Address, event: transferEvent, args: { to: payTo as Address }, fromBlock: from, toBlock: to })
-            .catch(() => []);
-          for (const l of found) logs.push({ txHash: l.transactionHash, blockNumber: l.blockNumber, value: l.args.value ?? 0n });
-          if (logs.length >= rows.length * 4) break;
+      for (const row of pending) {
+        // Gateway stores the transfer under the id it returned at settlement time; it gains an
+        // on-chain hash once the batch lands. Asking Circle beats guessing from logs.
+        const transferId = row.txHash;
+        if (!transferId || !/^[0-9a-f-]{36}$/i.test(transferId)) continue;
+        type GatewayTransfer = { status?: string; txHash?: string; updatedAt?: string };
+        let transfer: GatewayTransfer | null = null;
+        try {
+          transfer = (await gw.getTransferById(transferId)) as unknown as GatewayTransfer;
+        } catch (err) {
+          log("settlement.lookup_failed", { ledgerId: row.id, transferId, error: (err as Error).message.slice(0, 120) });
+          continue;
         }
-        for (const row of rows) {
-          // A batch can carry several payments: match on the exact amount, oldest unmatched first.
-          const hit = logs.find((l) => l.value === row.amount && !seen.has(l.txHash + l.value.toString()));
-          if (!hit) continue;
-          seen.add(hit.txHash + hit.value.toString());
-          const block = await pub.getBlock({ blockNumber: hit.blockNumber });
-          const at = new Date(Number(block.timestamp) * 1000);
-          await cfg.ledger.update(row.id, { settlementTx: hit.txHash, settledOnchainAt: at });
-          proofs.push({ ledgerId: row.id, amountUsdc: formatUsdc6(row.amount), payTo: row.payTo, txHash: hit.txHash, blockNumber: Number(hit.blockNumber), at });
-          log("settlement.proved", { ledgerId: row.id, txHash: hit.txHash });
+        const hash = transfer?.txHash;
+        if (!hash || transfer?.status !== "completed") continue;
+        let at = transfer.updatedAt ? new Date(transfer.updatedAt) : new Date();
+        let blockNumber = 0;
+        try {
+          const receipt = await pub.getTransactionReceipt({ hash: hash as Hex });
+          blockNumber = Number(receipt.blockNumber);
+          const block = await pub.getBlock({ blockNumber: receipt.blockNumber });
+          at = new Date(Number(block.timestamp) * 1000);
+        } catch {
+          /* the hash is enough; block details are a bonus */
         }
+        await cfg.ledger.update(row.id, { settlementTx: hash, settledOnchainAt: at });
+        proofs.push({ ledgerId: row.id, amountUsdc: formatUsdc6(row.amount), payTo: row.payTo, txHash: hash as Hex, blockNumber, at });
+        log("settlement.proved", { ledgerId: row.id, txHash: hash, blockNumber });
       }
       return proofs;
     },
