@@ -24,7 +24,7 @@ Arc testnet. See `docs/arc-verification.md` for every value verified against doc
 | `packages/escrow` | The ERC-8183 rail for jobs: createJob, setBudget, fund (with USDC approval), submit, complete/reject, claimRefund. ABI taken from the verified implementation on chain; the evaluator is injected |
 | `packages/seller` | `createSeller().route("GET /x", "$0.001")` for Hono, `createExpressSeller()` for Express. Payments verified and settled by Circle Gateway; any x402 buyer can pay |
 | `packages/collector` | Block-zero collector: blocks, per-block stats by operation, contract deploys, base fee inputs, per-provider RPC observations. Optionally transactions, receipts, logs and revert reasons. Append-only Postgres with the raw JSON-RPC preserved |
-| `packages/api` | Read API over the collector database (Hono): `/v1/network`, `/v1/fees`, `/v1/fees/estimate`, `/v1/activity`, `/v1/deploys`, `/v1/rpc`, `/v1/fx`, `/v1/token`, `/v1/health`, plus the paid `/v1/paid/*` routes. Also serves the website |
+| `packages/api` | Read API over the collector database (Hono): `/v1/network`, `/v1/fees`, `/v1/fees/estimate`, `/v1/activity`, `/v1/deploys`, `/v1/rpc`, `/v1/fx`, `/v1/token`, `/v1/health`, plus the paid `/v1/paid/*` routes, described for agents and directories at `/openapi.json`. Also serves the website |
 | `packages/web` | The site: product landing (`/`), live network page (`/network`) and token page (`/token`, price, burns and payouts). Plain HTML, CSS and TypeScript, hand-drawn SVG charts |
 | `packages/mcp` | MCP server over stdio: `arc_quote`, `arc_pay`, `arc_balance`, `arc_deposit`, `arc_ledger`, `arc_policy`, plus the escrow tools `arc_job_create`, `arc_job_fund`, `arc_job_status`, `arc_job_decide`, `arc_job_submit`. Also a CLI |
 
