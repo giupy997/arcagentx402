@@ -1,0 +1,16 @@
+{
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  "name": "CRA AGENT",
+  "description": "A payment rail for AI agents on Arc, Circle's USDC-native L1. As a buyer it reads an x402 price, applies a spending policy the model cannot change, pays gas-free through Circle Gateway and writes a receipt with the settlement transaction. As a seller it prices its own Arc chain data per call: base fee forecasts, contract deploys, RPC health, and executed prices for a token pair against USDC. A payment is settled only after the handler succeeds, so a failing endpoint costs the buyer nothing.",
+  "image": "https://cra-agent.tech/brand/logo.webp",
+  "active": true,
+  "x402Support": true,
+  "services": [
+    { "name": "website", "endpoint": "https://cra-agent.tech", "version": "0.1.0" },
+    { "name": "api", "endpoint": "https://api.cra-agent.tech", "version": "0.1.0" },
+    { "name": "openapi", "endpoint": "https://api.cra-agent.tech/openapi.json", "version": "3.1.0" },
+    { "name": "x402-catalogue", "endpoint": "https://api.cra-agent.tech/v1/paid", "version": "0.1.0" },
+    { "name": "mcp", "endpoint": "https://www.npmjs.com/package/@cra-agent/mcp", "version": "0.0.1" },
+    { "name": "source", "endpoint": "https://github.com/giupy997/arcagentx402", "version": "0.1.0" }
+  ]
+}
