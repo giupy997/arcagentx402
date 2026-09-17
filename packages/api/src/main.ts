@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import pino from "pino";
 import { createPool } from "./db.js";
 import { buildOpenApi } from "./openapi.js";
+import { PAID_ROUTES } from "./routes.js";
 import { activity, deployStats, feeEstimate, feeSummary, fxSummary, networkSummary, recentDeploys, rpcStatus, tokenSummary } from "./queries.js";
 import { mountPaidRoutes } from "./paid.js";
 
@@ -81,6 +82,31 @@ app.get("/v1/token", async (c) =>
       const fx = await fxSummary(db, 1440, symbol, summary.token?.decimals ?? 18);
       // The size curve and venue breakdown stay in the paid route; the page shows price, window and shape.
       return { ...summary, price: { pair: fx.pair, last: fx.last, window: fx.window, series: fx.series } };
+    }),
+  ),
+);
+/**
+ * One call for the landing page: what the collector has read, what the market did, what is on sale.
+ * Cached, because it is the most requested thing on the site and none of it changes by the second.
+ */
+app.get("/v1/summary", async (c) =>
+  c.json(
+    await cached("summary", 15_000, async () => {
+      const n = await networkSummary(db, NETWORK, CHAIN_ID);
+      const pairs = await Promise.all(
+        Object.entries(PAIRS).map(async ([symbol, decimals]) => {
+          const fx = await fxSummary(db, 1440, symbol, decimals);
+          return { symbol, rate: fx.last?.rate ?? null, trades: fx.window.trades, volumeUsdc: fx.window.volumeUsdc };
+        }),
+      );
+      const prices = PAID_ROUTES.map((r) => Number(r.price.replace("$", "")));
+      return {
+        network: NETWORK,
+        collected: { blocks: n.totals.blocks, transactions: n.totals.transactions, deploys: n.totals.deploys },
+        head: { number: n.head?.number ?? null, lagBlocks: n.lagBlocks, lastBlockAgeSeconds: n.collector.lastBlockAgeSeconds },
+        pairs,
+        forSale: { routes: PAID_ROUTES.length, fromUsd: Math.min(...prices), toUsd: Math.max(...prices) },
+      };
     }),
   ),
 );
