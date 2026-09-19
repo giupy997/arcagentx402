@@ -1,6 +1,21 @@
 {
   "name": "@cra-agent/accounting",
-  "version": "0.0.1",
+  "version": "0.0.2",
+  "description": "USDC arithmetic for Arc without floats: branded 6-decimal and 18-decimal types, dust-preserving conversion, exact parsing and formatting.",
+  "keywords": [
+    "agent-payments",
+    "ai-agents",
+    "arc",
+    "bigint",
+    "circle",
+    "decimal",
+    "fixed-point",
+    "gas",
+    "micropayments",
+    "money",
+    "usdc",
+    "x402"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -27,5 +42,9 @@
     "url": "https://github.com/giupy997/arcagentx402.git",
     "directory": "packages/accounting"
   },
-  "homepage": "https://cra-agent.tech"
+  "homepage": "https://cra-agent.tech",
+  "bugs": {
+    "url": "https://github.com/giupy997/arcagentx402/issues"
+  },
+  "author": "cra-agent"
 }

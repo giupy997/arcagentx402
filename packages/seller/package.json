@@ -1,6 +1,22 @@
 {
   "name": "@cra-agent/seller",
-  "version": "0.0.1",
+  "version": "0.0.2",
+  "description": "Put a USDC price on a Hono or Express route with x402, settled on Arc through Circle Gateway.",
+  "keywords": [
+    "agent-payments",
+    "ai-agents",
+    "api-monetization",
+    "arc",
+    "circle",
+    "circle-gateway",
+    "express",
+    "hono",
+    "micropayments",
+    "middleware",
+    "paywall",
+    "usdc",
+    "x402"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -52,5 +68,9 @@
     "url": "https://github.com/giupy997/arcagentx402.git",
     "directory": "packages/seller"
   },
-  "homepage": "https://cra-agent.tech"
+  "homepage": "https://cra-agent.tech",
+  "bugs": {
+    "url": "https://github.com/giupy997/arcagentx402/issues"
+  },
+  "author": "cra-agent"
 }

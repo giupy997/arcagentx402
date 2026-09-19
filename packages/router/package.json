@@ -1,6 +1,21 @@
 {
   "name": "@cra-agent/router",
-  "version": "0.0.1",
+  "version": "0.0.2",
+  "description": "The buyer side of x402 on Arc: quote, policy check, gas-free payment through Circle Gateway, receipt and settlement proof.",
+  "keywords": [
+    "agent-payments",
+    "ai-agents",
+    "arc",
+    "circle",
+    "circle-gateway",
+    "ledger",
+    "micropayments",
+    "nanopayments",
+    "payments",
+    "usdc",
+    "x402",
+    "x402-client"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -14,10 +29,10 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@cra-agent/accounting": "0.0.1",
-    "@cra-agent/identity": "0.0.1",
-    "@cra-agent/ledger": "0.0.1",
-    "@cra-agent/policy": "0.0.1",
+    "@cra-agent/accounting": "0.0.2",
+    "@cra-agent/identity": "0.0.2",
+    "@cra-agent/ledger": "0.0.2",
+    "@cra-agent/policy": "0.0.2",
     "@circle-fin/x402-batching": "^3.4.0",
     "@x402/core": "^2.25.0",
     "@x402/evm": "^2.25.0",
@@ -37,5 +52,9 @@
     "url": "https://github.com/giupy997/arcagentx402.git",
     "directory": "packages/router"
   },
-  "homepage": "https://cra-agent.tech"
+  "homepage": "https://cra-agent.tech",
+  "bugs": {
+    "url": "https://github.com/giupy997/arcagentx402/issues"
+  },
+  "author": "cra-agent"
 }

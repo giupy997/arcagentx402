@@ -1,0 +1,52 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.giupy997/cra-agent",
+  "title": "CRA AGENT",
+  "description": "Lets an agent pay for x402 APIs in USDC on Arc, under a spending policy it cannot change.",
+  "version": "0.0.2",
+  "websiteUrl": "https://cra-agent.tech",
+  "repository": {
+    "url": "https://github.com/giupy997/arcagentx402",
+    "source": "github",
+    "subfolder": "packages/mcp"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@cra-agent/mcp",
+      "version": "0.0.2",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "CRA_NETWORK",
+          "description": "arc (mainnet) or arcTestnet",
+          "isRequired": true,
+          "default": "arcTestnet"
+        },
+        {
+          "name": "CRA_KEY_FILE",
+          "description": "Path to a chmod 600 file holding the agent's private key. Never put the key in a prompt.",
+          "isRequired": true
+        },
+        {
+          "name": "CRA_POLICY",
+          "description": "Spending limits, e.g. daily=5,per_seller=0.5,per_payment=0.05",
+          "isRequired": false
+        },
+        {
+          "name": "CRA_RPC_URL",
+          "description": "Optional RPC endpoints, comma separated, in priority order",
+          "isRequired": false
+        },
+        {
+          "name": "DATABASE_URL",
+          "description": "Optional Postgres for the ledger; in memory without it",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

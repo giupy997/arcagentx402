@@ -1,6 +1,20 @@
 {
   "name": "@cra-agent/escrow",
-  "version": "0.0.1",
+  "version": "0.0.2",
+  "description": "ERC-8183 AgenticCommerce escrow client for Arc: create, fund, submit, complete or reject a job, claim a refund.",
+  "keywords": [
+    "agent-payments",
+    "agentic-commerce",
+    "ai-agents",
+    "arc",
+    "circle",
+    "erc-8183",
+    "escrow",
+    "jobs",
+    "micropayments",
+    "usdc",
+    "x402"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -14,8 +28,8 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@cra-agent/accounting": "0.0.1",
-    "@cra-agent/identity": "0.0.1",
+    "@cra-agent/accounting": "0.0.2",
+    "@cra-agent/identity": "0.0.2",
     "viem": "^2.31.0"
   },
   "files": [
@@ -31,5 +45,9 @@
     "url": "https://github.com/giupy997/arcagentx402.git",
     "directory": "packages/escrow"
   },
-  "homepage": "https://cra-agent.tech"
+  "homepage": "https://cra-agent.tech",
+  "bugs": {
+    "url": "https://github.com/giupy997/arcagentx402/issues"
+  },
+  "author": "cra-agent"
 }

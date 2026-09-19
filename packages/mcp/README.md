@@ -1,0 +1,66 @@
+# @cra-agent/mcp
+
+An MCP server that lets an AI agent pay for an API call. The agent calls one tool, the rail reads the [x402](https://x402.org) price, checks a spending policy, pays in USDC on Arc through Circle Gateway with no gas for the buyer, and keeps the receipt.
+
+The model never sees the key, and it cannot raise its own limit: both are read from the environment before the conversation starts.
+
+## Install
+
+```bash
+npm i -g @cra-agent/mcp
+```
+
+## Use it from an MCP client
+
+```json
+{ "mcpServers": { "cra-agent": {
+    "command": "cra-agent-mcp",
+    "env": {
+      "CRA_NETWORK": "arc",
+      "CRA_KEY_FILE": "/path/to/agent.key",
+      "CRA_POLICY": "daily=5,per_seller=0.5,per_payment=0.05"
+    }
+} } }
+```
+
+`CRA_KEY_FILE` points at a file holding the private key, `chmod 600`. Never put a key in a prompt.
+
+## Tools
+
+| Tool | What it does |
+|---|---|
+| `arc_quote` | Reads the price of a URL and says whether the policy would allow it. Pays nothing. |
+| `arc_pay` | Pays for the URL and returns the response with a receipt. |
+| `arc_balance` | Wallet and Circle Gateway balances. |
+| `arc_deposit` | Moves wallet USDC into the Gateway balance. Needed once before the first payment. |
+| `arc_ledger` | Every attempt: quoted, rejected, signed, settled, failed. |
+| `arc_proof` | Matches settled payments to the on-chain transfer that carried them. |
+| `arc_policy` | Shows the limits in force. |
+| `arc_job_*` | ERC-8183 escrow jobs. Testnet only until the contract is deployed on Arc mainnet. |
+
+## The same thing from a terminal
+
+```bash
+cra-agent balance
+cra-agent quote https://api.cra-agent.tech/v1/paid/rpc/health
+cra-agent deposit 1
+cra-agent pay   https://api.cra-agent.tech/v1/paid/rpc/health
+cra-agent proof
+```
+
+## Environment
+
+| Variable | Meaning |
+|---|---|
+| `CRA_NETWORK` | `arc` (mainnet) or `arcTestnet`. Default `arcTestnet`. |
+| `CRA_KEY_FILE` / `CRA_PRIVATE_KEY` | The agent's key. Prefer the file. |
+| `CRA_POLICY` | `daily=5,per_seller=0.5,per_payment=0.05,rate=120/60s,allow=a.com\|b.com,deny=c.com` |
+| `CRA_RPC_URL` | Optional, one or several separated by commas, in priority order. Tried before the public Arc endpoints. |
+| `CRA_RPC_STRICT` | `1` to never fall back to a public endpoint. |
+| `DATABASE_URL` | Optional Postgres for the ledger. Without it the ledger lives in memory. |
+
+Two things worth knowing. A payment is settled only after the seller's handler succeeds, so a failing endpoint costs nothing: `https://api.cra-agent.tech/v1/paid/selftest/fail` always answers 500 so you can check. And `identity=required` rejects every seller on Arc mainnet today, because the ERC-8004 registry is not deployed there yet.
+
+## Part of CRA AGENT
+
+Payments for AI agents on [Arc](https://arc.io), Circle's USDC-native L1. Site: [cra-agent.tech](https://cra-agent.tech) · Source: [github.com/giupy997/arcagentx402](https://github.com/giupy997/arcagentx402) · MIT

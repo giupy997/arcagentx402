@@ -1,6 +1,20 @@
 {
   "name": "@cra-agent/ledger",
-  "version": "0.0.1",
+  "version": "0.0.2",
+  "description": "Append-only payment ledger for agent payments: every quote, rejection, signature, settlement and failure. In-memory or Postgres.",
+  "keywords": [
+    "agent-payments",
+    "ai-agents",
+    "arc",
+    "audit-log",
+    "circle",
+    "ledger",
+    "micropayments",
+    "postgres",
+    "receipts",
+    "usdc",
+    "x402"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -14,7 +28,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@cra-agent/accounting": "0.0.1",
+    "@cra-agent/accounting": "0.0.2",
     "pg": "^8.16.0"
   },
   "files": [
@@ -31,5 +45,9 @@
     "url": "https://github.com/giupy997/arcagentx402.git",
     "directory": "packages/ledger"
   },
-  "homepage": "https://cra-agent.tech"
+  "homepage": "https://cra-agent.tech",
+  "bugs": {
+    "url": "https://github.com/giupy997/arcagentx402/issues"
+  },
+  "author": "cra-agent"
 }

@@ -1,6 +1,21 @@
 {
   "name": "@cra-agent/identity",
-  "version": "0.0.1",
+  "version": "0.0.2",
+  "description": "Signing and seller identity for agent payments on Arc: explicit signature scheme, ERC-8004 resolution that fails closed, RPC endpoint selection.",
+  "keywords": [
+    "agent-payments",
+    "ai-agents",
+    "arc",
+    "circle",
+    "erc-8004",
+    "identity",
+    "micropayments",
+    "rpc",
+    "signer",
+    "usdc",
+    "viem",
+    "x402"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -29,5 +44,9 @@
     "url": "https://github.com/giupy997/arcagentx402.git",
     "directory": "packages/identity"
   },
-  "homepage": "https://cra-agent.tech"
+  "homepage": "https://cra-agent.tech",
+  "bugs": {
+    "url": "https://github.com/giupy997/arcagentx402/issues"
+  },
+  "author": "cra-agent"
 }
