@@ -21,8 +21,8 @@
   "type": "module",
   "main": "./dist/server.js",
   "bin": {
-    "cra-agent-mcp": "./dist/server.js",
-    "cra-agent": "./dist/cli/rail.js"
+    "cra-agent-mcp": "dist/server.js",
+    "cra-agent": "dist/cli/rail.js"
   },
   "scripts": {
     "build": "tsc -b",
@@ -50,7 +50,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/giupy997/arcagentx402.git",
+    "url": "git+https://github.com/giupy997/arcagentx402.git",
     "directory": "packages/mcp"
   },
   "homepage": "https://cra-agent.tech",

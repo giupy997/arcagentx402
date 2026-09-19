@@ -39,7 +39,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/giupy997/arcagentx402.git",
+    "url": "git+https://github.com/giupy997/arcagentx402.git",
     "directory": "packages/accounting"
   },
   "homepage": "https://cra-agent.tech",
