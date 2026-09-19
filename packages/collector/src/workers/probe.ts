@@ -87,6 +87,12 @@ export class ProbeWorker {
     const chainMoving = this.state.chainHeadAt !== null && Date.now() - this.state.chainHeadAt < this.cfg.stallAlertSeconds * 1000;
     if (sinceIngest > this.cfg.stallAlertSeconds && chainMoving) await this.alerts.raise("stall", `no block ingested for ${Math.round(sinceIngest)}s while chain head moves`);
     else await this.alerts.clear("stall");
+    // The alert alone once sat unread for a day while the head worker hung without crashing.
+    if (this.cfg.stallRestartSeconds > 0 && sinceIngest > this.cfg.stallRestartSeconds && chainMoving) {
+      this.log.fatal({ sinceIngestSeconds: Math.round(sinceIngest) }, "ingestion is stuck while the chain moves: exiting so the supervisor starts a fresh process");
+      process.exitCode = 1;
+      process.kill(process.pid, "SIGTERM");
+    }
 
     if (!this.pool.healthy()) await this.alerts.raise("rpc_down", "every RPC endpoint is failing or disabled");
     else await this.alerts.clear("rpc_down");

@@ -70,6 +70,10 @@ export class HeadWorker {
           await sleep(this.cfg.headPollMs);
           continue;
         }
+        if (this.cfg.maxCatchupBlocks > 0 && head - cursor > this.cfg.maxCatchupBlocks) {
+          await this.jumpToHead(cursor, head);
+          continue;
+        }
         await this.catchUp(cursor + 1, head);
       } catch (err) {
         this.state.errors++;
@@ -77,6 +81,22 @@ export class HeadWorker {
         await sleep(1000);
       }
     }
+  }
+
+  /**
+   * Too far behind to be useful live: what people look at is the last hour, and walking there block
+   * by block would keep every page stale for hours. The missed range becomes a gap, filled in the
+   * background, newest first.
+   */
+  private async jumpToHead(cursor: number, head: number): Promise<void> {
+    const resumeAt = head - 50; // a short run-up, so the first live blocks have a parent in the table
+    await this.db.query(
+      "INSERT INTO block_gaps (from_block, to_block, last_error) VALUES ($1, $2, 'jumped to head') ON CONFLICT (from_block) DO UPDATE SET to_block = GREATEST(block_gaps.to_block, EXCLUDED.to_block)",
+      [cursor + 1, resumeAt - 1],
+    );
+    this.state.headCursor = resumeAt - 1;
+    await setState(this.db, "head", { cursor: resumeAt - 1, start: this.state.headStart ?? resumeAt });
+    this.log.warn({ from: cursor + 1, to: resumeAt - 1, blocks: resumeAt - 1 - cursor }, "too far behind: jumped to the head, the missed range is now a gap");
   }
 
   /** Cheap head poll on the preferred endpoint; the full multi-endpoint probe lives in probe.ts. */

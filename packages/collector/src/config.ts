@@ -71,6 +71,12 @@ const EnvSchema = z.object({
   COLLECTOR_GAP_SCAN_INTERVAL_MS: intEnv(600_000),
   COLLECTOR_LAG_ALERT_BLOCKS: intEnv(200),
   COLLECTOR_STALL_ALERT_SECONDS: intEnv(60),
+  // A worker that hangs does not crash, so nothing restarts it. After this long with the chain moving
+  // and nothing ingested, the process exits and systemd starts a fresh one. 0 turns it off.
+  COLLECTOR_STALL_RESTART_SECONDS: intEnv(600),
+  // Further behind than this, the live view is worth more than the order: jump to the head and leave
+  // the missed range to the gap worker. At two blocks a second, 20,000 blocks is under three hours.
+  COLLECTOR_MAX_CATCHUP_BLOCKS: intEnv(20000),
   COLLECTOR_HEALTH_PORT: intEnv(8790),
   COLLECTOR_ENRICH_REVERTS: boolEnv(true),
   COLLECTOR_ENRICH_CODE: boolEnv(true),
@@ -106,6 +112,8 @@ export interface CollectorConfig {
   readonly gapScanIntervalMs: number;
   readonly lagAlertBlocks: number;
   readonly stallAlertSeconds: number;
+  readonly stallRestartSeconds: number;
+  readonly maxCatchupBlocks: number;
   readonly healthPort: number;
   readonly enrichReverts: boolean;
   readonly enrichCode: boolean;
@@ -172,6 +180,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
     gapScanIntervalMs: e.COLLECTOR_GAP_SCAN_INTERVAL_MS,
     lagAlertBlocks: e.COLLECTOR_LAG_ALERT_BLOCKS,
     stallAlertSeconds: e.COLLECTOR_STALL_ALERT_SECONDS,
+    stallRestartSeconds: e.COLLECTOR_STALL_RESTART_SECONDS,
+    maxCatchupBlocks: e.COLLECTOR_MAX_CATCHUP_BLOCKS,
     healthPort: e.COLLECTOR_HEALTH_PORT,
     enrichReverts: e.COLLECTOR_ENRICH_REVERTS,
     enrichCode: e.COLLECTOR_ENRICH_CODE,

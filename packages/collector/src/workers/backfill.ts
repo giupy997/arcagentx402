@@ -77,7 +77,8 @@ export class BackfillWorker {
 
   private async fillOneGap(): Promise<boolean> {
     const r = await this.db.query<{ from_block: string; to_block: string; attempts: number }>(
-      "SELECT from_block, to_block, attempts FROM block_gaps ORDER BY attempts ASC, from_block ASC LIMIT 1",
+      // Newest gap first: recent data is what the pages show.
+      "SELECT from_block, to_block, attempts FROM block_gaps ORDER BY attempts ASC, from_block DESC LIMIT 1",
     );
     const gap = r.rows[0];
     if (!gap) {
@@ -86,22 +87,15 @@ export class BackfillWorker {
     }
     const from = Number(gap.from_block);
     const to = Number(gap.to_block);
-    const chunkEnd = Math.min(to, from + this.cfg.batchBlocks - 1);
-    const numbers = Array.from({ length: chunkEnd - from + 1 }, (_, i) => from + i);
+    // Take the newest end of the gap: after a long outage the last hour matters more than the first.
+    const chunkStart = Math.max(from, to - this.cfg.batchBlocks + 1);
+    const numbers = Array.from({ length: to - chunkStart + 1 }, (_, i) => chunkStart + i);
     const failed = await this.ingest(numbers);
     if (failed.length === 0) {
-      if (chunkEnd === to) await this.db.query("DELETE FROM block_gaps WHERE from_block = $1", [from]);
-      // Shrink the gap to what is left. The remainder can start exactly where another gap already
-      // starts, so merge into it instead of colliding with the primary key.
-      else
-        await this.db.query(
-          `WITH gone AS (DELETE FROM block_gaps WHERE from_block = $1 RETURNING to_block, attempts, last_error)
-           INSERT INTO block_gaps (from_block, to_block, attempts, last_error)
-           SELECT $2, to_block, attempts, last_error FROM gone
-           ON CONFLICT (from_block) DO UPDATE SET to_block = GREATEST(block_gaps.to_block, EXCLUDED.to_block)`,
-          [from, chunkEnd + 1],
-        );
-      this.log.info({ from, to: chunkEnd }, "gap filled");
+      if (chunkStart === from) await this.db.query("DELETE FROM block_gaps WHERE from_block = $1", [from]);
+      // Shrinking from the top keeps the primary key (from_block) where it is, so nothing can collide.
+      else await this.db.query("UPDATE block_gaps SET to_block = $2 WHERE from_block = $1", [from, chunkStart - 1]);
+      this.log.info({ from: chunkStart, to }, "gap filled");
     } else {
       await this.db.query("UPDATE block_gaps SET attempts = attempts + 1, last_error = $2 WHERE from_block = $1", [from, `still failing: ${failed.join(",")}`]);
       await sleep(Math.min(30_000, 1000 * 2 ** Math.min(gap.attempts, 5)));
