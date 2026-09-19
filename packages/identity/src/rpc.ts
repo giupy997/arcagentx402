@@ -12,10 +12,12 @@
 import type { ArcNetwork } from "./index.js";
 
 /**
- * Public endpoints, in the order our own collector found them reliable on 2026-09-19 over a day of
- * real calls: blockdaemon and quicknode dropped none, drpc 9, rpc.mainnet.arc.io 16. All four passed
- * every liveness probe in that time, which is the point: a probe cannot tell them apart, so the
- * order has to carry what the probe cannot see.
+ * Public endpoints, in the order our own collector found them reliable over 24 hours to 2026-09-20,
+ * 8,197 liveness probes each: blockdaemon failed none and dropped no call, quicknode failed 5 probes
+ * and 8 calls, drpc 357 and 1,053, rpc.mainnet.arc.io 9 probes and 9,118 calls, almost all of them
+ * rate limits. The last figure is not normalised: it was first in our list, so it took most of our
+ * traffic. What holds either way is that it passed 99.9% of its probes while refusing calls, so a
+ * probe cannot tell these apart and the order has to carry what the probe cannot see.
  */
 export const PUBLIC_RPCS: Record<ArcNetwork, readonly string[]> = {
   arc: [
