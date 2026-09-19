@@ -132,6 +132,10 @@ export function addUsdc6(a: Usdc6, b: Usdc6): Usdc6 {
 export function subUsdc6(a: Usdc6, b: Usdc6): Usdc6 {
   return (a - b) as Usdc6;
 }
+/** What is left under a cap once `used` is taken out. Never negative: an overspent cap has nothing left, not a debt. */
+export function headroomUsdc6(cap: Usdc6, used: Usdc6): Usdc6 {
+  return (cap > used ? cap - used : 0n) as Usdc6;
+}
 export function addUsdc18(a: Usdc18, b: Usdc18): Usdc18 {
   return (a + b) as Usdc18;
 }

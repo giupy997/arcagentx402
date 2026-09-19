@@ -8,10 +8,10 @@
  * settled in batches. Sellers that do not batch fall back to the standard x402 "exact" on-chain scheme.
  * The escrow rail (ERC-8183) is routed but not executed yet.
  */
-import { formatUsdc6, usdc6, type Usdc6 } from "@cra-agent/accounting";
+import { addUsdc6, formatUsdc6, headroomUsdc6, usdc6, type Usdc6 } from "@cra-agent/accounting";
 import { CAIP2, type ArcNetwork, type IdentityResolver, type RailSigner } from "@cra-agent/identity";
 import type { Ledger, PaymentRecord } from "@cra-agent/ledger";
-import { evaluatePolicy, type PolicyContext, type PolicyDecision, type SpendPolicy } from "@cra-agent/policy";
+import { describePolicy, evaluatePolicy, type PolicyContext, type PolicyDecision, type SpendPolicy } from "@cra-agent/policy";
 import { supportsBatching } from "@circle-fin/x402-batching";
 import { GatewayClient, registerBatchScheme } from "@circle-fin/x402-batching/client";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
@@ -21,6 +21,9 @@ import { wrapFetchWithPayment } from "@x402/fetch";
 import { createPublicClient, http, type Address, type Hex } from "viem";
 import { CHAINS } from "@cra-agent/identity";
 import { chooseRail, DEFAULT_THRESHOLDS, type RouteDecision, type RouteThresholds } from "./decide.js";
+import { policyHash, spendReceiptDomain, SPEND_RECEIPT_TYPES, toWire, type SignedSpendReceipt, type SpendReceiptMessage } from "./attest.js";
+
+export * from "./attest.js";
 
 export { chooseRail, DEFAULT_THRESHOLDS, type RailChoice, type RouteDecision, type RouteInput, type RouteThresholds } from "./decide.js";
 
@@ -53,6 +56,22 @@ export interface Quote {
   readonly identity: { verified: boolean; agentIds: string[]; error: string | null } | null;
   readonly resource: PaymentRequired["resource"];
   readonly options: number;
+  /** The limits in force and where the agent stood against them when this was quoted. */
+  readonly budget: Budget;
+}
+
+/** Amounts as USDC decimal strings. "Before" means before this payment. */
+export interface Budget {
+  readonly perPaymentCapUsdc: string;
+  readonly dailyCapUsdc: string;
+  readonly perSellerCapUsdc: string;
+  readonly spentTodayBeforeUsdc: string;
+  readonly spentWithSellerBeforeUsdc: string;
+  /** What is left today and with this seller once this payment is counted. */
+  readonly leftTodayAfterUsdc: string;
+  readonly leftWithSellerAfterUsdc: string;
+  /** Fingerprint of the whole policy, so a receipt can be tied to one exact set of limits. */
+  readonly policyHash: string;
 }
 
 export interface Receipt {
@@ -66,6 +85,12 @@ export interface Receipt {
   readonly txHash: string | null;
   readonly latencyMs: number;
   readonly reason: string | null;
+  /** What was bought. */
+  readonly resource: string;
+  /** The limits this payment passed under, not only the rule that would have stopped it. */
+  readonly budget: Budget | null;
+  /** The same facts signed by the agent's key, for anyone who was not there. See verifySpendReceipt. */
+  readonly attestation: SignedSpendReceipt | null;
 }
 
 export interface RailResponse {
@@ -134,7 +159,7 @@ export function createRail(cfg: RailConfig): Rail {
   const httpClient = new x402HTTPClient(client);
 
   // Per-request state handed from the hooks to the fetch wrapper (hooks do not know the request).
-  interface InFlight { url: string; method: string; startedAt: number; quote: Quote | null; record: PaymentRecord | null; rejected: PolicyRejected | null }
+  interface InFlight { url: string; method: string; startedAt: number; quote: Quote | null; record: PaymentRecord | null; rejected: PolicyRejected | null; spent: { today: Usdc6; withSeller: Usdc6 } | null }
   let current: InFlight | null = null;
 
   async function policyContext(req: PaymentRequirements, url: string): Promise<{ ctx: PolicyContext; identity: Quote["identity"] }> {
@@ -159,7 +184,44 @@ export function createRail(cfg: RailConfig): Rail {
     const batching = supportsBatching(req);
     const route = chooseRail({ amount: price, kind: "call", supportsBatching: batching, maxTimeoutSeconds: req.maxTimeoutSeconds }, thresholds);
     const { ctx, identity } = await policyContext(req, url);
-    return { url, host: hostOf(url), price, priceUsdc: formatUsdc6(price), network: req.network, scheme: req.scheme, asset: req.asset, payTo: req.payTo, batching, route, policy: evaluatePolicy(cfg.policy, ctx), identity, resource: pr.resource, options: pr.accepts.length };
+    const quote: Quote = { url, host: hostOf(url), price, priceUsdc: formatUsdc6(price), network: req.network, scheme: req.scheme, asset: req.asset, payTo: req.payTo, batching, route, policy: evaluatePolicy(cfg.policy, ctx), identity, resource: pr.resource, options: pr.accepts.length, budget: budgetOf(price, ctx) };
+    spentAtQuote.set(quote, { today: ctx.spentInWindow, withSeller: ctx.spentInWindowWithCounterparty });
+    return quote;
+  }
+
+  // The exact figures a decision was made on, kept beside the quote so the receipt can sign the same ones.
+  const spentAtQuote = new WeakMap<Quote, { today: Usdc6; withSeller: Usdc6 }>();
+  const fingerprint = policyHash(describePolicy(cfg.policy));
+  function budgetOf(price: Usdc6, ctx: Pick<PolicyContext, "spentInWindow" | "spentInWindowWithCounterparty">): Budget {
+    const p = cfg.policy;
+    return {
+      perPaymentCapUsdc: formatUsdc6(p.perPaymentCap),
+      dailyCapUsdc: formatUsdc6(p.dailyCap),
+      perSellerCapUsdc: formatUsdc6(p.perCounterpartyDailyCap),
+      spentTodayBeforeUsdc: formatUsdc6(ctx.spentInWindow),
+      spentWithSellerBeforeUsdc: formatUsdc6(ctx.spentInWindowWithCounterparty),
+      leftTodayAfterUsdc: formatUsdc6(headroomUsdc6(p.dailyCap, addUsdc6(ctx.spentInWindow, price))),
+      leftWithSellerAfterUsdc: formatUsdc6(headroomUsdc6(p.perCounterpartyDailyCap, addUsdc6(ctx.spentInWindowWithCounterparty, price))),
+      policyHash: fingerprint,
+    };
+  }
+
+  /** The receipt's facts, signed. The spent-before figures are the ones the policy decision was made on. */
+  async function attest(rec: PaymentRecord, status: string, spent: { today: Usdc6; withSeller: Usdc6 }): Promise<SignedSpendReceipt | null> {
+    try {
+      const message: SpendReceiptMessage = {
+        agent: cfg.signer.address, resource: rec.url, payTo: rec.payTo as Address, network: rec.network, amount: rec.amount, status,
+        settlementId: rec.txHash ?? "", policyHash: fingerprint,
+        perPaymentCap: cfg.policy.perPaymentCap, dailyCap: cfg.policy.dailyCap, perSellerCap: cfg.policy.perCounterpartyDailyCap,
+        spentTodayBefore: spent.today, spentWithSellerBefore: spent.withSeller, issuedAt: BigInt(Math.floor(Date.now() / 1000)),
+      };
+      const domain = spendReceiptDomain(CHAINS[cfg.network].id);
+      const signature = await cfg.signer.account.signTypedData({ domain, types: SPEND_RECEIPT_TYPES, primaryType: "SpendReceipt", message });
+      return { domain, message: toWire(message), signature };
+    } catch (err) {
+      log("receipt.unsigned", { ledgerId: rec.id, error: (err as Error).message.slice(0, 120) });
+      return null; // a receipt without a signature is still a receipt; the payment already happened
+    }
   }
 
   /** Prefer our network and batched settlement; the SDK's default selector would take the first option. */
@@ -173,7 +235,10 @@ export function createRail(cfg: RailConfig): Rail {
     const inflight = current;
     const url = inflight?.url ?? ctx.paymentRequired.resource.url;
     const quote = await buildQuote(url, ctx.paymentRequired, req);
-    if (inflight) inflight.quote = quote;
+    if (inflight) {
+      inflight.quote = quote;
+      inflight.spent = spentAtQuote.get(quote) ?? null;
+    }
     if (quote.route.rail === "escrow") {
       await cfg.ledger.record({ agentId: cfg.agentId, rail: "escrow", url, host: quote.host, method: inflight?.method ?? "GET", network: req.network, scheme: req.scheme, asset: req.asset, payTo: req.payTo, amount: quote.price, status: "rejected", reason: `escrow rail not executable yet: ${quote.route.reason}` });
       return { abort: true, reason: "escrow" };
@@ -237,23 +302,28 @@ export function createRail(cfg: RailConfig): Rail {
       const pr = httpClient.getPaymentRequiredResponse((n) => res.headers.get(n), body);
       const req = pickRequirements(pr.accepts);
       if (!req) {
-        return { url, host: hostOf(url), price: usdc6(0n), priceUsdc: "0", network: "-", scheme: "-", asset: "-", payTo: "-", batching: false, route: { rail: "nanopayment", reason: "n/a" }, policy: { allow: false, rule: "network", reason: `seller accepts no payment on ${caip2} (offers: ${pr.accepts.map((a) => a.network).join(", ")})` }, identity: null, resource: pr.resource, options: pr.accepts.length };
+        return { url, host: hostOf(url), price: usdc6(0n), priceUsdc: "0", network: "-", scheme: "-", asset: "-", payTo: "-", batching: false, route: { rail: "nanopayment", reason: "n/a" }, policy: { allow: false, rule: "network", reason: `seller accepts no payment on ${caip2} (offers: ${pr.accepts.map((a) => a.network).join(", ")})` }, identity: null, resource: pr.resource, options: pr.accepts.length, budget: budgetOf(usdc6(0n), { spentInWindow: usdc6(0n), spentInWindowWithCounterparty: usdc6(0n) }) };
       }
       return buildQuote(url, pr, req);
     },
 
     async fetch(url, init) {
       const method = (init?.method ?? "GET").toUpperCase();
-      current = { url, method, startedAt: Date.now(), quote: null, record: null, rejected: null };
+      current = { url, method, startedAt: Date.now(), quote: null, record: null, rejected: null, spent: null };
       const mine = current;
       try {
         const response = await payingFetch(url, init);
         const rec = mine.record;
         if (!rec) return { response, receipt: null };
         if (rec.httpStatus === null) await cfg.ledger.update(rec.id, { httpStatus: response.status, latencyMs: Date.now() - mine.startedAt });
+        const status = rec.status === "settled" ? "settled" : rec.status === "quoted" ? "not_charged" : "failed";
+        const budget = mine.quote?.budget ?? null;
+        const attestation = mine.spent ? await attest(rec, status, mine.spent) : null;
+        // Kept with the row too, so the ledger can hand the same signed object back later.
+        if (budget || attestation) await cfg.ledger.update(rec.id, { meta: { ...(rec.meta ?? {}), budget, attestation } });
         return {
           response,
-          receipt: { ledgerId: rec.id, amount: rec.amount, amountUsdc: formatUsdc6(rec.amount), payTo: rec.payTo, network: rec.network, status: rec.status === "settled" ? "settled" : rec.status === "quoted" ? "not_charged" : "failed", txHash: rec.txHash, latencyMs: Date.now() - mine.startedAt, reason: rec.reason },
+          receipt: { ledgerId: rec.id, amount: rec.amount, amountUsdc: formatUsdc6(rec.amount), payTo: rec.payTo, network: rec.network, status, txHash: rec.txHash, latencyMs: Date.now() - mine.startedAt, reason: rec.reason, resource: rec.url, budget, attestation },
         };
       } catch (err) {
         if (mine.rejected) throw mine.rejected;

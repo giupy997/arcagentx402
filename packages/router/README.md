@@ -28,6 +28,15 @@ const { response, receipt } = await rail.fetch(url); // pays; receipt is null wh
 const proofs = await rail.resolveSettlements(); // receipts matched to on-chain transfers
 ```
 
+Every receipt carries `budget` (the caps in force, what had been spent, what is left) and `attestation`, the same facts signed with the agent's key. Anyone can check one offline:
+
+```ts
+import { verifySpendReceipt } from "@cra-agent/router";
+const { valid, signer, withinStatedLimits } = await verifySpendReceipt(receipt.attestation, expectedAgent);
+```
+
+The signature proves the agent's key issued the statement and that nothing was changed since. It is the rail vouching for itself; the settlement on chain is the independent part.
+
 A policy rejection never reaches the signer: it is recorded in the ledger with the rule that stopped it. A seller whose handler fails is recorded as `quoted`, not charged. `chooseRail()` is pure and decides between a nanopayment and ERC-8183 escrow by amount and kind.
 
 The buyer needs a Gateway balance first: `await rail.deposit("1")`.

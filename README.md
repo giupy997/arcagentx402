@@ -103,6 +103,11 @@ catalogue picks it up. The Arc rail is untouched and our own buyer keeps choosin
   handler, and settles only if it succeeded. Our own API exposes `GET /v1/paid/selftest/fail`, a priced
   route that always answers 500, so anyone can check it: the response is 500, the receipt reads
   `not_charged`, and the Gateway balance does not move.
+- **Every receipt can be checked by someone who was not there.** It carries the limits the payment
+  passed under and what had already been spent, and it is signed with the agent's key (EIP-712).
+  `cra-agent verify receipt.json` recovers the signer and redoes the arithmetic, with no key and no
+  network. Be clear about what that proves: the agent's key issued this statement and nobody altered
+  it since. It is the rail vouching for its own decision. The independent half is the settlement.
 - **Every settled payment ends with a transaction anyone can check.** Circle Gateway settles in batches,
   so the transfer reaches the seller after the response. `cra-agent proof` (MCP: `arc_proof`) matches
   settled payments to the on-chain USDC transfer that carried them and stores the hash in the ledger.

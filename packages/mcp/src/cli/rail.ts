@@ -3,10 +3,13 @@
  * Tiny CLI over the same rail the MCP server uses. For humans and for smoke tests.
  *   cra-agent quote <url>        cra-agent pay <url>        cra-agent balance
  *   cra-agent deposit <usdc>     cra-agent ledger [n]       cra-agent policy
+ *   cra-agent verify <receipt.json> [agent]    checks a signed receipt; needs no key and no network
  */
 import { formatUsdc6 } from "@cra-agent/accounting";
 import { describePolicy } from "@cra-agent/policy";
-import { EscrowNotImplemented, PolicyRejected } from "@cra-agent/router";
+import { readFileSync } from "node:fs";
+import type { Address } from "viem";
+import { EscrowNotImplemented, PolicyRejected, verifySpendReceipt, type SignedSpendReceipt } from "@cra-agent/router";
 import { registerIdentity } from "@cra-agent/identity";
 import { railFromEnv } from "../rail-from-env.js";
 
@@ -14,6 +17,18 @@ const out = (v: unknown) => console.log(JSON.stringify(v, (_k, x) => (typeof x =
 
 async function main(): Promise<void> {
   const [cmd, arg] = process.argv.slice(2);
+  // Checking someone else's receipt needs no key, no network and no ledger, so it runs before any of that.
+  if (cmd === "verify") {
+    if (!arg) throw new Error("usage: verify <receipt.json | - for stdin> [expected agent address]");
+    const raw = JSON.parse(readFileSync(arg === "-" ? 0 : arg, "utf8")) as Record<string, unknown>;
+    // Accept the signed object itself, a receipt that carries one, or the whole output of `pay`.
+    const receipt = (raw.receipt as Record<string, unknown> | undefined) ?? raw;
+    const signed = ((receipt.attestation as unknown) ?? receipt) as SignedSpendReceipt;
+    const expected = process.argv[4] as Address | undefined;
+    const check = await verifySpendReceipt(signed, expected);
+    out({ ...check, agent: signed.message?.agent, resource: signed.message?.resource, amountBaseUnits: signed.message?.amount, settlementId: signed.message?.settlementId, policyHash: signed.message?.policyHash });
+    process.exit(check.valid && check.withinStatedLimits ? 0 : 1);
+  }
   const { rail, ledger, policy, network, agentId, signer, escrow, rpcUrl } = await railFromEnv();
   switch (cmd) {
     case "quote": {
@@ -69,7 +84,7 @@ async function main(): Promise<void> {
       break;
     }
     default:
-      console.error("usage: cra-agent <quote|pay|balance|deposit|ledger|policy> [arg]");
+      console.error("usage: cra-agent <quote|pay|balance|deposit|ledger|policy|proof|verify> [arg]");
       process.exit(2);
   }
   await ledger.close();

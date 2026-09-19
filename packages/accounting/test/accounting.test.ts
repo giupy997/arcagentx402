@@ -194,3 +194,12 @@ describe("branding", () => {
     expect(a).toBe(3n);
   });
 });
+
+describe("headroom under a cap", () => {
+  it("is what is left, and never a debt", async () => {
+    const { headroomUsdc6, usdc6 } = await import("../src/index.js");
+    expect(headroomUsdc6(usdc6(5_000_000n), usdc6(310_500n))).toBe(4_689_500n);
+    expect(headroomUsdc6(usdc6(100n), usdc6(100n))).toBe(0n);
+    expect(headroomUsdc6(usdc6(100n), usdc6(250n))).toBe(0n);
+  });
+});
