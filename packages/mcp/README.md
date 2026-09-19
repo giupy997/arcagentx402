@@ -35,6 +35,7 @@ npm i -g @cra-agent/mcp
 | `arc_deposit` | Moves wallet USDC into the Gateway balance. Needed once before the first payment. |
 | `arc_ledger` | Every attempt: quoted, rejected, signed, settled, failed. |
 | `arc_proof` | Matches settled payments to the on-chain transfer that carried them. |
+| `arc_verify_receipt` | Checks a signed receipt from another agent: who signed it, and whether the payment fitted the limits it states. |
 | `arc_policy` | Shows the limits in force. |
 | `arc_job_*` | ERC-8183 escrow jobs. Testnet only until the contract is deployed on Arc mainnet. |
 
@@ -46,7 +47,10 @@ cra-agent quote https://api.cra-agent.tech/v1/paid/rpc/health
 cra-agent deposit 1
 cra-agent pay   https://api.cra-agent.tech/v1/paid/rpc/health
 cra-agent proof
+cra-agent verify receipt.json      # needs no key and no network
 ```
+
+Every receipt carries the limits the payment passed under and is signed with the agent's key, so someone who was not there can check it. The signature proves the agent issued the statement and nobody changed it; the settlement on chain is the independent half.
 
 ## Environment
 

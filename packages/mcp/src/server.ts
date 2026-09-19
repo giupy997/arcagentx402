@@ -9,7 +9,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { formatUsdc6 } from "@cra-agent/accounting";
 import { describePolicy } from "@cra-agent/policy";
-import { EscrowNotImplemented, PolicyRejected } from "@cra-agent/router";
+import { EscrowNotImplemented, PolicyRejected, verifySpendReceipt, type SignedSpendReceipt } from "@cra-agent/router";
 import { evaluatePolicy } from "@cra-agent/policy";
 import { usdc6 } from "@cra-agent/accounting";
 import type { Address, Hex } from "viem";
@@ -94,6 +94,19 @@ async function main(): Promise<void> {
       const proofs = await rail.resolveSettlements({ limit: limit ?? 20 });
       return text(proofs.length ? proofs : { matched: 0, note: "nothing new on chain yet" });
     } catch (err) { return fail(`proof lookup failed: ${(err as Error).message}`); }
+  });
+
+  server.registerTool("arc_verify_receipt", {
+    title: "Check a signed spend receipt",
+    description: "Verifies a receipt another agent hands over: recovers who signed it, checks it is the agent named inside, and redoes the arithmetic to confirm the payment fitted the limits it states. It proves the agent's key issued the statement and that nothing was altered; it does not prove the payment settled, which is what the settlement id is for. Needs no payment and spends nothing.",
+    inputSchema: { receipt: z.string().describe("The signed receipt as JSON: the attestation object, or a receipt that contains one"), expectedAgent: z.string().optional().describe("The address the receipt is supposed to come from") },
+  }, async ({ receipt, expectedAgent }) => {
+    try {
+      const raw = JSON.parse(receipt) as Record<string, unknown>;
+      const inner = (raw.receipt as Record<string, unknown> | undefined) ?? raw;
+      const signed = ((inner.attestation as unknown) ?? inner) as SignedSpendReceipt;
+      return text(await verifySpendReceipt(signed, expectedAgent as Address | undefined));
+    } catch (err) { return fail(`not a readable receipt: ${(err as Error).message}`); }
   });
 
   server.registerTool("arc_policy", {
