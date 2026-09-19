@@ -14,7 +14,7 @@ const out = (v: unknown) => console.log(JSON.stringify(v, (_k, x) => (typeof x =
 
 async function main(): Promise<void> {
   const [cmd, arg] = process.argv.slice(2);
-  const { rail, ledger, policy, network, agentId, signer, escrow } = await railFromEnv();
+  const { rail, ledger, policy, network, agentId, signer, escrow, rpcUrl } = await railFromEnv();
   switch (cmd) {
     case "quote": {
       if (!arg) throw new Error("usage: quote <url>");
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
     }
     case "identity-register": {
       if (!arg) throw new Error("usage: identity-register <agentURI>");
-      const r = await registerIdentity({ network, signer, agentURI: arg, ...(process.env.CRA_RPC_URL ? { rpcUrl: process.env.CRA_RPC_URL } : {}) });
+      const r = await registerIdentity({ network, signer, agentURI: arg, rpcUrl });
       out({ agentId: r.agentId.toString(), txHash: r.txHash, registry: r.registry, owner: signer.address });
       break;
     }

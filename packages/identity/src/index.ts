@@ -168,3 +168,5 @@ export async function registerIdentity(opts: RegisterIdentityOptions): Promise<{
   if (!ev) throw new Error("register: no Registered event in receipt");
   return { agentId: ev.args.agentId, txHash, registry };
 }
+
+export * from "./rpc.js";
