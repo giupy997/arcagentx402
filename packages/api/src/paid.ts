@@ -6,6 +6,13 @@ import type { Db } from "./db.js";
 import { deployStats, feeEstimate, feeSummary, fxSummary, recentDeploys, rpcStatus } from "./queries.js";
 import { PAID_ROUTES, type QueryParam } from "./routes.js";
 
+/** What a route costs on the direct rail: its own price, but never below the floor that covers our gas. */
+function directPriceOf(price: string): string {
+  const floor = parseUsdc6(process.env.DIRECT_MIN_PRICE_USDC ?? "0.003");
+  const asked = parseUsdc6(price.replace("$", ""));
+  return formatUsdc6(compareUsdc6(asked, floor) < 0 ? floor : asked);
+}
+
 /** The query a route takes, as JSON Schema, for the discovery catalogue. */
 function querySchema(params: readonly QueryParam[]): Record<string, unknown> {
   return {
@@ -67,11 +74,7 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
     // Settled one by one, every payment costs us about $0.002 of gas, more than our cheapest route
     // charges. Below that price a stranger could drain the gas wallet at a profit to nobody, so the
     // direct rail has a floor. Batched settlement on /v1/paid is what makes the lower prices possible.
-    const floor = parseUsdc6(process.env.DIRECT_MIN_PRICE_USDC ?? "0.003");
-    const directPrice = (price: string): string => {
-      const asked = parseUsdc6(price.replace("$", ""));
-      return `$${formatUsdc6(compareUsdc6(asked, floor) < 0 ? floor : asked)}`;
-    };
+    const directPrice = (price: string): string => `$${directPriceOf(price)}`;
     for (const r of PAID_ROUTES) {
       direct.route(`GET ${r.path.replace("/v1/paid", "/v1/direct")}`, directPrice(r.price), { description: r.description, maxTimeoutSeconds: 120, ...(r.preview === undefined ? {} : { preview: r.preview }) });
     }
@@ -111,7 +114,7 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
 
   }
 
-  app.get("/v1/direct", (c) => c.json(directFacilitator ? { settlement: "direct", network: seller.network, payTo: seller.sellerAddress, asset: "0x3600000000000000000000000000000000000000", note: "Sign an EIP-3009 authorization from your wallet. No deposit, no gas on your side.", routes: PAID_ROUTES.map((r) => ({ route: `GET ${r.path.replace("/v1/paid", "/v1/direct")}`, summary: r.summary, params: r.params ?? [], alwaysFails: r.alwaysFails === true })) } : { settlement: "off" }));
+  app.get("/v1/direct", (c) => c.json(directFacilitator ? { settlement: "direct", network: seller.network, payTo: seller.sellerAddress, asset: "0x3600000000000000000000000000000000000000", note: "Sign an EIP-3009 authorization from your wallet. No deposit, no gas on your side.", routes: PAID_ROUTES.map((r) => ({ route: `GET ${r.path.replace("/v1/paid", "/v1/direct")}`, summary: r.summary, label: r.plain.label, explain: r.plain.explain, priceUsd: directPriceOf(r.price), params: r.params ?? [], alwaysFails: r.alwaysFails === true })) } : { settlement: "off" }));
   app.get("/v1/paid", (c) => c.json({ seller: seller.sellerAddress, network: seller.network, facilitator: seller.facilitatorUrl, routes: Object.entries(seller.routes).map(([k, v]) => ({ route: k, price: String((Array.isArray(v.accepts) ? v.accepts[0] : v.accepts)?.price), description: v.description ?? null })) }));
   log.info({ seller: sellerAddress, network: seller.network, routes: Object.keys(seller.routes).length, discovery: discovery ? `${basePayTo} via ${discoveryFacilitator ?? "coinbase"}` : "off" }, "paid endpoints mounted");
 }

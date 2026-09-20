@@ -21,6 +21,8 @@ export interface PaidRoute {
   readonly preview?: unknown;
   /** This route answers 500 on purpose. */
   readonly alwaysFails?: boolean;
+  /** The same thing for someone who is not a developer: a name, and what they get and why they would want it. */
+  readonly plain: { readonly label: string; readonly explain: string };
 }
 
 const WINDOW: QueryParam = { name: "window", type: "integer", description: "Window in minutes, 5 to 1440.", example: 60 };
@@ -28,6 +30,7 @@ const WINDOW: QueryParam = { name: "window", type: "integer", description: "Wind
 export const PAID_ROUTES: readonly PaidRoute[] = [
   {
     path: "/v1/paid/fees/forecast",
+    plain: { label: "What a transaction on Arc costs right now", explain: "The network fee on Arc at this moment and for the next block, the range over the last day, and what common actions cost, like sending USDC or swapping. Useful before you send something, to know if now is a cheap or an expensive moment." },
     price: "$0.001",
     summary: "Base fee now and next block",
     description: "Base fee now and next block, 24h band, utilisation trend, cost per operation type",
@@ -35,6 +38,7 @@ export const PAID_ROUTES: readonly PaidRoute[] = [
   },
   {
     path: "/v1/paid/fees/estimate",
+    plain: { label: "The cost of one simple transfer, in dollars", explain: "One number: what a basic transfer costs on Arc right now, in USDC. The smallest and quickest thing you can buy here." },
     price: "$0.0005",
     summary: "Cost of a transaction at the current base fee",
     description: "Cost in USDC of a transaction with the given gas at current and next base fee (?gas=21000)",
@@ -42,6 +46,7 @@ export const PAID_ROUTES: readonly PaidRoute[] = [
   },
   {
     path: "/v1/paid/deploys/history",
+    plain: { label: "New smart contracts appearing on Arc", explain: "The contracts deployed on Arc most recently, with what we know about each, and how many appear per hour. A way to see what is being built on the chain, as it happens." },
     price: "$0.002",
     summary: "Contract deploys, recent and per hour",
     description: "Recent contract deploys with labels and per-hour history (?limit=200)",
@@ -49,12 +54,14 @@ export const PAID_ROUTES: readonly PaidRoute[] = [
   },
   {
     path: "/v1/paid/rpc/health",
+    plain: { label: "Which Arc connection points are fast and reliable", explain: "Apps talk to Arc through public access points. This shows how fast each one answers and how often it fails, measured by us every few seconds. Useful if you build on Arc and need to pick one." },
     price: "$0.0005",
     summary: "Per-provider RPC latency and head lag",
     description: "Per-provider RPC latency, head lag and error rates, last 15 minutes",
   },
   {
     path: "/v1/paid/fx/execution",
+    plain: { label: "The euro to dollar rate on Arc, from real trades", explain: "What people actually paid to swap digital euros (EURC) for digital dollars (USDC) on Arc in the last hour: the average rate, the range, and how the rate changes with the size of the trade. Taken from trades that happened, not from a quoted price." },
     price: "$0.001",
     summary: "Executed prices against USDC, by trade size",
     description:
@@ -64,6 +71,7 @@ export const PAID_ROUTES: readonly PaidRoute[] = [
   },
   {
     path: "/v1/paid/selftest/fail",
+    plain: { label: "A call that fails on purpose (you are not charged)", explain: "This one always breaks. It is here so you can check our claim yourself: you sign the payment, the request fails, and your money never moves. Look at your balance before and after." },
     price: "$0.001",
     summary: "Always fails, on purpose",
     description:

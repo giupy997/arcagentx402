@@ -25,7 +25,7 @@ const EXPLORER = "https://explorer.arc.io";
 interface Eip1193 { request(args: { method: string; params?: unknown[] }): Promise<unknown> }
 interface Accept { scheme: string; network: string; amount: string; asset: string; payTo: string; maxTimeoutSeconds: number; extra?: { name?: string; version?: string } }
 interface PaymentRequired { x402Version: number; resource: unknown; accepts: Accept[]; extensions?: unknown }
-interface RouteInfo { route: string; summary: string; params: Array<{ name: string; example?: string | number }>; alwaysFails: boolean }
+interface RouteInfo { route: string; summary: string; label?: string; explain?: string; priceUsd?: string; params: Array<{ name: string; example?: string | number }>; alwaysFails: boolean }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const wallet = (): Eip1193 | null => (window as unknown as { ethereum?: Eip1193 }).ethereum ?? null;
@@ -35,6 +35,8 @@ const usd = (baseUnits: string) => `$${(Number(baseUnits) / 1e6).toFixed(6).repl
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 let account: string | null = null;
+/** What each choice is, in plain words, shown under the menu. */
+const explain = new Map<string, string>();
 
 function step(text: string, state: "" | "ok" | "bad" = ""): HTMLLIElement {
   const li = document.createElement("li");
@@ -55,12 +57,16 @@ async function loadRoutes(): Promise<void> {
       const query = r.params.filter((p) => p.example !== undefined).map((p) => `${p.name}=${encodeURIComponent(String(p.example))}`).join("&");
       const opt = document.createElement("option");
       opt.value = query ? `${path}?${query}` : path;
-      opt.textContent = `${r.summary}${r.alwaysFails ? " (you will not be charged)" : ""}`;
+      opt.textContent = `${r.label ?? r.summary}${r.priceUsd && !r.alwaysFails ? `, $${r.priceUsd}` : ""}`;
+      explain.set(opt.value, `${r.explain ?? r.summary}${r.priceUsd ? (r.alwaysFails ? " It would cost nothing even if it worked differently: a failed call is never charged." : ` Costs $${r.priceUsd}.`) : ""}`);
       sel.appendChild(opt);
     }
     // Lead with the one people understand at a glance.
     const fx = [...sel.options].find((o) => o.value.includes("/fx/execution"));
     if (fx) sel.value = fx.value;
+    const show = () => { $("route-note").textContent = explain.get(sel.value) ?? ""; };
+    sel.addEventListener("change", show);
+    show();
   } catch (err) {
     $("route-note").textContent = `Could not load the routes: ${(err as Error).message}`;
   }
