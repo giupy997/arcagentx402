@@ -302,3 +302,5 @@ footer.site a { word-break: break-all; }
 .try .json { margin: 0; padding: 14px; background: var(--navy-900); color: #dbe6f7; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; overflow-x: auto; max-height: 420px; white-space: pre-wrap; word-break: break-word; }
 .try code { font-family: var(--mono); font-size: .92em; }
 .try .chart-card p { margin: 10px 0 0; }
+.try .callout { margin: 14px 0 4px; padding: 12px 14px; border-left: 3px solid var(--blue-600); background: var(--paper-2); color: var(--ink-2); font-size: 14.5px; line-height: 1.55; }
+.try .callout b { color: var(--ink); font-weight: 600; }

@@ -63,7 +63,10 @@
   </div>
 
   <div class="chart-card wide">
-    <div class="head"><div><h2>3. Pay and fetch</h2><div class="sub">Your wallet shows exactly what you sign: a USDC transfer of the amount below, to the address below, valid for two minutes. Nothing else can be done with that signature.</div></div></div>
+    <div class="head"><div><h2>3. Pay and fetch</h2><div class="sub">You sign a permission to move one exact amount to one address, once, within two minutes. There is no transaction to send and no gas to pay.</div></div></div>
+    <div class="callout">
+      <b>What your wallet will show, so it does not surprise you.</b> Some wallets, Rabby for one, label this a “token approval” and flag our address as new to you. That label is right to make you look twice, so look at the amount: it says <b>0.0030</b>, not “unlimited”. This is not the kind of approval that lets someone empty a wallet. It can move three tenths of a cent, to <span class="mono">0x33b3…Ea74</span>, one time. Check those two values in the wallet before you sign. If either is different, cancel.
+    </div>
     <p><button class="btn" id="pay" type="button" disabled>Pay and fetch</button></p>
     <ol class="steps" id="steps"></ol>
   </div>
