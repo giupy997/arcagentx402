@@ -46,6 +46,29 @@ function step(text: string, state: "" | "ok" | "bad" = ""): HTMLLIElement {
   return li;
 }
 
+/** One sentence on what just arrived, for someone who does not read JSON. The full answer stays below it. */
+function inPlainWords(url: string, body: string): string {
+  try {
+    const d = JSON.parse(body) as Record<string, any>;
+    const n = (v: unknown, digits: number) => Number(v).toFixed(digits);
+    if (url.includes("/fx/execution")) {
+      const w = d.window ?? {};
+      return `Right now 1 ${d.symbol} trades for ${n(d.last?.rate, 4)} USDC on Arc. Over the last ${w.minutes} minutes: ${w.trades} real trades, average ${n(w.vwap, 4)}, worth $${w.volumeUsdc}.`;
+    }
+    if (url.includes("/fees/estimate")) return `A simple transfer on Arc costs about $${d.costUsdc} right now, with the network fee at ${d.baseFeeGwei} gwei.`;
+    if (url.includes("/fees/forecast")) return `The network fee on Arc is ${n(d.current?.baseFeeGwei, 1)} gwei now. Sending USDC costs about $${d.costNow?.erc20TransferUsdc}, and the floor is ${d.floorGwei} gwei.`;
+    if (url.includes("/rpc/health")) {
+      const rows = (Array.isArray(d) ? d : []) as Array<Record<string, any>>;
+      const best = [...rows].sort((a, b) => a.callErrors - b.callErrors || a.rttAvgMs - b.rttAvgMs)[0];
+      return best ? `${rows.length} public access points measured. The most reliable right now is ${new URL(best.endpoint).host}: ${best.callErrors} failed calls, ${best.rttAvgMs} ms on average.` : "Measurements for the public access points.";
+    }
+    if (url.includes("/deploys/history")) return `${(d.recent ?? []).length} of the most recent contracts deployed on Arc, newest first.`;
+  } catch {
+    /* not JSON: nothing to summarise */
+  }
+  return "The full answer is below.";
+}
+
 async function loadRoutes(): Promise<void> {
   const sel = $<HTMLSelectElement>("route");
   try {
@@ -118,6 +141,7 @@ async function pay(): Promise<void> {
   $("result-card").classList.add("hidden");
   const url = `${API_BASE}${$<HTMLSelectElement>("route").value}`;
   const started = performance.now();
+  let thinking = 0;
   try {
     const first = await fetch(url, { headers: { accept: "application/json" } });
     if (first.status !== 402) throw new Error(`expected 402 Payment Required, got ${first.status}`);
@@ -159,13 +183,15 @@ async function pay(): Promise<void> {
       message: authorization,
     };
     const waiting = step("Waiting for your signature in the wallet…");
+    const askedAt = performance.now();
     const signature = (await w.request({ method: "eth_signTypedData_v4", params: [account, JSON.stringify(typed)] })) as string;
+    thinking = performance.now() - askedAt; // the time you spent reading the wallet is not the rail's
     waiting.textContent = "Signed. That signature can move this amount to this address, once, before it expires.";
     waiting.className = "ok";
 
     const payload = { x402Version: required.x402Version, resource: required.resource, accepted: accept, payload: { authorization, signature }, ...(required.extensions ? { extensions: required.extensions } : {}) };
     const second = await fetch(url, { headers: { accept: "application/json", "PAYMENT-SIGNATURE": b64(JSON.stringify(payload)) } });
-    const took = ((performance.now() - started) / 1000).toFixed(1);
+    const took = ((performance.now() - started - thinking) / 1000).toFixed(1);
     const settleHeader = second.headers.get("PAYMENT-RESPONSE");
     const settle = settleHeader ? (JSON.parse(unb64(settleHeader)) as { success?: boolean; transaction?: string }) : null;
     const text = await second.text();
@@ -184,7 +210,7 @@ async function pay(): Promise<void> {
     } else {
       step(`Not settled (HTTP ${second.status}). Nothing was charged.`, "bad");
     }
-    $("result-sub").textContent = `HTTP ${second.status}`;
+    $("result-sub").textContent = second.ok ? inPlainWords(url, text) : `HTTP ${second.status}`;
     let shown = text;
     try { shown = JSON.stringify(JSON.parse(text), null, 2); } catch { /* not json, show as is */ }
     $("result").textContent = shown.slice(0, 6000);
