@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRA AGENT — pay for an API call from your wallet</title>
+<meta name="description" content="Connect a wallet, sign once, and buy one API call in USDC on Arc. No deposit, no gas, no signup.">
+<meta name="theme-color" content="#061a42">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="nav" id="nav">
+  <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+  <div class="nav-right">
+    <span class="net-pill" id="netpill"><span class="dot" id="netdot"></span><span id="netlabel">Arc mainnet</span></span>
+    <button class="menu-btn" type="button" data-menu-open aria-label="Open menu" aria-controls="menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+</header>
+<div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="Menu">
+  <div class="menu-top">
+    <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+    <button class="menu-btn" type="button" data-menu-close aria-label="Close menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3.5 3.5l11 11M14.5 3.5l-11 11" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+  <ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="/#how">How it works</a></li>
+    <li><a href="/#install">Install the agent</a></li>
+    <li><a href="/#sell">Sell an endpoint</a></li>
+    <li><a href="/network">Network</a></li>
+    <li><a href="/try">Try it</a></li>
+    <li><a href="/token">Token</a></li>
+    <li><a href="https://x.com/Craagentarc" rel="noopener">X</a></li>
+    <li><a href="https://github.com/giupy997/arcagentx402" rel="noopener">GitHub</a></li>
+  </ul>
+  <div class="menu-foot">x402 · Circle Gateway · USDC on Arc</div>
+</div>
+
+<section class="page-head">
+  <div class="marks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div class="wrap">
+    <p class="kicker" style="color:rgba(255,255,255,.8)">Try it</p>
+    <h1>Buy one API call from your wallet</h1>
+    <div class="meta">Arc mainnet · USDC · you sign once, you pay no gas, nothing to deposit or sign up for</div>
+  </div>
+</section>
+
+<main class="wrap dash try">
+  <div class="chart-card wide">
+    <div class="head"><div><h2>1. Connect</h2><div class="sub">Any browser wallet. We ask for your address and for Arc to be the active network, nothing else.</div></div></div>
+    <p><button class="btn" id="connect" type="button">Connect wallet</button> <span class="mono" id="account"></span></p>
+    <p class="sub" id="balance"></p>
+  </div>
+
+  <div class="chart-card wide">
+    <div class="head"><div><h2>2. Choose what to buy</h2><div class="sub">Real data, read from Arc by our collector. Each call is settled on its own, which is why it costs more here than on the batched rail.</div></div></div>
+    <p><select id="route" class="select"></select></p>
+    <p class="sub" id="route-note"></p>
+  </div>
+
+  <div class="chart-card wide">
+    <div class="head"><div><h2>3. Pay and fetch</h2><div class="sub">Your wallet shows exactly what you sign: a USDC transfer of the amount below, to the address below, valid for two minutes. Nothing else can be done with that signature.</div></div></div>
+    <p><button class="btn" id="pay" type="button" disabled>Pay and fetch</button></p>
+    <ol class="steps" id="steps"></ol>
+  </div>
+
+  <div class="chart-card wide hidden" id="result-card">
+    <div class="head"><div><h2>What came back</h2><div class="sub" id="result-sub"></div></div></div>
+    <pre class="json" id="result"></pre>
+  </div>
+
+  <div class="chart-card wide">
+    <div class="head"><div><h2>What just happened</h2></div></div>
+    <p class="sub">The API answered <code>402 Payment Required</code> with a price. Your wallet signed an EIP-3009 authorization: a permission to move that exact amount to that exact address before it expires. Our facilitator checked it, ran the request, and only then submitted the transfer and paid its gas. If the request had failed, the authorization would never have been used. Try the route that fails on purpose to see it.</p>
+    <p class="sub">An agent does the same thing without a person in the loop, under a spending policy it cannot change: <a href="/#install">install the agent</a>.</p>
+  </div>
+</main>
+
+<footer class="site light">
+  <span>Settled on Arc mainnet by our own facilitator · it only settles payments to us</span>
+  <span><a href="/">Home</a> · <a href="/network">Network</a> · <a href="/token">Token</a> · <a href="/v1/direct">/v1/direct</a></span>
+</footer>
+<script src="/config.js"></script>
+<script type="module" src="/js/try.js"></script>
+</body>
+</html>

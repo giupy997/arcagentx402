@@ -30,7 +30,8 @@ const pickBase = (_v: number, accepts: PaymentRequirements[]): PaymentRequiremen
 const client = new x402Client(pickBase);
 client.register(BASE, new ExactEvmScheme(account));
 // A hard ceiling for this script: a cent, whatever the route claims to cost.
-client.setSpendControls({ maxAmountPerPayment: "$0.01" });
+// Arc's USDC is not one of the SDK's default assets yet, so it has to be named, with its own cap in base units.
+client.setSpendControls({ maxAmountPerPayment: "$0.01", allowedAssets: [{ network: "eip155:5042", asset: "0x3600000000000000000000000000000000000000", maxAmountPerPayment: 10_000n }] });
 
 const paying = wrapFetchWithPayment(globalThis.fetch, client);
 const res = await paying(url);

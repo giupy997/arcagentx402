@@ -1,4 +1,5 @@
 import type { Hono } from "hono";
+import { compareUsdc6, formatUsdc6, parseUsdc6 } from "@cra-agent/accounting";
 import type { Logger } from "pino";
 import { createSeller } from "@cra-agent/seller";
 import type { Db } from "./db.js";
@@ -63,8 +64,16 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
   const directFacilitator = process.env.DIRECT_FACILITATOR_URL;
   if (directFacilitator) {
     const direct = createSeller({ sellerAddress, network: network === "mainnet" ? "arc" : "arcTestnet", serviceName: "CRA AGENT data", settlement: "direct", facilitatorUrl: directFacilitator });
+    // Settled one by one, every payment costs us about $0.002 of gas, more than our cheapest route
+    // charges. Below that price a stranger could drain the gas wallet at a profit to nobody, so the
+    // direct rail has a floor. Batched settlement on /v1/paid is what makes the lower prices possible.
+    const floor = parseUsdc6(process.env.DIRECT_MIN_PRICE_USDC ?? "0.003");
+    const directPrice = (price: string): string => {
+      const asked = parseUsdc6(price.replace("$", ""));
+      return `$${formatUsdc6(compareUsdc6(asked, floor) < 0 ? floor : asked)}`;
+    };
     for (const r of PAID_ROUTES) {
-      direct.route(`GET ${r.path.replace("/v1/paid", "/v1/direct")}`, r.price, { description: r.description, maxTimeoutSeconds: 120, ...(r.preview === undefined ? {} : { preview: r.preview }) });
+      direct.route(`GET ${r.path.replace("/v1/paid", "/v1/direct")}`, directPrice(r.price), { description: r.description, maxTimeoutSeconds: 120, ...(r.preview === undefined ? {} : { preview: r.preview }) });
     }
     app.use("/v1/direct/*", direct.middleware());
     handlersUnder("/v1/direct");
@@ -102,6 +111,7 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
 
   }
 
+  app.get("/v1/direct", (c) => c.json(directFacilitator ? { settlement: "direct", network: seller.network, payTo: seller.sellerAddress, asset: "0x3600000000000000000000000000000000000000", note: "Sign an EIP-3009 authorization from your wallet. No deposit, no gas on your side.", routes: PAID_ROUTES.map((r) => ({ route: `GET ${r.path.replace("/v1/paid", "/v1/direct")}`, summary: r.summary, params: r.params ?? [], alwaysFails: r.alwaysFails === true })) } : { settlement: "off" }));
   app.get("/v1/paid", (c) => c.json({ seller: seller.sellerAddress, network: seller.network, facilitator: seller.facilitatorUrl, routes: Object.entries(seller.routes).map(([k, v]) => ({ route: k, price: String((Array.isArray(v.accepts) ? v.accepts[0] : v.accepts)?.price), description: v.description ?? null })) }));
   log.info({ seller: sellerAddress, network: seller.network, routes: Object.keys(seller.routes).length, discovery: discovery ? `${basePayTo} via ${discoveryFacilitator ?? "coinbase"}` : "off" }, "paid endpoints mounted");
 }
