@@ -22,7 +22,17 @@ interface Summary {
   head: { number: number | null; lagBlocks: number | null; lastBlockAgeSeconds: number | null };
   pairs: Array<{ symbol: string; rate: number | null; trades: number; volumeUsdc: string }>;
   forSale: { routes: number; fromUsd: number; toUsd: number };
+  selftest?: {
+    last: { at: number; ok: boolean; latencyMs: number | null } | null;
+    lastNotCharged: { at: number; ok: boolean } | null;
+    last24h: { runs: number; ok: number; failed: number; avgLatencyMs: number | null };
+  };
 }
+
+const minutesAgo = (t: number): string => {
+  const m = Math.max(0, Math.round((Date.now() / 1000 - t) / 60));
+  return m < 60 ? `${m} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+};
 
 const compact = (n: number): string => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M` : n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n));
 const money = (raw: string): string => {
@@ -44,6 +54,14 @@ async function refreshLive(): Promise<void> {
   set("l-swaps", compact(trades));
   set("l-volume", `${money(String(volume))} traded, ${s.pairs.map((p) => p.symbol).join(" and ")}`);
   set("l-deploys", compact(s.collected.deploys));
+  // The rail buying from itself every hour. If it stops, this goes stale in plain sight.
+  const t = s.selftest;
+  if (t?.last) {
+    const stale = Date.now() / 1000 - t.last.at > 3 * 3600;
+    set("l-test", stale ? "stale" : t.last.ok ? "passing" : "failing");
+    const day = t.last24h.runs > 0 ? `, ${t.last24h.ok}/${t.last24h.runs} in 24 h` : "";
+    set("l-test-note", `our own wallet, ${minutesAgo(t.last.at)}${t.last.latencyMs ? `, ${(t.last.latencyMs / 1000).toFixed(1)} s` : ""}${day}`);
+  }
   set("l-routes", String(s.forSale.routes));
   set("l-prices", `$${s.forSale.fromUsd} to $${s.forSale.toUsd} a call`);
 }

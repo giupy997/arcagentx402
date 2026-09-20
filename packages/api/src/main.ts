@@ -9,7 +9,7 @@ import pino from "pino";
 import { createPool } from "./db.js";
 import { buildOpenApi } from "./openapi.js";
 import { PAID_ROUTES } from "./routes.js";
-import { activity, deployStats, feeEstimate, feeSummary, fxSummary, networkSummary, recentDeploys, rpcStatus, tokenSummary } from "./queries.js";
+import { activity, deployStats, feeEstimate, feeSummary, fxSummary, networkSummary, recentDeploys, rpcStatus, selftestSummary, tokenSummary } from "./queries.js";
 import { mountPaidRoutes } from "./paid.js";
 
 const log = pino({ level: process.env.LOG_LEVEL ?? "info", base: { app: "cra-agent-api" } });
@@ -89,6 +89,7 @@ app.get("/v1/token", async (c) =>
  * One call for the landing page: what the collector has read, what the market did, what is on sale.
  * Cached, because it is the most requested thing on the site and none of it changes by the second.
  */
+app.get("/v1/selftest", async (c) => c.json(await cached("selftest", 15_000, () => selftestSummary(db))));
 app.get("/v1/summary", async (c) =>
   c.json(
     await cached("summary", 15_000, async () => {
@@ -106,6 +107,7 @@ app.get("/v1/summary", async (c) =>
         head: { number: n.head?.number ?? null, lagBlocks: n.lagBlocks, lastBlockAgeSeconds: n.collector.lastBlockAgeSeconds },
         pairs,
         forSale: { routes: PAID_ROUTES.length, fromUsd: Math.min(...prices), toUsd: Math.max(...prices) },
+        selftest: await selftestSummary(db).then((t) => ({ note: t.note, last: t.last, lastNotCharged: t.lastNotCharged, last24h: t.last24h })),
       };
     }),
   ),

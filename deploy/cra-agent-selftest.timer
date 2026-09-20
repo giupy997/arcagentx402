@@ -1,0 +1,10 @@
+[Unit]
+Description=run the cra-agent self-test every hour
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=120
+Persistent=true
+
+[Install]
+WantedBy=timers.target

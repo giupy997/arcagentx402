@@ -61,6 +61,41 @@ async function main(): Promise<void> {
       break;
     }
     case "policy": out({ agentId, network, address: rail.address, policy: describePolicy(policy) }); break;
+    case "selftest": {
+      // The rail buying from itself, on purpose and in the open: one route that must work, one that
+      // must fail without charging. Run it on a timer and a broken rail shows within the hour.
+      const base = (arg ?? "https://api.cra-agent.tech").replace(/\/+$/, "");
+      const started = Date.now();
+      const checks: Record<string, unknown> = {};
+      let ok = true;
+      try {
+        const paid = await rail.fetch(`${base}/v1/paid/fees/estimate`, { headers: { accept: "application/json" } });
+        const sig = paid.receipt?.attestation ? await verifySpendReceipt(paid.receipt.attestation, rail.address) : null;
+        const good = paid.response.status === 200 && paid.receipt?.status === "settled" && sig?.valid === true && sig.withinStatedLimits;
+        checks.paid = { http: paid.response.status, status: paid.receipt?.status ?? null, amountUsdc: paid.receipt?.amountUsdc ?? null, latencyMs: paid.receipt?.latencyMs ?? null, receiptSignatureValid: sig?.valid ?? false };
+        ok = ok && good;
+      } catch (err) {
+        checks.paid = { error: (err as Error).message.slice(0, 200) };
+        ok = false;
+      }
+      try {
+        const broken = await rail.fetch(`${base}/v1/paid/selftest/fail`, { headers: { accept: "application/json" } });
+        const good = broken.response.status >= 500 && broken.receipt?.status === "not_charged";
+        checks.mustNotCharge = { http: broken.response.status, status: broken.receipt?.status ?? null };
+        ok = ok && good;
+      } catch (err) {
+        checks.mustNotCharge = { error: (err as Error).message.slice(0, 200) };
+        ok = false;
+      }
+      try {
+        checks.settlementsMatched = (await rail.resolveSettlements({ limit: 30 })).length;
+      } catch (err) {
+        checks.settlementsMatched = { error: (err as Error).message.slice(0, 120) }; // late proofs are not a failed run
+      }
+      out({ ok, tookMs: Date.now() - started, agent: rail.address, ...checks });
+      await ledger.close();
+      process.exit(ok ? 0 : 1);
+    }
     case "proof": {
       const proofs = await rail.resolveSettlements({ limit: Number(arg ?? 20) });
       out(proofs.length ? proofs : { message: "no new on-chain settlement matched yet; batched settlement can take a while" });
@@ -84,7 +119,7 @@ async function main(): Promise<void> {
       break;
     }
     default:
-      console.error("usage: cra-agent <quote|pay|balance|deposit|ledger|policy|proof|verify> [arg]");
+      console.error("usage: cra-agent <quote|pay|balance|deposit|ledger|policy|proof|verify|selftest> [arg]");
       process.exit(2);
   }
   await ledger.close();

@@ -245,6 +245,7 @@ export async function rpcStatus(db: Db) {
 const CRA_DECIMALS = 18n;
 /** Payout amounts come from the USDC ERC-20 interface: 6 decimals, not the 18-decimal gas view. */
 const usd6 = (raw: string | null): string => formatUsdc6(usdc6(BigInt(raw ?? "0")), { maxFractionDigits: 2 });
+const usd6Exact = (raw: string | null): string => formatUsdc6(usdc6(BigInt(raw ?? "0")));
 /** Format raw units with the given decimals, no floats. */
 function formatUnits(raw: string, decimals: bigint, maxFrac = 2): string {
   const neg = raw.startsWith("-");
@@ -444,5 +445,68 @@ export async function fxSummary(db: Db, windowMinutes = 60, symbol = "EURC", dec
       .sort((x, y) => BUCKETS.indexOf(x.bucket) - BUCKETS.indexOf(y.bucket)),
     venues: venues.rows.map((r) => ({ venue: hex(r.venue), trades: Number(r.n), vwap: r.vwap === null ? null : Number(r.vwap), volumeUsdc: usd6(r.vusdc) })),
     series: series.rows.map((r) => ({ t: Number(r.t), vwap: Number(r.vwap), trades: Number(r.n), volumeUsdc: usd6(r.vusdc) })),
+  };
+}
+
+
+export interface SelftestRun {
+  at: number;
+  ok: boolean;
+  latencyMs: number | null;
+  amountUsdc: string;
+  /** Gateway transfer id, then the on-chain transaction once the batch lands. */
+  settlementId: string | null;
+  settlementTx: string | null;
+  receiptSigned: boolean;
+}
+export interface SelftestSummary {
+  /** Says what this is, so nobody reads our own payments as customers. */
+  note: string;
+  agent: string | null;
+  last: SelftestRun | null;
+  lastNotCharged: { at: number; ok: boolean } | null;
+  last24h: { runs: number; ok: number; failed: number; avgLatencyMs: number | null };
+  recent: SelftestRun[];
+}
+
+/**
+ * The rail paying itself on a timer. Read from the rail's own ledger, which lives in the same
+ * database. The table only exists once the self-test has run, so its absence is "no data yet".
+ */
+export async function selftestSummary(db: Db, agentId = "selftest"): Promise<SelftestSummary> {
+  const note = "Our own wallet buying our own endpoint every hour, to prove the rail is alive. Not customer activity.";
+  const empty: SelftestSummary = { note, agent: null, last: null, lastNotCharged: null, last24h: { runs: 0, ok: 0, failed: 0, avgLatencyMs: null }, recent: [] };
+  const exists = await db.query<{ t: string | null }>("SELECT to_regclass('public.rail_payments')::text AS t");
+  if (!exists.rows[0]?.t) return empty;
+  const paid = "url LIKE '%/v1/paid/fees/estimate%'";
+  const [runs, agg, notCharged] = await Promise.all([
+    db.query<{ at: string; status: string; latency_ms: number | null; amount_usdc6: string; tx_hash: string | null; settlement_tx: string | null; payer: string | null; signed: boolean }>(
+      `SELECT extract(epoch FROM at)::bigint AS at, status, latency_ms, amount_usdc6, tx_hash, settlement_tx, payer, (meta -> 'attestation' ->> 'signature') IS NOT NULL AS signed
+       FROM rail_payments WHERE agent_id = $1 AND ${paid} ORDER BY at DESC LIMIT 24`,
+      [agentId],
+    ),
+    db.query<{ n: string; ok: string; lat: string | null }>(
+      `SELECT count(*) AS n, count(*) FILTER (WHERE status = 'settled') AS ok, avg(latency_ms) FILTER (WHERE status = 'settled') AS lat
+       FROM rail_payments WHERE agent_id = $1 AND ${paid} AND at > now() - interval '24 hours'`,
+      [agentId],
+    ),
+    db.query<{ at: string; status: string }>(
+      "SELECT extract(epoch FROM at)::bigint AS at, status FROM rail_payments WHERE agent_id = $1 AND url LIKE '%/v1/paid/selftest/fail%' ORDER BY at DESC LIMIT 1",
+      [agentId],
+    ),
+  ]);
+  const toRun = (r: (typeof runs.rows)[number]): SelftestRun => ({
+    at: Number(r.at), ok: r.status === "settled", latencyMs: r.latency_ms, amountUsdc: usd6Exact(r.amount_usdc6), settlementId: r.tx_hash, settlementTx: r.settlement_tx, receiptSigned: r.signed,
+  });
+  const a = agg.rows[0]!;
+  const nc = notCharged.rows[0];
+  return {
+    note,
+    agent: runs.rows[0]?.payer ?? null,
+    last: runs.rows[0] ? toRun(runs.rows[0]) : null,
+    // "quoted" is how the ledger records a signed payment that was never settled because the handler failed.
+    lastNotCharged: nc ? { at: Number(nc.at), ok: nc.status === "quoted" } : null,
+    last24h: { runs: Number(a.n), ok: Number(a.ok), failed: Number(a.n) - Number(a.ok), avgLatencyMs: a.lat === null ? null : Math.round(Number(a.lat)) },
+    recent: runs.rows.map(toRun),
   };
 }
