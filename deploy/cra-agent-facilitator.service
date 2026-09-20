@@ -1,0 +1,20 @@
+[Unit]
+Description=cra-agent private x402 facilitator (settles EIP-3009 USDC on Arc, for our payout addresses only)
+After=network-online.target
+Before=cra-agent-api.service
+
+[Service]
+User=craagent
+WorkingDirectory=/opt/cra-agent
+Environment=FACILITATOR_NETWORK=arc
+Environment=FACILITATOR_PORT=8792
+Environment=FACILITATOR_KEY_FILE=/opt/cra-agent/.secrets/facilitator.key
+# The only addresses it will pay gas for. Anything else is refused before an RPC call is made.
+Environment=FACILITATOR_PAY_TO=0x33b37c6d7a98b58da3Ccb3F36A4b578053d0Ea74
+Environment=FACILITATOR_MAX_USDC=1
+ExecStart=/usr/bin/node packages/facilitator/dist/main.js
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

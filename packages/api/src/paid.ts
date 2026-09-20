@@ -55,32 +55,52 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
     });
   }
   app.use("/v1/paid/*", seller.middleware());
+  handlersUnder("/v1/paid");
 
-  app.get("/v1/paid/fees/forecast", async (c) => {
+  // The same routes settled directly: the buyer signs from its wallet, nothing to deposit, and the
+  // transaction hash comes back with the data. This is the rail a browser wallet can use. It needs
+  // a facilitator that settles plain authorizations on Arc, which is ours, listening on localhost.
+  const directFacilitator = process.env.DIRECT_FACILITATOR_URL;
+  if (directFacilitator) {
+    const direct = createSeller({ sellerAddress, network: network === "mainnet" ? "arc" : "arcTestnet", serviceName: "CRA AGENT data", settlement: "direct", facilitatorUrl: directFacilitator });
+    for (const r of PAID_ROUTES) {
+      direct.route(`GET ${r.path.replace("/v1/paid", "/v1/direct")}`, r.price, { description: r.description, maxTimeoutSeconds: 120, ...(r.preview === undefined ? {} : { preview: r.preview }) });
+    }
+    app.use("/v1/direct/*", direct.middleware());
+    handlersUnder("/v1/direct");
+    log.info({ facilitator: directFacilitator, routes: PAID_ROUTES.length }, "direct settlement routes mounted");
+  }
+
+  function handlersUnder(prefix: string): void {
+
+
+  app.get(`${prefix}/fees/forecast`, async (c) => {
     const f = await feeSummary(db, 360);
     const last = f.series.slice(-30);
     const trend = last.length >= 2 ? Number((last[last.length - 1]!.utilization - last[0]!.utilization).toFixed(4)) : 0;
     return c.json({ ...f, series: last, utilizationTrend30m: trend, floorGwei: f.floorGwei, note: "base fee follows an EWMA of utilisation; next-block fee is exact (from the header), beyond that the trend is the signal" });
   });
-  app.get("/v1/paid/fees/estimate", async (c) => {
+  app.get(`${prefix}/fees/estimate`, async (c) => {
     const gasRaw = c.req.query("gas") ?? "21000";
     if (!/^\d{1,9}$/.test(gasRaw)) return c.json({ error: "gas must be an integer" }, 400);
     return c.json(await feeEstimate(db, BigInt(gasRaw)));
   });
-  app.get("/v1/paid/deploys/history", async (c) => {
+  app.get(`${prefix}/deploys/history`, async (c) => {
     const limit = Math.min(1000, Math.max(1, Number(c.req.query("limit") ?? 200)));
     return c.json({ recent: await recentDeploys(db, limit, network), perHour: await deployStats(db) });
   });
-  app.get("/v1/paid/rpc/health", async (c) => c.json(await rpcStatus(db)));
+  app.get(`${prefix}/rpc/health`, async (c) => c.json(await rpcStatus(db)));
   // Executed prices for any pair the collector watches against USDC: ?symbol=EURC (default) or the project token.
-  app.get("/v1/paid/fx/execution", async (c) => {
+  app.get(`${prefix}/fx/execution`, async (c) => {
     const w = Math.min(1440, Math.max(5, Number(c.req.query("window") ?? 60)));
     const symbol = (c.req.query("symbol") ?? "EURC").toUpperCase();
     const decimals = symbol === "EURC" ? 6 : 18;
     return c.json(await fxSummary(db, w, symbol, decimals));
   });
   // Deliberately broken, and public: anyone can check that a failed handler is not charged.
-  app.get("/v1/paid/selftest/fail", (c) => c.json({ error: "this endpoint always fails on purpose", charged: false }, 500));
+  app.get(`${prefix}/selftest/fail`, (c) => c.json({ error: "this endpoint always fails on purpose", charged: false }, 500));
+
+  }
 
   app.get("/v1/paid", (c) => c.json({ seller: seller.sellerAddress, network: seller.network, facilitator: seller.facilitatorUrl, routes: Object.entries(seller.routes).map(([k, v]) => ({ route: k, price: String((Array.isArray(v.accepts) ? v.accepts[0] : v.accepts)?.price), description: v.description ?? null })) }));
   log.info({ seller: sellerAddress, network: seller.network, routes: Object.keys(seller.routes).length, discovery: discovery ? `${basePayTo} via ${discoveryFacilitator ?? "coinbase"}` : "off" }, "paid endpoints mounted");

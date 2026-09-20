@@ -41,7 +41,8 @@
     "@x402/express": "^2.25.0",
     "@x402/extensions": "^2.26.0",
     "@x402/hono": "^2.25.0",
-    "hono": ">=4"
+    "hono": ">=4",
+    "@cra-agent/accounting": "0.0.3"
   },
   "peerDependencies": {
     "express": ">=4",

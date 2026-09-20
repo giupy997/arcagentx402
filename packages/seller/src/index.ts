@@ -11,6 +11,7 @@
  * Payments are verified and settled by Circle Gateway (batched, gas-free for the buyer); the
  * x402 "exact" scheme is what gets registered, so any x402 buyer can pay, not only CRA AGENT agents.
  */
+import { parseUsdc6 } from "@cra-agent/accounting";
 import { createFacilitatorConfig } from "@coinbase/x402";
 import { BatchFacilitatorClient, GatewayEvmScheme } from "@circle-fin/x402-batching/server";
 import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
@@ -52,7 +53,18 @@ export interface SellerConfig {
   readonly facilitatorUrl?: string;
   readonly serviceName?: string;
   readonly discovery?: DiscoveryRail;
+  /**
+   * How Arc payments are settled. "gateway" (default) is Circle Gateway: batched, cheapest at
+   * volume, but the buyer has to deposit first. "direct" is a plain EIP-3009 authorization settled
+   * by the facilitator at `facilitatorUrl`: the buyer signs from its wallet, nothing to deposit, and
+   * the transaction hash comes back in the response. A browser wallet can only do the second.
+   * One server settles one way per network, so pick per seller, not per route.
+   */
+  readonly settlement?: "gateway" | "direct";
 }
+
+/** Arc's USDC, as the ERC-20 the exact scheme moves. The SDK has no default asset for Arc yet. */
+export const ARC_USDC_ASSET = { asset: "0x3600000000000000000000000000000000000000", extra: { name: "USDC", version: "2" } } as const;
 
 export interface RouteOptions {
   readonly description?: string;
@@ -86,7 +98,9 @@ export const BASE_MAINNET: Network = "eip155:8453";
 
 export function buildRoutes(cfg: SellerConfig, network: Network, pattern: string, price: string, opts: RouteOptions): RouteConfig {
   const timeout = opts.maxTimeoutSeconds ? { maxTimeoutSeconds: opts.maxTimeoutSeconds } : {};
-  const arc = { scheme: "exact", network, payTo: cfg.sellerAddress, price, ...timeout };
+  // Settled directly, the amount has to be spelled out in base units with the token's signing domain.
+  const arcPrice = cfg.settlement === "direct" ? { ...ARC_USDC_ASSET, amount: parseUsdc6(price.replace("$", "")).toString() } : price;
+  const arc = { scheme: "exact", network, payTo: cfg.sellerAddress, price: arcPrice, ...timeout };
   const rail = cfg.discovery;
   const method = pattern.split(" ")[0] ?? "GET";
   return {
@@ -117,6 +131,10 @@ export function buildRoutes(cfg: SellerConfig, network: Network, pattern: string
  */
 export function buildServer(cfg: SellerConfig, network: Network, facilitatorUrl: string): x402ResourceServer {
   // The SDK declares its own structural PaymentPayload/Requirements; identical at runtime, stricter under exactOptionalPropertyTypes.
+  if (cfg.settlement === "direct") {
+    if (!cfg.facilitatorUrl) throw new Error('settlement: "direct" needs facilitatorUrl, the facilitator that settles the authorizations');
+    return new x402ResourceServer(new HTTPFacilitatorClient({ url: cfg.facilitatorUrl })).register(network, new ExactEvmScheme());
+  }
   const circle = new BatchFacilitatorClient({ url: facilitatorUrl }) as unknown as FacilitatorClient;
   const rail = cfg.discovery;
   if (!rail) return new x402ResourceServer(circle).register(network, new GatewayEvmScheme());

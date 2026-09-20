@@ -1,0 +1,29 @@
+{
+  "name": "@cra-agent/facilitator",
+  "version": "0.0.3",
+  "description": "A private x402 facilitator for Arc: verifies EIP-3009 USDC authorizations and settles them on chain, only for the payout addresses you list.",
+  "keywords": ["x402", "arc", "usdc", "facilitator", "eip-3009", "agent-payments", "micropayments"],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": { "cra-agent-facilitator": "dist/main.js" },
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node --env-file-if-exists=../../.env --import tsx src/main.ts"
+  },
+  "dependencies": {
+    "@cra-agent/accounting": "0.0.3",
+    "@cra-agent/identity": "0.0.3",
+    "@hono/node-server": "^1.13.0",
+    "@x402/core": "^2.25.0",
+    "@x402/evm": "^2.25.0",
+    "hono": "^4.6.0",
+    "viem": "^2.31.0"
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": { "access": "public" },
+  "license": "MIT",
+  "author": "cra-agent",
+  "repository": { "type": "git", "url": "git+https://github.com/giupy997/arcagentx402.git", "directory": "packages/facilitator" },
+  "homepage": "https://cra-agent.tech"
+}
