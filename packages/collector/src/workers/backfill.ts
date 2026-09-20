@@ -55,6 +55,8 @@ export class BackfillWorker {
     await this.done;
   }
 
+  private prunedHistory = false;
+
   private async loop(): Promise<void> {
     while (!this.stopped) {
       try {
@@ -75,10 +77,27 @@ export class BackfillWorker {
     }
   }
 
+  /**
+   * With the history backfill off, everything below the live range is history we chose not to
+   * fetch, not a gap. It must not come back in through this door: the scanner once reported that
+   * whole range as a hole, and this worker spent days walking 21 million blocks of it on public
+   * endpoints while the one real gap sat unfilled behind it.
+   */
+  private floor(): number {
+    return this.cfg.backfillHistory ? 0 : (this.state.headStart ?? this.cfg.startBlock);
+  }
+
   private async fillOneGap(): Promise<boolean> {
+    const floor = this.floor();
+    if (floor > 0 && !this.prunedHistory) {
+      const gone = await this.db.query("DELETE FROM block_gaps WHERE from_block < $1", [floor]);
+      if ((gone.rowCount ?? 0) > 0) this.log.warn({ rows: gone.rowCount, floor }, "dropped gap rows below the live range: history is off, so they are not gaps");
+      this.prunedHistory = true;
+    }
     const r = await this.db.query<{ from_block: string; to_block: string; attempts: number }>(
       // Newest gap first: recent data is what the pages show.
-      "SELECT from_block, to_block, attempts FROM block_gaps ORDER BY attempts ASC, from_block DESC LIMIT 1",
+      "SELECT from_block, to_block, attempts FROM block_gaps WHERE from_block >= $1 ORDER BY attempts ASC, from_block DESC LIMIT 1",
+      [floor],
     );
     const gap = r.rows[0];
     if (!gap) {
@@ -96,6 +115,14 @@ export class BackfillWorker {
       // Shrinking from the top keeps the primary key (from_block) where it is, so nothing can collide.
       else await this.db.query("UPDATE block_gaps SET to_block = $2 WHERE from_block = $1", [from, chunkStart - 1]);
       this.log.info({ from: chunkStart, to }, "gap filled");
+    } else if (failed.length < numbers.length && chunkStart > from) {
+      // Some of the chunk came in. Let the gap move on below it and leave the stubborn blocks as
+      // gaps of their own, so two bad blocks cannot hold 160,000 good ones hostage.
+      await this.db.query("UPDATE block_gaps SET to_block = $2 WHERE from_block = $1", [from, chunkStart - 1]);
+      for (const n of failed) {
+        await this.db.query("INSERT INTO block_gaps (from_block, to_block, attempts, last_error) VALUES ($1, $1, $2, 'failed inside a larger gap') ON CONFLICT (from_block) DO NOTHING", [n, gap.attempts + 1]);
+      }
+      this.log.warn({ from: chunkStart, to, left: failed }, "gap chunk partly filled");
     } else {
       await this.db.query("UPDATE block_gaps SET attempts = attempts + 1, last_error = $2 WHERE from_block = $1", [from, `still failing: ${failed.join(",")}`]);
       await sleep(Math.min(30_000, 1000 * 2 ** Math.min(gap.attempts, 5)));

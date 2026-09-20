@@ -41,6 +41,8 @@ export class ScannerWorker {
       const to = Number(g.to_block);
       const bf = this.state.backfill;
       if (bf && bf.active && to < bf.cursor) continue; // backfill will get there
+      // History is off: the stretch between old blocks and the live range is a choice, not a hole.
+      if (!this.cfg.backfillHistory && from < (this.state.headStart ?? this.cfg.startBlock)) continue;
       const r = await this.db.query("INSERT INTO block_gaps (from_block, to_block, last_error) VALUES ($1, $2, 'scanner') ON CONFLICT DO NOTHING", [from, to]);
       inserted += r.rowCount ?? 0;
     }
