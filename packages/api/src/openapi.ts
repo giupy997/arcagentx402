@@ -27,13 +27,15 @@ failing endpoint costs you nothing: GET /v1/paid/selftest/fail always answers 50
 and it is there so you can check that yourself. And every settled payment ends in a USDC transfer on
 Arc whose hash you can look up.
 
-Prices range from $0.0005 to $0.002 per call. The data is read from Arc by our own collector, not
-resold from an aggregator.`;
+Prices range from $0.0005 to $0.005 per call. The Arc network routes (fees, deploys, rpc, fx) are read
+from Arc by our own collector. The /arc routes read the chain live. The rest (web, packages, domains,
+currency, wiki) return public sources as one clean JSON shape, and every answer names its source. A bad
+parameter answers 400 and an upstream failure 502, and neither is ever charged.`;
 
 const param = (p: QueryParam) => ({
   name: p.name,
   in: "query",
-  required: false,
+  required: p.required === true,
   description: p.description,
   schema: { type: p.type, ...(p.example === undefined ? {} : { example: p.example }) },
 });

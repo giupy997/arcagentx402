@@ -294,6 +294,11 @@ footer.site a { word-break: break-all; }
 
 /* try page */
 .try .select { font: inherit; font-family: var(--mono); font-size: 14px; padding: 10px 12px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); max-width: 100%; }
+.try .fields { display: grid; gap: 12px; margin-top: 12px; }
+.try .field { display: grid; gap: 4px; font-size: 13px; color: var(--ink-2); }
+.try .field span { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.try .field input { font: inherit; font-family: var(--mono); font-size: 14px; padding: 9px 12px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); width: 100%; max-width: 640px; box-sizing: border-box; }
+.try .field small { color: var(--ink-3, var(--ink-2)); font-size: 12.5px; }
 .try .btn[disabled] { opacity: .45; cursor: not-allowed; }
 .try .steps { margin: 14px 0 0; padding-left: 20px; font-family: var(--mono); font-size: 13px; color: var(--ink-2); }
 .try .steps li { margin: 5px 0; }

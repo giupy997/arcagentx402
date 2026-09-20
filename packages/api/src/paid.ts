@@ -5,6 +5,7 @@ import { createSeller, type SettlementEvent } from "@cra-agent/seller";
 import type { Db } from "./db.js";
 import { deployStats, feeEstimate, feeSummary, fxSummary, recentDeploys, recordSettlement, rpcStatus } from "./queries.js";
 import { PAID_ROUTES, type QueryParam } from "./routes.js";
+import { mountToolHandlers } from "./tools.js";
 
 /** What a route costs on the direct rail: its own price, but never below the floor that covers our gas. */
 function directPriceOf(price: string): string {
@@ -18,7 +19,7 @@ function querySchema(params: readonly QueryParam[]): Record<string, unknown> {
   return {
     type: "object",
     properties: Object.fromEntries(params.map((p) => [p.name, { type: p.type, description: p.description, ...(p.example === undefined ? {} : { example: p.example })}])),
-    required: [],
+    required: params.filter((p) => p.required).map((p) => p.name),
   };
 }
 
@@ -123,12 +124,18 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
     const decimals = symbol === "EURC" ? 6 : 18;
     return c.json(await fxSummary(db, w, symbol, decimals));
   });
+  // The routes that answer from the chain read live and from public sources.
+  mountToolHandlers(app, prefix, {
+    network,
+    rpcUrls: (process.env.ARC_RPC_URLS ?? "").split(",").map((u) => u.trim()).filter(Boolean),
+    token: process.env.TOKEN_ADDRESS ? { address: process.env.TOKEN_ADDRESS, symbol: process.env.TOKEN_SYMBOL ?? "CRA" } : null,
+  });
   // Deliberately broken, and public: anyone can check that a failed handler is not charged.
   app.get(`${prefix}/selftest/fail`, (c) => c.json({ error: "this endpoint always fails on purpose", charged: false }, 500));
 
   }
 
-  app.get("/v1/direct", (c) => c.json(directFacilitator ? { settlement: "direct", network: seller.network, payTo: seller.sellerAddress, asset: "0x3600000000000000000000000000000000000000", note: "Sign an EIP-3009 authorization from your wallet. No deposit, no gas on your side.", routes: PAID_ROUTES.map((r) => ({ route: `GET ${r.path.replace("/v1/paid", "/v1/direct")}`, summary: r.summary, label: r.plain.label, explain: r.plain.explain, priceUsd: directPriceOf(r.price), params: r.params ?? [], alwaysFails: r.alwaysFails === true })) } : { settlement: "off" }));
+  app.get("/v1/direct", (c) => c.json(directFacilitator ? { settlement: "direct", network: seller.network, payTo: seller.sellerAddress, asset: "0x3600000000000000000000000000000000000000", note: "Sign an EIP-3009 authorization from your wallet. No deposit, no gas on your side.", routes: PAID_ROUTES.map((r) => ({ route: `GET ${r.path.replace("/v1/paid", "/v1/direct")}`, summary: r.summary, group: r.group, label: r.plain.label, explain: r.plain.explain, priceUsd: directPriceOf(r.price), params: r.params ?? [], alwaysFails: r.alwaysFails === true })) } : { settlement: "off" }));
   app.get("/v1/paid", (c) => c.json({ seller: seller.sellerAddress, network: seller.network, facilitator: seller.facilitatorUrl, routes: Object.entries(seller.routes).map(([k, v]) => ({ route: k, price: String((Array.isArray(v.accepts) ? v.accepts[0] : v.accepts)?.price), description: v.description ?? null })) }));
   log.info({ seller: sellerAddress, network: seller.network, routes: Object.keys(seller.routes).length, discovery: discovery ? `${basePayTo} via ${discoveryFacilitator ?? "coinbase"}` : "off" }, "paid endpoints mounted");
 }

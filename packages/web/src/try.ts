@@ -25,7 +25,8 @@ const EXPLORER = "https://explorer.arc.io";
 interface Eip1193 { request(args: { method: string; params?: unknown[] }): Promise<unknown> }
 interface Accept { scheme: string; network: string; amount: string; asset: string; payTo: string; maxTimeoutSeconds: number; extra?: { name?: string; version?: string } }
 interface PaymentRequired { x402Version: number; resource: unknown; accepts: Accept[]; extensions?: unknown }
-interface RouteInfo { route: string; summary: string; label?: string; explain?: string; priceUsd?: string; params: Array<{ name: string; example?: string | number }>; alwaysFails: boolean }
+interface RouteParam { name: string; description?: string; example?: string | number; required?: boolean }
+interface RouteInfo { route: string; summary: string; group?: string; label?: string; explain?: string; priceUsd?: string; params: RouteParam[]; alwaysFails: boolean }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const wallet = (): Eip1193 | null => (window as unknown as { ethereum?: Eip1193 }).ethereum ?? null;
@@ -62,6 +63,21 @@ function inPlainWords(url: string, body: string): string {
       const best = [...rows].sort((a, b) => a.callErrors - b.callErrors || a.rttAvgMs - b.rttAvgMs)[0];
       return best ? `${rows.length} public access points measured. The most reliable right now is ${new URL(best.endpoint).host}: ${best.callErrors} failed calls, ${best.rttAvgMs} ms on average.` : "Measurements for the public access points.";
     }
+    if (url.includes("/arc/wallet")) return `This ${d.type} holds ${d.usdc} USDC${d.cra === undefined ? "" : ` and ${d.cra} CRA`}, and has sent ${d.transactionsSent} transactions.`;
+    if (url.includes("/arc/token")) return `${d.name ?? "Unnamed token"} (${d.symbol ?? "no ticker"}): ${d.totalSupply ?? "unknown"} in existence, ${d.decimals} decimals.`;
+    if (url.includes("/arc/tx")) return `This transaction ${d.status === "success" ? "went through" : d.status === "reverted" ? "failed" : "is still pending"}. It was a ${d.kind}, cost $${d.feeUsdc} in fees, and moved tokens ${(d.transfers ?? []).length} time(s).`;
+    if (url.includes("/web/extract")) return `“${d.title ?? "Untitled page"}”: ${d.words} words of clean text, ${(d.headings ?? []).length} headings.`;
+    if (url.includes("/web/check")) return `The site is ${d.up ? "up" : "down"}: it answered ${d.status} in ${d.totalMs} ms after ${(d.redirects ?? []).length} redirect(s). ${(d.missingSecurityHeaders ?? []).length} of 6 common security settings are missing.`;
+    if (url.includes("/packages/npm")) return `${d.name} is at version ${d.latest}, licence ${d.license ?? "unknown"}, ${Number(d.weeklyDownloads ?? 0).toLocaleString("en-US")} downloads a week.${d.deprecated ? " Its authors marked it as deprecated." : ""}`;
+    if (url.includes("/packages/pypi")) return `${d.name} is at version ${d.latest}, needs Python ${d.requiresPython ?? "any"}, and has ${(d.advisories ?? []).length} known security problem(s) in this version.`;
+    if (url.includes("/packages/vulns")) return `${d.count} known security problem(s) for ${d.name}${d.version ? ` ${d.version}` : ", counting every version ever published"}.`;
+    if (url.includes("/domains/dns")) return d.exists ? `${d.name} points to ${(d.records?.A ?? []).map((r: { value: string }) => r.value).join(", ") || "no IPv4 address"}. Signed answers (DNSSEC): ${d.dnssec ? "yes" : "no"}.` : `${d.name} does not exist in the DNS.`;
+    if (url.includes("/domains/whois")) return d.registered ? `${d.domain} was registered through ${d.registrar ?? "an unnamed registrar"} on ${String(d.createdAt).slice(0, 10)} and expires on ${String(d.expiresAt).slice(0, 10)}.` : `${d.domain} has no registration record: it looks free.`;
+    if (url.includes("/currency/convert")) return `${d.amount} ${d.from} is ${d.result} ${d.to}, at the official reference rate of ${d.date}.`;
+    if (url.includes("/currency/rates")) return `${Object.keys(d.rates ?? {}).length} official reference rates against ${d.base}, as of ${d.date}.`;
+    if (url.includes("/wiki/search")) return `${(d.results ?? []).length} Wikipedia articles found. The best match is “${d.results?.[0]?.title ?? "none"}”.`;
+    if (url.includes("/wiki/summary")) return String(d.summary ?? "").slice(0, 240) + (String(d.summary ?? "").length > 240 ? "…" : "");
+    if (url.includes("/wiki/article")) return `“${d.title}”: ${Number(d.characters).toLocaleString("en-US")} characters of plain text${d.truncated ? ", cut at our limit" : ""}.`;
     if (url.includes("/deploys/history")) return `${(d.recent ?? []).length} of the most recent contracts deployed on Arc, newest first.`;
   } catch {
     /* not JSON: nothing to summarise */
@@ -75,19 +91,52 @@ async function loadRoutes(): Promise<void> {
     const res = await fetch(`${API_BASE}/v1/direct`);
     const info = (await res.json()) as { settlement: string; routes?: RouteInfo[] };
     if (info.settlement !== "direct" || !info.routes) throw new Error("direct settlement is off on this API");
+    const params = new Map<string, RouteParam[]>();
+    const groups = new Map<string, HTMLOptGroupElement>();
     for (const r of info.routes) {
       const path = r.route.replace("GET ", "");
-      const query = r.params.filter((p) => p.example !== undefined).map((p) => `${p.name}=${encodeURIComponent(String(p.example))}`).join("&");
       const opt = document.createElement("option");
-      opt.value = query ? `${path}?${query}` : path;
+      opt.value = path;
       opt.textContent = `${r.label ?? r.summary}${r.priceUsd && !r.alwaysFails ? `, $${r.priceUsd}` : ""}`;
-      explain.set(opt.value, `${r.explain ?? r.summary}${r.priceUsd ? (r.alwaysFails ? " It would cost nothing even if it worked differently: a failed call is never charged." : ` Costs $${r.priceUsd}.`) : ""}`);
-      sel.appendChild(opt);
+      explain.set(path, `${r.explain ?? r.summary}${r.priceUsd ? (r.alwaysFails ? " It would cost nothing even if it worked differently: a failed call is never charged." : ` Costs $${r.priceUsd}.`) : ""}`);
+      params.set(path, r.params);
+      const name = r.group ?? "Other";
+      let group = groups.get(name);
+      if (!group) {
+        group = document.createElement("optgroup");
+        group.label = name;
+        groups.set(name, group);
+        sel.appendChild(group);
+      }
+      group.appendChild(opt);
     }
     // Lead with the one people understand at a glance.
     const fx = [...sel.options].find((o) => o.value.includes("/fx/execution"));
     if (fx) sel.value = fx.value;
-    const show = () => { $("route-note").textContent = explain.get(sel.value) ?? ""; };
+    const show = () => {
+      $("route-note").textContent = explain.get(sel.value) ?? "";
+      // One field per thing the route can be asked, filled with an example that works as it is.
+      const box = $("route-params");
+      box.innerHTML = "";
+      for (const p of params.get(sel.value) ?? []) {
+        const label = document.createElement("label");
+        label.className = "field";
+        const name = document.createElement("span");
+        name.textContent = `${p.name}${p.required ? "" : " (optional)"}`;
+        const input = document.createElement("input");
+        input.type = "text";
+        input.name = p.name;
+        input.spellcheck = false;
+        input.autocomplete = "off";
+        // Asking about a wallet, the interesting one is the visitor's own.
+        input.value = p.name === "address" && sel.value.endsWith("/arc/wallet") && account ? account : p.example === undefined ? "" : String(p.example);
+        if (p.description) input.title = p.description;
+        const hint = document.createElement("small");
+        hint.textContent = p.description ?? "";
+        label.append(name, input, hint);
+        box.appendChild(label);
+      }
+    };
     sel.addEventListener("change", show);
     show();
   } catch (err) {
@@ -117,6 +166,8 @@ async function connect(): Promise<void> {
   try {
     const accounts = (await w.request({ method: "eth_requestAccounts" })) as string[];
     account = accounts[0] ?? null;
+    // The wallet route asks about an address: now that there is one, make it the visitor's.
+    if ($<HTMLSelectElement>("route").value.endsWith("/arc/wallet")) $("route").dispatchEvent(new Event("change"));
     try {
       await w.request({ method: "wallet_switchEthereumChain", params: [{ chainId: ARC.chainIdHex }] });
     } catch (err) {
@@ -139,7 +190,11 @@ async function pay(): Promise<void> {
   button.disabled = true;
   $("steps").innerHTML = "";
   $("result-card").classList.add("hidden");
-  const url = `${API_BASE}${$<HTMLSelectElement>("route").value}`;
+  const query = [...$("route-params").querySelectorAll<HTMLInputElement>("input")]
+    .filter((i) => i.value.trim() !== "")
+    .map((i) => `${encodeURIComponent(i.name)}=${encodeURIComponent(i.value.trim())}`)
+    .join("&");
+  const url = `${API_BASE}${$<HTMLSelectElement>("route").value}${query ? `?${query}` : ""}`;
   const started = performance.now();
   let thinking = 0;
   try {
