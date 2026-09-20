@@ -1,9 +1,9 @@
 import type { Hono } from "hono";
 import { compareUsdc6, formatUsdc6, parseUsdc6 } from "@cra-agent/accounting";
 import type { Logger } from "pino";
-import { createSeller } from "@cra-agent/seller";
+import { createSeller, type SettlementEvent } from "@cra-agent/seller";
 import type { Db } from "./db.js";
-import { deployStats, feeEstimate, feeSummary, fxSummary, recentDeploys, rpcStatus } from "./queries.js";
+import { deployStats, feeEstimate, feeSummary, fxSummary, recentDeploys, recordSettlement, rpcStatus } from "./queries.js";
 import { PAID_ROUTES, type QueryParam } from "./routes.js";
 
 /** What a route costs on the direct rail: its own price, but never below the floor that covers our gas. */
@@ -48,11 +48,25 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
         ? { ...shared, facilitatorUrl: discoveryFacilitator }
         : undefined;
 
+  // Every verified payment is written down with how it ended: that table is the public /status page.
+  const arcNetwork = network === "mainnet" ? "eip155:5042" : "eip155:5042002";
+  const record = (arcRail: "gateway" | "direct") => (e: SettlementEvent): Promise<void> => {
+    let route: string | null = null;
+    try {
+      route = e.resource ? new URL(e.resource).pathname : null;
+    } catch {
+      route = null;
+    }
+    const row = { rail: e.network === arcNetwork ? arcRail : ("base" as const), network: e.network, outcome: e.outcome, payer: e.payer, payTo: e.payTo, amountUsdc6: e.amount, tx: e.transaction, reason: e.reason, route };
+    return recordSettlement(db, row).catch((err: unknown) => log.warn({ err, tx: e.transaction }, "settlement not recorded"));
+  };
+
   // Priced from the shared catalogue, so the OpenAPI document and the 402 always agree.
   const seller = createSeller({
     sellerAddress,
     network: network === "mainnet" ? "arc" : "arcTestnet",
     serviceName: "CRA AGENT data",
+    onSettlement: record("gateway"),
     ...(discovery ? { discovery } : {}),
   });
   for (const r of PAID_ROUTES) {
@@ -70,7 +84,7 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
   // a facilitator that settles plain authorizations on Arc, which is ours, listening on localhost.
   const directFacilitator = process.env.DIRECT_FACILITATOR_URL;
   if (directFacilitator) {
-    const direct = createSeller({ sellerAddress, network: network === "mainnet" ? "arc" : "arcTestnet", serviceName: "CRA AGENT data", settlement: "direct", facilitatorUrl: directFacilitator });
+    const direct = createSeller({ sellerAddress, network: network === "mainnet" ? "arc" : "arcTestnet", serviceName: "CRA AGENT data", settlement: "direct", facilitatorUrl: directFacilitator, onSettlement: record("direct") });
     // Settled one by one, every payment costs us about $0.002 of gas, more than our cheapest route
     // charges. Below that price a stranger could drain the gas wallet at a profit to nobody, so the
     // direct rail has a floor. Batched settlement on /v1/paid is what makes the lower prices possible.

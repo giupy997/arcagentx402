@@ -9,7 +9,7 @@ import pino from "pino";
 import { createPool } from "./db.js";
 import { buildOpenApi } from "./openapi.js";
 import { PAID_ROUTES } from "./routes.js";
-import { activity, deployStats, feeEstimate, feeSummary, fxSummary, networkSummary, recentDeploys, rpcStatus, selftestSummary, tokenSummary } from "./queries.js";
+import { activity, deployStats, feeEstimate, feeSummary, fxSummary, networkSummary, recentDeploys, rpcStatus, selftestSummary, settlementsSummary, tokenSummary } from "./queries.js";
 import { mountPaidRoutes } from "./paid.js";
 
 const log = pino({ level: process.env.LOG_LEVEL ?? "info", base: { app: "cra-agent-api" } });
@@ -86,11 +86,27 @@ app.get("/v1/token", async (c) =>
     }),
   ),
 );
+/** Wallets of ours besides the self-test one, so the status page never counts them as customers. */
+const OWN_PAYERS = (process.env.OWN_PAYERS ?? "").split(",").map((a) => a.trim()).filter((a) => /^0x[0-9a-fA-F]{40}$/.test(a));
+/** What the facilitator next door says about itself: who signs, and how much gas money it has left. */
+async function facilitatorHealth(): Promise<{ ok: boolean; signer: string | null; gasUsdc: string | null } | null> {
+  const url = process.env.DIRECT_FACILITATOR_URL;
+  if (!url) return null;
+  try {
+    const h = (await (await fetch(`${url.replace(/\/+$/, "")}/health`, { signal: AbortSignal.timeout(3000) })).json()) as { ok?: boolean; signer?: string; gasBalanceWei?: string };
+    // Arc's gas is USDC with 18 decimals; four are plenty to see whether it is running low.
+    const gasUsdc = h.gasBalanceWei ? (Number(BigInt(h.gasBalanceWei) / 10n ** 14n) / 1e4).toFixed(4) : null;
+    return { ok: h.ok === true, signer: h.signer ?? null, gasUsdc };
+  } catch {
+    return { ok: false, signer: null, gasUsdc: null };
+  }
+}
+app.get("/v1/settlements", async (c) => c.json(await cached("settlements", 5000, async () => ({ ...(await settlementsSummary(db, OWN_PAYERS)), facilitator: await facilitatorHealth() }))));
+app.get("/v1/selftest", async (c) => c.json(await cached("selftest", 15_000, () => selftestSummary(db))));
 /**
  * One call for the landing page: what the collector has read, what the market did, what is on sale.
  * Cached, because it is the most requested thing on the site and none of it changes by the second.
  */
-app.get("/v1/selftest", async (c) => c.json(await cached("selftest", 15_000, () => selftestSummary(db))));
 app.get("/v1/summary", async (c) =>
   c.json(
     await cached("summary", 15_000, async () => {
@@ -142,7 +158,7 @@ app.onError((err, c) => {
 
 if (existsSync(WEB_DIR)) {
   const rel = WEB_DIR.startsWith(process.cwd()) ? WEB_DIR.slice(process.cwd().length + 1) : WEB_DIR;
-  app.use("/*", serveStatic({ root: rel, rewriteRequestPath: (p) => (p === "/dashboard" || p === "/network" ? "/dashboard.html" : p === "/token" ? "/token.html" : p === "/try" ? "/try.html" : p) }));
+  app.use("/*", serveStatic({ root: rel, rewriteRequestPath: (p) => (p === "/dashboard" || p === "/network" ? "/dashboard.html" : p === "/token" ? "/token.html" : p === "/try" ? "/try.html" : p === "/status" ? "/status.html" : p) }));
   log.info({ webDir: WEB_DIR }, "serving web");
 } else {
   log.warn({ webDir: WEB_DIR }, "web dist not found: API only");

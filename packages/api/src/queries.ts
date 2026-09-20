@@ -510,3 +510,98 @@ export async function selftestSummary(db: Db, agentId = "selftest"): Promise<Sel
     recent: runs.rows.map(toRun),
   };
 }
+
+export interface SettlementRow {
+  rail: "direct" | "gateway" | "base";
+  network: string;
+  outcome: "settled" | "failed" | "not_charged";
+  payer: string | null;
+  payTo: string;
+  amountUsdc6: string;
+  tx: string | null;
+  reason: string | null;
+  route: string | null;
+}
+
+/** Written as each payment ends. The unique index on tx makes a repeated report a no-op. */
+export async function recordSettlement(db: Db, r: SettlementRow): Promise<void> {
+  await db.query(
+    `INSERT INTO settlements (rail, network, outcome, payer, pay_to, amount_usdc6, tx, reason, route)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING`,
+    [r.rail, r.network, r.outcome, r.payer?.toLowerCase() ?? null, r.payTo.toLowerCase(), r.amountUsdc6, r.tx, r.reason, r.route],
+  );
+}
+
+/** Whose wallet paid. Ours are named as ours, so the page can never pass our own tests off as customers. */
+export type PayerKind = "self-test" | "ours" | "external";
+export interface SettlementView {
+  at: number;
+  rail: string;
+  outcome: string;
+  /** Shortened: the full address is in the transaction for anyone who follows the hash. */
+  payer: string | null;
+  who: PayerKind;
+  amountUsdc: string;
+  tx: string | null;
+  route: string | null;
+  reason: string | null;
+}
+interface Tally {
+  settled: number;
+  failed: number;
+  notCharged: number;
+  volumeUsdc: string;
+  payers: number;
+}
+export interface SettlementsSummary {
+  note: string;
+  since: number | null;
+  all: Tally;
+  /** The same counts without our own wallets: the only figure that says anything about usage. */
+  external: Tally;
+  recent: SettlementView[];
+}
+
+const shortAddr = (a: string | null): string | null => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : null);
+
+export async function settlementsSummary(db: Db, ownPayers: readonly string[], limit = 50): Promise<SettlementsSummary> {
+  const note = "Every payment our paid routes verified, and how it ended. Payments from our own wallets are marked as ours: the hourly self-test is most of them.";
+  const zero: Tally = { settled: 0, failed: 0, notCharged: 0, volumeUsdc: "0", payers: 0 };
+  const tables = await db.query<{ s: string | null; l: string | null }>("SELECT to_regclass('public.settlements')::text AS s, to_regclass('public.rail_payments')::text AS l");
+  if (!tables.rows[0]?.s) return { note, since: null, all: zero, external: zero, recent: [] };
+  const selftest = tables.rows[0].l
+    ? (await db.query<{ payer: string }>("SELECT DISTINCT lower(payer) AS payer FROM rail_payments WHERE agent_id = 'selftest' AND payer IS NOT NULL")).rows.map((r) => r.payer)
+    : [];
+  const ours = [...new Set([...selftest, ...ownPayers.map((a) => a.toLowerCase())])];
+  const tally = `count(*) FILTER (WHERE outcome = 'settled') AS settled, count(*) FILTER (WHERE outcome = 'failed') AS failed,
+    count(*) FILTER (WHERE outcome = 'not_charged') AS not_charged, coalesce(sum(amount_usdc6) FILTER (WHERE outcome = 'settled'), 0) AS volume,
+    count(DISTINCT payer) FILTER (WHERE outcome = 'settled') AS payers`;
+  type T = { settled: string; failed: string; not_charged: string; volume: string; payers: string };
+  const [all, ext, first, rows] = await Promise.all([
+    db.query<T>(`SELECT ${tally} FROM settlements`),
+    db.query<T>(`SELECT ${tally} FROM settlements WHERE payer IS NULL OR payer <> ALL($1::text[])`, [ours]),
+    db.query<{ at: string | null }>("SELECT extract(epoch FROM min(at))::bigint AS at FROM settlements"),
+    db.query<{ at: string; rail: string; outcome: string; payer: string | null; amount_usdc6: string; tx: string | null; route: string | null; reason: string | null }>(
+      "SELECT extract(epoch FROM at)::bigint AS at, rail, outcome, payer, amount_usdc6, tx, route, reason FROM settlements ORDER BY at DESC, id DESC LIMIT $1",
+      [limit],
+    ),
+  ]);
+  const toTally = (t: T): Tally => ({ settled: Number(t.settled), failed: Number(t.failed), notCharged: Number(t.not_charged), volumeUsdc: usd6Exact(t.volume), payers: Number(t.payers) });
+  return {
+    note,
+    since: first.rows[0]?.at ? Number(first.rows[0].at) : null,
+    all: toTally(all.rows[0]!),
+    external: toTally(ext.rows[0]!),
+    recent: rows.rows.map((r) => ({
+      at: Number(r.at),
+      rail: r.rail,
+      outcome: r.outcome,
+      payer: shortAddr(r.payer),
+      who: r.payer && selftest.includes(r.payer) ? "self-test" : r.payer && ours.includes(r.payer) ? "ours" : "external",
+      amountUsdc: usd6Exact(r.amount_usdc6),
+      tx: r.tx,
+      route: r.route,
+      reason: r.reason,
+    })),
+  };
+}

@@ -61,6 +61,29 @@ export interface SellerConfig {
    * One server settles one way per network, so pick per seller, not per route.
    */
   readonly settlement?: "gateway" | "direct";
+  /**
+   * Told about every payment that passed verification, however it ended. Called without being
+   * awaited and never allowed to throw into the payment: a slow or broken sink cannot hold a response.
+   */
+  readonly onSettlement?: (event: SettlementEvent) => void | Promise<void>;
+}
+
+/**
+ * How a verified payment ended. "not_charged" is a payment that was valid and never settled because
+ * the handler failed: the authorization was dropped unused.
+ */
+export interface SettlementEvent {
+  readonly outcome: "settled" | "failed" | "not_charged";
+  readonly network: string;
+  readonly payer: string | null;
+  readonly payTo: string;
+  /** In the asset's base units, as the requirements spelled it. */
+  readonly amount: string;
+  /** A transaction hash on a direct rail, the facilitator's transfer id on a batched one. */
+  readonly transaction: string | null;
+  readonly reason: string | null;
+  /** The URL that was bought, as the buyer's payload named it. */
+  readonly resource: string | null;
 }
 
 /** Arc's USDC, as the ERC-20 the exact scheme moves. The SDK has no default asset for Arc yet. */
@@ -130,6 +153,37 @@ export function buildRoutes(cfg: SellerConfig, network: Network, pattern: string
  * settles.
  */
 export function buildServer(cfg: SellerConfig, network: Network, facilitatorUrl: string): x402ResourceServer {
+  return observed(cfg, assembleServer(cfg, network, facilitatorUrl));
+}
+
+/** Reports how each verified payment ended to `cfg.onSettlement`, when there is one. */
+export function observed(cfg: Pick<SellerConfig, "onSettlement">, server: x402ResourceServer): x402ResourceServer {
+  const sink = cfg.onSettlement;
+  if (!sink) return server;
+  type Ctx = { paymentPayload: { resource?: { url?: string }; payload: Record<string, unknown> }; requirements: { network: string; payTo: string; amount: string } };
+  const tell = (ctx: Ctx, rest: Pick<SettlementEvent, "outcome" | "transaction" | "reason"> & { payer?: string | undefined }): void => {
+    const signedBy = (ctx.paymentPayload.payload.authorization as { from?: unknown } | undefined)?.from;
+    const event: SettlementEvent = {
+      outcome: rest.outcome,
+      network: ctx.requirements.network,
+      payer: rest.payer ?? (typeof signedBy === "string" ? signedBy : null),
+      payTo: ctx.requirements.payTo,
+      amount: ctx.requirements.amount,
+      transaction: rest.transaction,
+      reason: rest.reason,
+      resource: ctx.paymentPayload.resource?.url ?? null,
+    };
+    void Promise.resolve()
+      .then(() => sink(event))
+      .catch(() => {});
+  };
+  return server
+    .onAfterSettle(async (ctx) => tell(ctx, { outcome: "settled", transaction: ctx.result.transaction || null, reason: null, payer: ctx.result.payer }))
+    .onSettleFailure(async (ctx) => tell(ctx, { outcome: "failed", transaction: null, reason: ctx.error.message.slice(0, 200) }))
+    .onVerifiedPaymentCanceled(async (ctx) => tell(ctx, { outcome: "not_charged", transaction: null, reason: ctx.reason }));
+}
+
+function assembleServer(cfg: SellerConfig, network: Network, facilitatorUrl: string): x402ResourceServer {
   // The SDK declares its own structural PaymentPayload/Requirements; identical at runtime, stricter under exactOptionalPropertyTypes.
   if (cfg.settlement === "direct") {
     if (!cfg.facilitatorUrl) throw new Error('settlement: "direct" needs facilitatorUrl, the facilitator that settles the authorizations');
