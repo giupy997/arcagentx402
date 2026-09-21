@@ -137,6 +137,19 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
   }
 
   app.get("/v1/direct", (c) => c.json(directFacilitator ? { settlement: "direct", network: seller.network, payTo: seller.sellerAddress, asset: "0x3600000000000000000000000000000000000000", note: "Sign an EIP-3009 authorization from your wallet. No deposit, no gas on your side.", routes: PAID_ROUTES.map((r) => ({ route: `GET ${r.path.replace("/v1/paid", "/v1/direct")}`, summary: r.summary, group: r.group, label: r.plain.label, explain: r.plain.explain, priceUsd: directPriceOf(r.price), params: r.params ?? [], alwaysFails: r.alwaysFails === true })) } : { settlement: "off" }));
+  // The same self-description the sell command serves, so a directory reads us the way it reads anyone.
+  app.get("/.well-known/x402", (c) =>
+    c.json({
+      x402Version: 2,
+      name: "CRA AGENT data",
+      description: "Arc network data, executed prices for cirBTC, WETH, EURC and CRA, and public sources as clean JSON. Settled only when the call succeeds.",
+      network: seller.network,
+      payTo: seller.sellerAddress,
+      settlement: directFacilitator ? "circle-gateway on /v1/paid, direct on /v1/direct" : "circle-gateway",
+      routes: PAID_ROUTES.map((r) => ({ pattern: `GET ${r.path}`, priceUsd: r.price.replace("$", ""), description: r.summary })),
+      poweredBy: "https://cra-agent.tech",
+    }),
+  );
   app.get("/v1/paid", (c) => c.json({ seller: seller.sellerAddress, network: seller.network, facilitator: seller.facilitatorUrl, routes: Object.entries(seller.routes).map(([k, v]) => ({ route: k, price: String((Array.isArray(v.accepts) ? v.accepts[0] : v.accepts)?.price), description: v.description ?? null })) }));
   log.info({ seller: sellerAddress, network: seller.network, routes: Object.keys(seller.routes).length, discovery: discovery ? `${basePayTo} via ${discoveryFacilitator ?? "coinbase"}` : "off" }, "paid endpoints mounted");
 }

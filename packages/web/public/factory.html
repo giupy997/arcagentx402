@@ -32,6 +32,7 @@
     <li><a href="/#install">Install the agent</a></li>
     <li><a href="/#sell">Sell an endpoint</a></li>
     <li><a href="/network">Network</a></li>
+    <li><a href="/market">Market</a></li>
     <li><a href="/factory">Factory</a></li>
     <li><a href="/try">Try it</a></li>
     <li><a href="/status">Status</a></li>
@@ -52,6 +53,12 @@
 </section>
 
 <main class="wrap dash try factory">
+  <div class="chart-card wide">
+    <div class="head"><div><h2>What do you want to build?</h2><div class="sub">Two sides of the same rail. One gives your AI a budget to buy with. The other puts a price on an API you already run.</div></div></div>
+    <div class="choices" id="modes" role="radiogroup" aria-label="What to build"></div>
+  </div>
+
+  <div id="buy-mode">
   <div class="chart-card wide">
     <div class="head"><div><h2>1. Where will the agent live?</h2><div class="sub">The program you talk to your AI in. The agent plugs into it as a set of tools.</div></div></div>
     <div class="choices" id="clients" role="radiogroup" aria-label="AI client"></div>
@@ -86,6 +93,36 @@
   </div>
 
   <div id="steps-out"></div>
+  </div>
+
+  <div id="sell-mode" class="hidden">
+    <div class="chart-card wide">
+      <div class="head"><div><h2>1. Your API and your wallet</h2><div class="sub">The API stays where it is and as it is. Buyers will call a small server that stands in front of it, and pay you on Arc.</div></div></div>
+      <div class="fields">
+        <label class="field"><span>Address of your API</span><input id="s-target" type="url" spellcheck="false" autocomplete="off" placeholder="https://api.example.com"><small>Where your API answers today. It can be private, on localhost, as long as the command runs on the same machine.</small></label>
+        <label class="field"><span>Wallet that gets paid</span><input id="s-payto" spellcheck="false" autocomplete="off" placeholder="0x…"><small>An address you control on Arc. Only the address: never a key.</small></label>
+      </div>
+    </div>
+    <div class="chart-card wide">
+      <div class="head"><div><h2>2. The price</h2><div class="sub">Per call, in dollars. Agents buy small things often: a fraction of a cent to a few cents is the usual range. You can price single paths differently later, with the --route option.</div></div></div>
+      <div class="fields grid">
+        <label class="field"><span>Price per call ($)</span><input id="s-price" inputmode="decimal" autocomplete="off" value="0.002"></label>
+        <label class="field"><span>Name buyers see (optional)</span><input id="s-name" autocomplete="off" placeholder="Milan weather"></label>
+      </div>
+      <label class="field" style="margin-top:12px"><span>Paths that stay free (optional)</span><textarea id="s-free" rows="2" spellcheck="false" autocomplete="off" placeholder="/health"></textarea><small>One per line. Health checks, documentation, anything you do not want to charge for.</small></label>
+    </div>
+    <div class="chart-card wide">
+      <div class="head"><div><h2>3. Network and public address</h2><div class="sub">If you already know the https address buyers will use, write it and the command lists you on the <a href="/market">market</a> by itself. If not, leave it empty and add it later from the market page.</div></div></div>
+      <div class="choices" id="s-networks" role="radiogroup" aria-label="Network"></div>
+      <label class="field"><span>Public https address (optional)</span><input id="s-public" type="url" spellcheck="false" autocomplete="off" placeholder="https://pay.example.com"></label>
+    </div>
+    <div class="chart-card wide">
+      <div class="head"><div><h2>Your shop, in words</h2></div></div>
+      <p class="sub" id="s-words"></p>
+      <div class="callout hidden" id="s-problems"></div>
+    </div>
+    <div id="s-out"></div>
+  </div>
 
   <div class="chart-card wide">
     <div class="head"><div><h2>What this page does not do</h2></div></div>

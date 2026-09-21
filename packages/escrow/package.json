@@ -1,6 +1,6 @@
 {
   "name": "@cra-agent/escrow",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "ERC-8183 AgenticCommerce escrow client for Arc: create, fund, submit, complete or reject a job, claim a refund.",
   "keywords": [
     "agent-payments",
@@ -28,8 +28,8 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@cra-agent/accounting": "0.0.4",
-    "@cra-agent/identity": "0.0.4",
+    "@cra-agent/accounting": "0.0.5",
+    "@cra-agent/identity": "0.0.5",
     "viem": "^2.31.0"
   },
   "files": [

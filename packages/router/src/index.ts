@@ -138,6 +138,12 @@ export interface Rail {
    */
   resolveSettlements(opts?: { limit?: number; lookbackBlocks?: number }): Promise<SettlementProof[]>;
   deposit(amountUsdc: string): Promise<{ txHash: Hex; amount: string }>;
+  /**
+   * Moves USDC from this key's Circle Gateway balance back to its wallet on the same chain: how a
+   * seller collects what it was paid. Circle may charge a fee; `maxFeeUsdc` is the most this call
+   * will accept, and it fails rather than pay more.
+   */
+  withdraw(amountUsdc: string, opts?: { maxFeeUsdc?: string }): Promise<{ txHash: Hex; amount: string; recipient: Address }>;
   readonly address: Address;
   readonly network: string;
 }
@@ -383,6 +389,13 @@ export function createRail(cfg: RailConfig): Rail {
       const gw = gatewayClient();
       const r = await gw.deposit(amountUsdc);
       return { txHash: r.depositTxHash, amount: r.formattedAmount };
+    },
+
+    async withdraw(amountUsdc, opts = {}) {
+      const gw = gatewayClient();
+      // The SDK's own ceiling is two dollars, more than most sellers on this rail earn in a week.
+      const r = await gw.withdraw(amountUsdc, { maxFee: opts.maxFeeUsdc ?? "0.05" });
+      return { txHash: r.mintTxHash, amount: r.formattedAmount, recipient: r.recipient };
     },
   };
 

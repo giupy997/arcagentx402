@@ -1,6 +1,6 @@
 {
   "name": "@cra-agent/accounting",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "USDC arithmetic for Arc without floats: branded 6-decimal and 18-decimal types, dust-preserving conversion, exact parsing and formatting.",
   "keywords": [
     "agent-payments",

@@ -135,3 +135,71 @@ export function steps(i: FactoryInput): Step[] {
       : { title: "Give it a first job", explain: "Paste this to your AI. It checks the price first, pays only if your limits allow it, and shows you the receipt.", code: `Use the cra-agent tools. First show me the spending policy in force. Then get a quote for ${firstUrl} and tell me the price and whether the policy allows it. If it does, pay for it, tell me the euro to dollar rate on Arc it returns, and show me the receipt.` },
   ];
 }
+
+/* ------------------------------------------------------------------ selling */
+
+export interface SellInput {
+  /** The API that already exists. */
+  readonly target: string;
+  /** The wallet that gets paid. */
+  readonly payTo: string;
+  /** Dollars per call, as typed. */
+  readonly price: string;
+  readonly name: string;
+  /** Paths served without payment, as typed: one per line. */
+  readonly free: readonly string[];
+  readonly network: Network;
+  /** The public https address buyers will call, when the seller already has one. */
+  readonly publicUrl: string;
+}
+
+export function sellProblems(i: SellInput): string[] {
+  const out: string[] = [];
+  if (!/^https?:\/\/[^\s'"`$]+$/i.test(i.target)) out.push("The address of your API must start with http:// or https://, with no spaces or quotes.");
+  if (!/^0x[0-9a-fA-F]{40}$/.test(i.payTo)) out.push("The wallet is a 0x address, 42 characters long. Paste it from your wallet.");
+  if (!AMOUNT.test(i.price) || Number(i.price) <= 0) out.push("The price must be an amount in dollars, like 0.002.");
+  if (/['"`$\\]/.test(i.name)) out.push("The name cannot contain quotes, backticks, dollar signs or backslashes.");
+  for (const f of i.free) if (!/^\/[^\s'"`$]*$/.test(f)) out.push(`\u201c${f}\u201d is not a path. Write it like /health.`);
+  if (i.publicUrl && !/^https:\/\/[^\s'"`$]+$/i.test(i.publicUrl)) out.push("The public address must start with https://. Leave it empty if you do not have one yet.");
+  return out;
+}
+
+/** The one line that starts selling. Every value is single-quoted, and the checks above keep quotes out of them. */
+export function sellCommand(i: SellInput): Step {
+  const parts = [`npx -y @cra-agent/seller --target '${i.target}' --pay-to ${i.payTo} --price ${i.price}`];
+  if (i.name) parts.push(`--name '${i.name}'`);
+  for (const f of i.free) parts.push(`--free '${f}'`);
+  if (i.network !== "arc") parts.push(`--network ${i.network}`);
+  if (i.publicUrl) parts.push(`--list '${i.publicUrl}'`);
+  return {
+    title: "Run this where your API runs",
+    explain: `Needs Node 20 or newer. It starts a small server on port 8402 that stands in front of your API: a caller who has not paid gets the price, a caller who has paid gets your API's answer, untouched. Your code does not change, and this process never holds a key. A call your API fails is not charged.${i.publicUrl ? " Once it is up, it adds your public address to the market." : ""}`,
+    code: parts.join(" "),
+  };
+}
+
+export function sellInWords(i: SellInput): string {
+  const free = i.free.length ? ` These paths stay free: ${i.free.join(", ")}.` : "";
+  return `Every call to ${i.name || "your API"} will cost $${i.price}, paid in USDC on ${i.network === "arc" ? "Arc mainnet" : "Arc testnet"} to ${i.payTo.slice(0, 6)}\u2026${i.payTo.slice(-4)}.${free} Buyers are AI agents (ours or any x402 client). The money lands in the Circle Gateway balance of that wallet: you collect it with one command, shown below.`;
+}
+
+export function sellNextSteps(i: SellInput): Step[] {
+  return [
+    {
+      title: "Give it a public https address",
+      explain: "Buyers cannot reach port 8402 on your machine. Point your usual reverse proxy at it, the same way you publish your API today. With Caddy that is two lines; nginx, Cloudflare or a platform's router do the same. To try it for ten minutes without any of that, a tunnel works too.",
+      code: "pay.example.com {\n  reverse_proxy localhost:8402\n}",
+      file: "Caddyfile (example)",
+    },
+    {
+      title: "Check it as a buyer would",
+      explain: "The first line shows what is for sale. The second must answer 402 Payment Required: that is the price tag. If you installed the agent, the third pays for a call and shows the receipt.",
+      code: `curl ${i.publicUrl || "https://pay.example.com"}/.well-known/x402\ncurl -i ${i.publicUrl || "https://pay.example.com"}/\ncra-agent pay '${i.publicUrl || "https://pay.example.com"}/'`,
+    },
+    {
+      title: "Collect what you earned",
+      explain: "Payments are batched by Circle Gateway, so they add up in the Gateway balance of your wallet instead of arriving one by one. The first line shows that balance, the second moves an amount back to the wallet itself. Both need the key of that wallet in a file on your machine, readable only by you, which is why a wallet made for this is better than your main one. Circle may take a fee on a withdrawal: the command refuses to pay more than 5 cents unless you tell it otherwise.",
+      code: `npm i -g @cra-agent/mcp\nCRA_NETWORK=${i.network} CRA_KEY_FILE=/full/path/to/seller.key cra-agent balance\nCRA_NETWORK=${i.network} CRA_KEY_FILE=/full/path/to/seller.key cra-agent withdraw 1`,
+    },
+  ];
+}

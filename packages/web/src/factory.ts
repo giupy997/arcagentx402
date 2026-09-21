@@ -2,7 +2,7 @@
  * CRA Factory, the page: four questions in, the steps to run a paying agent out. All of it happens
  * in the browser. The logic, and what it promises about keys, is in factory-config.ts.
  */
-import { hostOf, inWords, oneCommand, PRESETS, problems, steps, type Client, type FactoryInput, type Network } from "./factory-config.js";
+import { hostOf, inWords, oneCommand, PRESETS, problems, sellCommand, sellInWords, sellNextSteps, sellProblems, steps, type SellInput, type Client, type FactoryInput, type Network } from "./factory-config.js";
 import { initChrome } from "./menu.js";
 
 initChrome();
@@ -161,3 +161,64 @@ for (const id of ["f-daily", "f-seller", "f-payment", "f-rate", "f-allow", "f-ke
 markClient(client);
 markNetwork(network);
 $("presets").querySelector<HTMLButtonElement>("button")?.click();
+
+/* ------------------------------------------------------------------ selling */
+
+let sellNetwork: Network = "arc";
+
+function readSell(): SellInput {
+  return {
+    target: input("s-target").value.trim(),
+    payTo: input("s-payto").value.trim(),
+    price: input("s-price").value.trim(),
+    name: input("s-name").value.trim(),
+    free: $<HTMLTextAreaElement>("s-free").value.split(/[\n,]+/).map((f) => f.trim()).filter(Boolean),
+    network: sellNetwork,
+    publicUrl: input("s-public").value.trim().replace(/\/+$/, ""),
+  };
+}
+
+function renderSell(): void {
+  const i = readSell();
+  const out = $("s-out");
+  out.innerHTML = "";
+  const box = $("s-problems");
+  box.innerHTML = "";
+  // Nothing typed yet is not a mistake: say what is needed instead of listing errors.
+  if (!i.target || !i.payTo) {
+    box.classList.add("hidden");
+    $("s-words").textContent = "Fill in the address of your API and your wallet, and the command appears here.";
+    return;
+  }
+  const wrong = sellProblems(i);
+  box.classList.toggle("hidden", wrong.length === 0);
+  for (const w of wrong) {
+    const p = document.createElement("div");
+    p.textContent = w;
+    box.appendChild(p);
+  }
+  $("s-words").textContent = wrong.length ? "Fix what is listed below and the command appears." : sellInWords(i);
+  if (wrong.length) return;
+  out.appendChild(stepCard("", sellCommand(i)));
+  sellNextSteps(i).forEach((s, n) => out.appendChild(stepCard(`Then ${n + 1}. `, s)));
+}
+
+const markSellNetwork = choices($("s-networks"), NETWORKS, (id) => { sellNetwork = id; markSellNetwork(id); renderSell(); });
+markSellNetwork(sellNetwork);
+for (const id of ["s-target", "s-payto", "s-price", "s-name", "s-free", "s-public"]) $(id).addEventListener("input", renderSell);
+
+type Mode = "buy" | "sell";
+const MODES: Array<{ id: Mode; label: string; explain: string }> = [
+  { id: "buy", label: "An agent that buys", explain: "Give your AI a budget and limits it cannot change. It pays for API calls by itself." },
+  { id: "sell", label: "An API that sells", explain: "Put a price on an API you already run, without touching its code. Get paid in USDC." },
+];
+function setMode(mode: Mode): void {
+  markMode(mode);
+  $("buy-mode").classList.toggle("hidden", mode !== "buy");
+  $("sell-mode").classList.toggle("hidden", mode !== "sell");
+  if (location.hash !== `#${mode}`) history.replaceState(null, "", `#${mode}`);
+  if (mode === "sell") renderSell();
+}
+const markMode = choices($("modes"), MODES, setMode);
+setMode(location.hash === "#sell" ? "sell" : "buy");
+window.addEventListener("hashchange", () => setMode(location.hash === "#sell" ? "sell" : "buy"));

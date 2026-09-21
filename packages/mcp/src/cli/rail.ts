@@ -3,6 +3,7 @@
  * Tiny CLI over the same rail the MCP server uses. For humans and for smoke tests.
  *   cra-agent quote <url>        cra-agent pay <url>        cra-agent balance
  *   cra-agent deposit <usdc>     cra-agent ledger [n]       cra-agent policy
+ *   cra-agent withdraw <usdc> [max fee]    Gateway balance back to the wallet: how a seller collects
  *   cra-agent verify <receipt.json> [agent]    checks a signed receipt; needs no key and no network
  *   cra-agent init [--client …] [--policy …]   makes the key, writes the AI client config; see init.ts
  */
@@ -57,6 +58,13 @@ async function main(): Promise<void> {
     case "deposit": {
       if (!arg) throw new Error("usage: deposit <usdc>");
       out(await rail.deposit(arg));
+      break;
+    }
+    case "withdraw": {
+      if (!arg || !/^\d+(\.\d{1,6})?$/.test(arg)) throw new Error("usage: withdraw <usdc> [max fee in usdc, default 0.05]");
+      const maxFee = process.argv[4];
+      if (maxFee !== undefined && !/^\d+(\.\d{1,6})?$/.test(maxFee)) throw new Error("the max fee is an amount in USDC, like 0.05");
+      out(await rail.withdraw(arg, maxFee ? { maxFeeUsdc: maxFee } : {}));
       break;
     }
     case "ledger": {
@@ -123,7 +131,7 @@ async function main(): Promise<void> {
       break;
     }
     default:
-      console.error("usage: cra-agent <init|quote|pay|balance|deposit|ledger|policy|proof|verify|selftest> [arg]");
+      console.error("usage: cra-agent <init|quote|pay|balance|deposit|withdraw|ledger|policy|proof|verify|selftest> [arg]");
       process.exit(2);
   }
   await ledger.close();

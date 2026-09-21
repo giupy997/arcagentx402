@@ -1,6 +1,6 @@
 {
   "name": "@cra-agent/policy",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Pure spend control for agent payments: daily, per-seller and per-payment caps, rate limit, allow and deny lists.",
   "keywords": [
     "agent-payments",
@@ -28,7 +28,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@cra-agent/accounting": "0.0.4"
+    "@cra-agent/accounting": "0.0.5"
   },
   "files": [
     "dist",

@@ -53,6 +53,7 @@ Creates the agent's key in `~/.cra-agent/agent.key` (readable only by you, never
 cra-agent balance
 cra-agent quote https://api.cra-agent.tech/v1/paid/rpc/health
 cra-agent deposit 1
+cra-agent withdraw 1            # Gateway balance back to the wallet; how a seller collects
 cra-agent pay   https://api.cra-agent.tech/v1/paid/rpc/health
 cra-agent proof
 cra-agent verify receipt.json      # needs no key and no network

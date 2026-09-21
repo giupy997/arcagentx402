@@ -11,6 +11,7 @@ import { buildOpenApi } from "./openapi.js";
 import { PAIRS, resolvePair } from "./pairs.js";
 import { PAID_ROUTES } from "./routes.js";
 import { activity, deployStats, feeEstimate, feeSummary, fxSummary, networkSummary, recentDeploys, rpcStatus, selftestSummary, settlementsSummary, tokenSummary } from "./queries.js";
+import { mountMarket } from "./market.js";
 import { mountPaidRoutes } from "./paid.js";
 
 const log = pino({ level: process.env.LOG_LEVEL ?? "info", base: { app: "cra-agent-api" } });
@@ -27,7 +28,7 @@ const app = new Hono();
 /** Published in the OpenAPI document; kept in step with the package version. */
 const API_VERSION = "0.1.0";
 // A browser can only pay if it may send the payment header and read the two the protocol answers with.
-app.use("*", cors({ origin: "*", allowMethods: ["GET"], allowHeaders: ["PAYMENT-SIGNATURE", "X-PAYMENT", "Content-Type", "Accept"], exposeHeaders: ["PAYMENT-REQUIRED", "PAYMENT-RESPONSE", "X-PAYMENT-RESPONSE"] }));
+app.use("*", cors({ origin: "*", allowMethods: ["GET", "POST"], allowHeaders: ["PAYMENT-SIGNATURE", "X-PAYMENT", "Content-Type", "Accept"], exposeHeaders: ["PAYMENT-REQUIRED", "PAYMENT-RESPONSE", "X-PAYMENT-RESPONSE"] }));
 
 /** Tiny TTL cache: the dashboard polls every few seconds; the DB should not feel it. */
 const cache = new Map<string, { at: number; body: unknown }>();
@@ -147,6 +148,7 @@ app.get("/v1/health", async (c) => {
   }
 });
 mountPaidRoutes(app, db, NETWORK, log);
+mountMarket(app, db, NETWORK, log);
 
 app.onError((err, c) => {
   log.error({ err, path: c.req.path }, "request failed");
@@ -155,7 +157,7 @@ app.onError((err, c) => {
 
 if (existsSync(WEB_DIR)) {
   const rel = WEB_DIR.startsWith(process.cwd()) ? WEB_DIR.slice(process.cwd().length + 1) : WEB_DIR;
-  app.use("/*", serveStatic({ root: rel, rewriteRequestPath: (p) => (p === "/dashboard" || p === "/network" ? "/dashboard.html" : p === "/token" ? "/token.html" : p === "/try" ? "/try.html" : p === "/status" ? "/status.html" : p === "/factory" ? "/factory.html" : p) }));
+  app.use("/*", serveStatic({ root: rel, rewriteRequestPath: (p) => (p === "/dashboard" || p === "/network" ? "/dashboard.html" : p === "/token" ? "/token.html" : p === "/try" ? "/try.html" : p === "/status" ? "/status.html" : p === "/factory" ? "/factory.html" : p === "/market" ? "/market.html" : p) }));
   log.info({ webDir: WEB_DIR }, "serving web");
 } else {
   log.warn({ webDir: WEB_DIR }, "web dist not found: API only");

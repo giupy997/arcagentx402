@@ -6,6 +6,30 @@ Put a USDC price on an API route. Any x402 buyer can pay it, and the payment is 
 npm i @cra-agent/seller
 ```
 
+## One command, no code
+
+You already run an API. This stands in front of it and charges for it:
+
+```bash
+npx -y @cra-agent/seller --target https://api.example.com --pay-to 0xYourWallet --price 0.002
+```
+
+A caller who has not paid gets `402 Payment Required` with the price; a caller who has paid gets your API's answer, untouched. A call your API fails is not charged. The process never holds a key.
+
+| Option | Meaning |
+|---|---|
+| `--target <url>` | The API to sell. Can be private or on localhost. |
+| `--pay-to <address>` | The wallet that gets paid, on Arc. |
+| `--price <usd>` | Price of every call. |
+| `--route "<pattern>=<usd>"` | Price of one path, repeatable: `--route "GET /v1/render/*=0.05"`. Checked before `--price`. |
+| `--free <pattern>` | A path served without payment, repeatable. |
+| `--name`, `--description` | Shown to buyers and in directories. |
+| `--upstream-header "Name: value"` | Added to requests sent to your API, e.g. its own key. Never sent back to buyers. |
+| `--network`, `--port` | `arc` (default) or `arcTestnet`; port 8402 by default. |
+| `--list <public-url>` | Once running, add this public https address to the [CRA market](https://cra-agent.tech/market). |
+
+What is for sale is published, free to read, at `/.well-known/x402`. Payments settle through Circle Gateway and add up in the Gateway balance of `--pay-to`; collect them with `cra-agent withdraw <usdc>` from [`@cra-agent/mcp`](https://www.npmjs.com/package/@cra-agent/mcp). [CRA Factory](https://cra-agent.tech/factory#sell) writes the command for you.
+
 ## Hono
 
 ```ts
