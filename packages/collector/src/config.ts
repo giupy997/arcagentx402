@@ -198,6 +198,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
           pairs: [
             // Stablecoin pair: tight band, one euro floor.
             { symbol: "EURC", token: e.ARC_NETWORK === "mainnet" ? "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1" : "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a", decimals: 6, minPrice: 0.5, maxPrice: 2, minBaseUnits: "1000000", maxDeviation: 0.05 },
+            // Circle's wrapped bitcoin and bridged ether, addresses from docs.arc.io/arc/references/contract-addresses
+            // (2026-09-21). Dozens of tokens on Arc copy these names: the address is what makes a pair the real one.
+            ...(e.ARC_NETWORK === "mainnet"
+              ? [
+                  { symbol: "cirBTC", token: "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0", decimals: 8, minPrice: 1000, maxPrice: 10_000_000, minBaseUnits: "100", maxDeviation: 0.1 },
+                  { symbol: "WETH", token: "0x128cC466B61f542da60c70e3aA11c10e19B84EDB", decimals: 18, minPrice: 50, maxPrice: 1_000_000, minBaseUnits: (10n ** 13n).toString(), maxDeviation: 0.1 },
+                ]
+              : []),
             // The project token, when configured: 18 decimals, wide band because it is volatile.
             ...(tokenAddr ? [{ symbol: clean(e.TOKEN_SYMBOL) ?? "CRA", token: tokenAddr, decimals: 18, minPrice: 1e-9, maxPrice: 1e6, minBaseUnits: (1000n * 10n ** 18n).toString(), maxDeviation: 0.35 }] : []),
           ],

@@ -56,7 +56,7 @@ function inPlainWords(url: string, body: string): string {
     const n = (v: unknown, digits: number) => Number(v).toFixed(digits);
     if (url.includes("/fx/execution")) {
       const w = d.window ?? {};
-      return `Right now 1 ${d.symbol} trades for ${n(d.last?.rate, 4)} USDC on Arc. Over the last ${w.minutes} minutes: ${w.trades} real trades, average ${n(w.vwap, 4)}, worth $${w.volumeUsdc}.`;
+      return `Right now 1 ${d.symbol} trades for ${Number(d.last?.rate) >= 100 ? Number(d.last?.rate).toLocaleString("en-US", { maximumFractionDigits: 2 }) : n(d.last?.rate, 4)} USDC on Arc. Over the last ${w.minutes} minutes: ${w.trades} real trades, average ${n(w.vwap, 4)}, worth $${w.volumeUsdc}.`;
     }
     if (url.includes("/fees/estimate")) return `A simple transfer on Arc costs about $${d.costUsdc} right now, with the network fee at ${d.baseFeeGwei} gwei.`;
     if (url.includes("/fees/forecast")) return `The network fee on Arc is ${n(d.current?.baseFeeGwei, 1)} gwei now. Sending USDC costs about $${d.costNow?.erc20TransferUsdc}, and the floor is ${d.floorGwei} gwei.`;

@@ -52,7 +52,7 @@ async function refreshLive(): Promise<void> {
   const trades = s.pairs.reduce((a, p) => a + p.trades, 0);
   const volume = s.pairs.reduce((a, p) => a + Number(p.volumeUsdc.replace(/,/g, "")), 0);
   set("l-swaps", compact(trades));
-  set("l-volume", `${money(String(volume))} traded, ${s.pairs.map((p) => p.symbol).join(" and ")}`);
+  set("l-volume", `${money(String(volume))} traded, ${s.pairs.filter((p) => p.trades > 0).map((p) => p.symbol).join(", ")}`);
   set("l-deploys", compact(s.collected.deploys));
   // The rail buying from itself every hour. If it stops, this goes stale in plain sight.
   const t = s.selftest;

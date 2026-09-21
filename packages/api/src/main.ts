@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import pino from "pino";
 import { createPool } from "./db.js";
 import { buildOpenApi } from "./openapi.js";
+import { PAIRS, resolvePair } from "./pairs.js";
 import { PAID_ROUTES } from "./routes.js";
 import { activity, deployStats, feeEstimate, feeSummary, fxSummary, networkSummary, recentDeploys, rpcStatus, selftestSummary, settlementsSummary, tokenSummary } from "./queries.js";
 import { mountPaidRoutes } from "./paid.js";
@@ -58,17 +59,13 @@ app.get("/v1/deploys", async (c) => {
   return c.json(await cached(`deploys:${limit}`, 5000, async () => ({ recent: await recentDeploys(db, limit, NETWORK), perHour: await deployStats(db) })));
 });
 app.get("/v1/rpc", async (c) => c.json(await cached("rpc", 5000, () => rpcStatus(db))));
-/** Pairs the collector prices. The base token decimals decide how a rate is scaled. */
-const PAIRS: Record<string, number> = { EURC: 6, [process.env.TOKEN_SYMBOL ?? "CRA"]: 18 };
-const resolvePair = (q: string | undefined): { symbol: string; decimals: number } => {
-  const symbol = (q ?? "EURC").toUpperCase();
-  return { symbol, decimals: PAIRS[symbol] ?? 6 };
-};
 const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS ?? null;
 const TOKEN_DISTRIBUTOR = process.env.TOKEN_DISTRIBUTOR ?? null;
 app.get("/v1/fx", async (c) => {
   const w = Math.min(1440, Math.max(5, Number(c.req.query("window") ?? 60)));
-  const { symbol, decimals } = resolvePair(c.req.query("symbol"));
+  const pair = resolvePair(c.req.query("symbol"));
+  if (!pair) return c.json({ error: `we do not price that pair. Priced against USDC: ${PAIRS.map((p) => p.symbol).join(", ")}` }, 400);
+  const { symbol, decimals } = pair;
   const full = await cached(`fx:${symbol}:${w}`, 10_000, () => fxSummary(db, w, symbol, decimals));
   // Free tier: the headline rate and the window, without the size curve or the venue breakdown.
   return c.json({ pair: full.pair, last: full.last, window: full.window, paid: "/v1/paid/fx/execution" });
@@ -112,7 +109,7 @@ app.get("/v1/summary", async (c) =>
     await cached("summary", 15_000, async () => {
       const n = await networkSummary(db, NETWORK, CHAIN_ID);
       const pairs = await Promise.all(
-        Object.entries(PAIRS).map(async ([symbol, decimals]) => {
+        PAIRS.map(async ({ symbol, decimals }) => {
           const fx = await fxSummary(db, 1440, symbol, decimals);
           return { symbol, rate: fx.last?.rate ?? null, trades: fx.window.trades, volumeUsdc: fx.window.volumeUsdc };
         }),

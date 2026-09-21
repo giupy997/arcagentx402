@@ -72,12 +72,12 @@ const DATA_ROUTES: readonly PaidRoute[] = [
   {
     path: "/v1/paid/fx/execution",
     group: "Arc network",
-    plain: { label: "The euro to dollar rate on Arc, from real trades", explain: "What people actually paid to swap digital euros (EURC) for digital dollars (USDC) on Arc in the last hour: the average rate, the range, and how the rate changes with the size of the trade. Taken from trades that happened, not from a quoted price." },
+    plain: { label: "The price of Bitcoin, Ether or the euro on Arc, from real trades", explain: "What people actually paid on Arc in the last hour to swap Bitcoin (cirBTC), Ether (WETH), digital euros (EURC) or CRA for digital dollars: the average price, the range, and how the price changes with the size of the trade. Taken from trades that happened, not from a quoted price. Write cirBTC, WETH, EURC or CRA in the symbol field." },
     price: "$0.001",
     summary: "Executed prices against USDC, by trade size",
     description:
-      "A pair on Arc as executed against USDC: volume-weighted rate, range, the rate by trade size, and where the volume traded. ?symbol=EURC (default) or any token the collector watches.",
-    params: [WINDOW, { name: "symbol", type: "string", description: "Base token symbol, quoted in USDC.", example: "EURC" }],
+      "A pair on Arc as executed against USDC: volume-weighted rate, range, the rate by trade size, and where the volume traded. ?symbol=EURC (default), cirBTC, WETH or CRA.",
+    params: [WINDOW, { name: "symbol", type: "string", description: "Base token, quoted in USDC: EURC, cirBTC, WETH or CRA.", example: "cirBTC" }],
     preview: { hint: "pay $0.001 USDC via x402 for the size curve and venue breakdown; the headline rate is free at /v1/fx" },
   },
   {

@@ -4,6 +4,7 @@ import type { Logger } from "pino";
 import { createSeller, type SettlementEvent } from "@cra-agent/seller";
 import type { Db } from "./db.js";
 import { deployStats, feeEstimate, feeSummary, fxSummary, recentDeploys, recordSettlement, rpcStatus } from "./queries.js";
+import { PAIRS, resolvePair } from "./pairs.js";
 import { PAID_ROUTES, type QueryParam } from "./routes.js";
 import { mountToolHandlers } from "./tools.js";
 
@@ -120,9 +121,9 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
   // Executed prices for any pair the collector watches against USDC: ?symbol=EURC (default) or the project token.
   app.get(`${prefix}/fx/execution`, async (c) => {
     const w = Math.min(1440, Math.max(5, Number(c.req.query("window") ?? 60)));
-    const symbol = (c.req.query("symbol") ?? "EURC").toUpperCase();
-    const decimals = symbol === "EURC" ? 6 : 18;
-    return c.json(await fxSummary(db, w, symbol, decimals));
+    const pair = resolvePair(c.req.query("symbol"));
+    if (!pair) return c.json({ error: `we do not price that pair. Priced against USDC: ${PAIRS.map((p) => p.symbol).join(", ")}`, charged: false }, 400);
+    return c.json(await fxSummary(db, w, pair.symbol, pair.decimals));
   });
   // The routes that answer from the chain read live and from public sources.
   mountToolHandlers(app, prefix, {
