@@ -257,6 +257,19 @@ function formatUnits(raw: string, decimals: bigint, maxFrac = 2): string {
   return `${neg ? "-" : ""}${grouped}${frac ? "." + frac : ""}`;
 }
 
+/**
+ * A traded amount of the base token, for a reader. Two decimals suit euros and erase bitcoin, where
+ * a fifty-dollar trade is 0.0005: an amount below one keeps its first four significant digits.
+ */
+export function formatBaseAmount(raw: string, decimals: number): string {
+  const v = BigInt(raw);
+  const base = 10n ** BigInt(decimals);
+  if (v / base >= 100n) return formatUnits(raw, BigInt(decimals), 2);
+  if (v / base >= 1n) return formatUnits(raw, BigInt(decimals), 4);
+  const lead = (v % base).toString().padStart(decimals, "0").search(/[1-9]/);
+  return lead < 0 ? "0" : formatUnits(raw, BigInt(decimals), Math.min(decimals, lead + 4));
+}
+
 export interface TokenEvent {
   kind: "burn" | "payout";
   blockNumber: number;
@@ -421,7 +434,7 @@ export async function fxSummary(db: Db, windowMinutes = 60, symbol = "EURC", dec
     symbol,
     decimals,
     last: l
-      ? { rate: Number(l.rate), direction: l.direction, at: Number(l.timestamp), sizeBase: formatUnits(l.eurc_amount, BigInt(decimals)), sizeUsdc: usd6(l.usdc_amount) }
+      ? { rate: Number(l.rate), direction: l.direction, at: Number(l.timestamp), sizeBase: formatBaseAmount(l.eurc_amount, decimals), sizeUsdc: usd6(l.usdc_amount) }
       : null,
     window: {
       minutes: windowMinutes,
@@ -431,7 +444,7 @@ export async function fxSummary(db: Db, windowMinutes = 60, symbol = "EURC", dec
       max: a.mx === null ? null : Number(a.mx),
       low: a.lo === null ? null : Number(a.lo),
       high: a.hi === null ? null : Number(a.hi),
-      volumeBase: formatUnits(a.vbase ?? "0", BigInt(decimals)),
+      volumeBase: formatBaseAmount(a.vbase ?? "0", decimals),
       volumeUsdc: usd6(a.vusdc),
     },
     bySize: bySize.rows

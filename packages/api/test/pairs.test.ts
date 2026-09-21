@@ -12,3 +12,20 @@ describe("which pair a caller means", () => {
     expect(resolvePair("DOGE")).toBeNull();
   });
 });
+
+import { formatBaseAmount } from "../src/queries.js";
+
+describe("a traded amount, for a reader", () => {
+  it("keeps bitcoin-sized amounts readable instead of rounding them to zero", () => {
+    expect(formatBaseAmount("54334", 8)).toBe("0.0005433"); // a $47 trade at $86,538
+    expect(formatBaseAmount("100", 8)).toBe("0.000001");
+    expect(formatBaseAmount("150000000", 8)).toBe("1.5");
+    expect(formatBaseAmount("0", 8)).toBe("0");
+  });
+  it("shows amounts of a hundred and more with two decimals, and smaller ones with four", () => {
+    expect(formatBaseAmount("1234567890", 6)).toBe("1,234.56");
+    expect(formatBaseAmount("24706070000000000000000", 18)).toBe("24,706.07");
+    expect(formatBaseAmount("5500000", 6)).toBe("5.5");
+    expect(formatBaseAmount("12345678", 6)).toBe("12.3456");
+  });
+});
