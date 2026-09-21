@@ -1,7 +1,7 @@
 {
   "name": "@cra-agent/seller",
   "version": "0.0.4",
-  "description": "Put a USDC price on a Hono or Express route with x402, settled on Arc through Circle Gateway.",
+  "description": "Put a USDC price on any API with x402, settled on Arc: one command in front of an API you already run, or a middleware for Hono and Express.",
   "keywords": [
     "agent-payments",
     "ai-agents",
@@ -30,6 +30,9 @@
       "default": "./dist/express.js"
     }
   },
+  "bin": {
+    "cra-agent-sell": "dist/cli.js"
+  },
   "scripts": {
     "build": "tsc -b"
   },
@@ -41,6 +44,7 @@
     "@x402/express": "^2.25.0",
     "@x402/extensions": "^2.26.0",
     "@x402/hono": "^2.25.0",
+    "@hono/node-server": "^1.14.0",
     "hono": ">=4",
     "@cra-agent/accounting": "0.0.4"
   },
