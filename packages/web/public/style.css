@@ -294,6 +294,9 @@ footer.site a { word-break: break-all; }
 
 /* try page */
 .try .select { font: inherit; font-family: var(--mono); font-size: 14px; padding: 10px 12px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); max-width: 100%; }
+.try .wallet-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.try .wallet-row .btn { display: inline-flex; align-items: center; gap: 8px; }
+.try .wallet-row img { border-radius: 4px; }
 .try .fields { display: grid; gap: 12px; margin-top: 12px; }
 .try .field { display: grid; gap: 4px; font-size: 13px; color: var(--ink-2); }
 .try .field span { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }

@@ -8,6 +8,7 @@
  */
 import { API_BASE } from "./api.js";
 import { initChrome } from "./menu.js";
+import { findWallets, isPhone, openInWalletLinks, type Eip1193, type FoundWallet } from "./wallets.js";
 
 initChrome();
 
@@ -22,14 +23,15 @@ const ARC_PARAMS = {
 const USDC = "0x3600000000000000000000000000000000000000";
 const EXPLORER = "https://explorer.arc.io";
 
-interface Eip1193 { request(args: { method: string; params?: unknown[] }): Promise<unknown> }
 interface Accept { scheme: string; network: string; amount: string; asset: string; payTo: string; maxTimeoutSeconds: number; extra?: { name?: string; version?: string } }
 interface PaymentRequired { x402Version: number; resource: unknown; accepts: Accept[]; extensions?: unknown }
 interface RouteParam { name: string; description?: string; example?: string | number; required?: boolean }
 interface RouteInfo { route: string; summary: string; group?: string; label?: string; explain?: string; priceUsd?: string; params: RouteParam[]; alwaysFails: boolean }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
-const wallet = (): Eip1193 | null => (window as unknown as { ethereum?: Eip1193 }).ethereum ?? null;
+/** The wallet the visitor picked, or the only one there is. */
+let chosen: Eip1193 | null = null;
+const wallet = (): Eip1193 | null => chosen;
 const b64 = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 const unb64 = (s: string) => new TextDecoder().decode(Uint8Array.from(atob(s), (c) => c.charCodeAt(0)));
 const usd = (baseUnits: string) => `$${(Number(baseUnits) / 1e6).toFixed(6).replace(/0+$/, "").replace(/\.$/, "")}`;
@@ -157,12 +159,88 @@ async function showBalance(): Promise<void> {
   }
 }
 
-async function connect(): Promise<void> {
-  const w = wallet();
-  if (!w) {
+/** A row of buttons under the connect button, replaced each time it is filled. */
+function walletRow(note: string): HTMLElement {
+  const box = $("wallets");
+  box.innerHTML = "";
+  box.classList.remove("hidden");
+  const p = document.createElement("p");
+  p.className = "sub";
+  p.textContent = note;
+  box.appendChild(p);
+  const row = document.createElement("div");
+  row.className = "wallet-row";
+  box.appendChild(row);
+  return row;
+}
+
+/**
+ * Settles which wallet to talk to. One wallet: that one. Several: the visitor picks. None on a
+ * phone: links that reopen this page inside a wallet app, where the wallet is. None on a computer:
+ * say what to install.
+ */
+async function offerWallets(): Promise<void> {
+  const found = await findWallets();
+  if (found.length === 1) {
+    chosen = found[0]!.provider;
+    return;
+  }
+  if (found.length > 1) {
+    const row = walletRow("More than one wallet answered. Which one?");
+    await new Promise<void>((resolve) => {
+      for (const w of found) row.appendChild(walletButton(w, () => { chosen = w.provider; $("wallets").classList.add("hidden"); resolve(); }));
+    });
+    return;
+  }
+  if (!isPhone()) {
     $("account").textContent = "No browser wallet found. Install one (MetaMask, Rabby, Coinbase Wallet) and reload.";
     return;
   }
+  // Nothing to connect to from here: the button would only lead back to this same list.
+  $("connect").classList.add("hidden");
+  const row = walletRow("On a phone your wallet lives in its own app. Tap yours: this page reopens inside it, and from there it works exactly the same.");
+  for (const l of openInWalletLinks(location.href)) {
+    const a = document.createElement("a");
+    a.className = "btn";
+    a.href = l.href;
+    a.rel = "noopener";
+    a.textContent = l.name;
+    row.appendChild(a);
+  }
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "btn";
+  copy.textContent = "Another wallet: copy the link";
+  copy.addEventListener("click", () => {
+    void navigator.clipboard?.writeText(location.href).then(
+      () => { copy.textContent = "Copied. Paste it in your wallet's browser"; },
+      () => { copy.textContent = location.href; },
+    );
+  });
+  row.appendChild(copy);
+}
+
+function walletButton(w: FoundWallet, pick: () => void): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "btn";
+  if (w.icon) {
+    const img = document.createElement("img");
+    img.src = w.icon;
+    img.alt = "";
+    img.width = 18;
+    img.height = 18;
+    b.appendChild(img);
+  }
+  b.append(w.name);
+  b.addEventListener("click", pick);
+  return b;
+}
+
+async function connect(): Promise<void> {
+  if (!chosen) await offerWallets();
+  const w = wallet();
+  if (!w) return;
   try {
     const accounts = (await w.request({ method: "eth_requestAccounts" })) as string[];
     account = accounts[0] ?? null;
@@ -282,3 +360,5 @@ async function pay(): Promise<void> {
 $("connect").addEventListener("click", () => void connect());
 $("pay").addEventListener("click", () => void pay());
 void loadRoutes();
+// On a phone with no wallet in the page, say so before the visitor taps a button that cannot work.
+if (isPhone()) void offerWallets();
