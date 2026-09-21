@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRA Factory — build your own paying agent</title>
+<meta name="description" content="Answer four questions and get an AI agent that pays for APIs in USDC on Arc, under limits it cannot change. Ready to paste, no signup.">
+<meta name="theme-color" content="#061a42">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="nav" id="nav">
+  <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+  <div class="nav-right">
+    <span class="net-pill" id="netpill"><span class="dot" id="netdot"></span><span id="netlabel">Arc mainnet</span></span>
+    <button class="menu-btn" type="button" data-menu-open aria-label="Open menu" aria-controls="menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+</header>
+<div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="Menu">
+  <div class="menu-top">
+    <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+    <button class="menu-btn" type="button" data-menu-close aria-label="Close menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3.5 3.5l11 11M14.5 3.5l-11 11" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+  <ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="/#how">How it works</a></li>
+    <li><a href="/#install">Install the agent</a></li>
+    <li><a href="/#sell">Sell an endpoint</a></li>
+    <li><a href="/network">Network</a></li>
+    <li><a href="/factory">Factory</a></li>
+    <li><a href="/try">Try it</a></li>
+    <li><a href="/status">Status</a></li>
+    <li><a href="/token">Token</a></li>
+    <li><a href="https://x.com/Craagentarc" rel="noopener">X</a></li>
+    <li><a href="https://github.com/giupy997/arcagentx402" rel="noopener">GitHub</a></li>
+  </ul>
+  <div class="menu-foot">x402 · Circle Gateway · USDC on Arc</div>
+</div>
+
+<section class="page-head">
+  <div class="marks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div class="wrap">
+    <p class="kicker" style="color:rgba(255,255,255,.8)">CRA Factory</p>
+    <h1>Build your own paying agent</h1>
+    <div class="meta">Four questions · you get an AI agent that pays for APIs in USDC on Arc, under limits it cannot change · nothing to sign up for</div>
+  </div>
+</section>
+
+<main class="wrap dash try factory">
+  <div class="chart-card wide">
+    <div class="head"><div><h2>1. Where will the agent live?</h2><div class="sub">The program you talk to your AI in. The agent plugs into it as a set of tools.</div></div></div>
+    <div class="choices" id="clients" role="radiogroup" aria-label="AI client"></div>
+  </div>
+
+  <div class="chart-card wide">
+    <div class="head"><div><h2>2. How much may it spend?</h2><div class="sub">Pick a starting point, then change any number. These are hard limits: the AI cannot raise them, because it never sees them as something it can edit.</div></div></div>
+    <div class="choices" id="presets" role="radiogroup" aria-label="Spending preset"></div>
+    <div class="fields grid">
+      <label class="field"><span>Per day, in total ($)</span><input id="f-daily" inputmode="decimal" autocomplete="off"><small>The most it can spend in 24 hours, whatever happens.</small></label>
+      <label class="field"><span>Per seller, per day ($)</span><input id="f-seller" inputmode="decimal" autocomplete="off"><small>So one site cannot take the whole budget.</small></label>
+      <label class="field"><span>Per payment ($)</span><input id="f-payment" inputmode="decimal" autocomplete="off"><small>The most a single call may cost. Most calls cost a fraction of a cent.</small></label>
+      <label class="field"><span>Payments per minute</span><input id="f-rate" inputmode="numeric" autocomplete="off"><small>A brake, in case the AI gets stuck in a loop.</small></label>
+    </div>
+  </div>
+
+  <div class="chart-card wide">
+    <div class="head"><div><h2>3. Which sites may it pay?</h2><div class="sub">Leave empty to let it pay any site that asks over x402, within the limits above. Or list the only sites you trust, one per line.</div></div></div>
+    <label class="field"><span>Allowed sites (optional)</span><textarea id="f-allow" rows="3" spellcheck="false" autocomplete="off" placeholder="api.cra-agent.tech"></textarea></label>
+  </div>
+
+  <div class="chart-card wide">
+    <div class="head"><div><h2>4. Network and key file</h2><div class="sub">The agent gets its own new wallet. You will create its key yourself in a moment, on your machine: here you only say where the file will be.</div></div></div>
+    <div class="choices" id="networks" role="radiogroup" aria-label="Network"></div>
+    <label class="field"><span>Key file, full path</span><input id="f-key" spellcheck="false" autocomplete="off"><small>Replace “you” with your user name. On Windows use WSL or Git Bash and a path like /home/you/.cra-agent/agent.key.</small></label>
+  </div>
+
+  <div class="chart-card wide">
+    <div class="head"><div><h2>Your agent, in words</h2></div></div>
+    <p class="sub" id="words"></p>
+    <div class="callout hidden" id="problems"></div>
+  </div>
+
+  <div id="steps-out"></div>
+
+  <div class="chart-card wide">
+    <div class="head"><div><h2>What this page does not do</h2></div></div>
+    <p class="sub">It does not create a wallet, see a key, or send anything anywhere: everything above is put together in your browser, and the key is made by a command you run yourself. It does not hold your money either. The agent spends from its own small wallet, which you fill, and it can never spend more than what is in it or more than the limits you set.</p>
+    <p class="sub">Want to see a payment first, with no install? <a href="/try">Buy one API call from your browser wallet</a>. Every payment made through us is listed on <a href="/status">the status page</a>.</p>
+  </div>
+</main>
+
+<footer class="site light">
+  <span>Open source, MIT · <a href="https://www.npmjs.com/package/@cra-agent/mcp" rel="noopener">@cra-agent/mcp</a> on npm, listed in the official MCP registry</span>
+  <span><a href="/">Home</a> · <a href="/try">Try it</a> · <a href="/status">Status</a> · <a href="https://github.com/giupy997/arcagentx402" rel="noopener">GitHub</a></span>
+</footer>
+<script src="/config.js"></script>
+<script type="module" src="/js/factory.js"></script>
+</body>
+</html>
