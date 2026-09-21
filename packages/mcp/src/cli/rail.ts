@@ -4,6 +4,7 @@
  *   cra-agent quote <url>        cra-agent pay <url>        cra-agent balance
  *   cra-agent deposit <usdc>     cra-agent ledger [n]       cra-agent policy
  *   cra-agent verify <receipt.json> [agent]    checks a signed receipt; needs no key and no network
+ *   cra-agent init [--client …] [--policy …]   makes the key, writes the AI client config; see init.ts
  */
 import { formatUsdc6 } from "@cra-agent/accounting";
 import { describePolicy } from "@cra-agent/policy";
@@ -12,11 +13,14 @@ import type { Address } from "viem";
 import { EscrowNotImplemented, PolicyRejected, verifySpendReceipt, type SignedSpendReceipt } from "@cra-agent/router";
 import { registerIdentity } from "@cra-agent/identity";
 import { railFromEnv } from "../rail-from-env.js";
+import { runInit } from "./init.js";
 
 const out = (v: unknown) => console.log(JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x), 2));
 
 async function main(): Promise<void> {
   const [cmd, arg] = process.argv.slice(2);
+  // Setting up comes before there is a key or an environment to read.
+  if (cmd === "init") return runInit(process.argv.slice(3));
   // Checking someone else's receipt needs no key, no network and no ledger, so it runs before any of that.
   if (cmd === "verify") {
     if (!arg) throw new Error("usage: verify <receipt.json | - for stdin> [expected agent address]");
@@ -119,7 +123,7 @@ async function main(): Promise<void> {
       break;
     }
     default:
-      console.error("usage: cra-agent <quote|pay|balance|deposit|ledger|policy|proof|verify|selftest> [arg]");
+      console.error("usage: cra-agent <init|quote|pay|balance|deposit|ledger|policy|proof|verify|selftest> [arg]");
       process.exit(2);
   }
   await ledger.close();

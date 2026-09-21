@@ -2,7 +2,7 @@
  * CRA Factory, the page: four questions in, the steps to run a paying agent out. All of it happens
  * in the browser. The logic, and what it promises about keys, is in factory-config.ts.
  */
-import { hostOf, inWords, PRESETS, problems, steps, type Client, type FactoryInput, type Network } from "./factory-config.js";
+import { hostOf, inWords, oneCommand, PRESETS, problems, steps, type Client, type FactoryInput, type Network } from "./factory-config.js";
 import { initChrome } from "./menu.js";
 
 initChrome();
@@ -92,14 +92,32 @@ function render(): void {
   const out = $("steps-out");
   out.innerHTML = "";
   if (wrong.length) return;
-  steps(i).forEach((s, n) => {
+  out.appendChild(stepCard("The short way. ", oneCommand(i, DEFAULT_KEY)));
+  const after = document.createElement("div");
+  after.className = "chart-card wide";
+  const afterText = document.createElement("p");
+  afterText.className = "sub";
+  afterText.textContent = "Then two things the command cannot do for you: send a few dollars of USDC on Arc to the address it prints, and run the deposit line it shows. After that, ask your AI to buy something.";
+  after.appendChild(afterText);
+  out.appendChild(after);
+  const byHand = document.createElement("details");
+  byHand.className = "by-hand";
+  const summary = document.createElement("summary");
+  summary.textContent = "Or do every step by hand, and see exactly what the command does";
+  byHand.appendChild(summary);
+  steps(i).forEach((s, n) => byHand.appendChild(stepCard(`Step ${n + 1}. `, s)));
+  out.appendChild(byHand);
+}
+
+function stepCard(prefix: string, s: { title: string; explain: string; code: string; file?: string }): HTMLElement {
+  {
     const card = document.createElement("div");
     card.className = "chart-card wide";
     const head = document.createElement("div");
     head.className = "head";
     const titles = document.createElement("div");
     const h = document.createElement("h2");
-    h.textContent = `Step ${n + 1}. ${s.title}`;
+    h.textContent = `${prefix}${s.title}`;
     const sub = document.createElement("div");
     sub.className = "sub";
     sub.textContent = s.explain;
@@ -116,8 +134,8 @@ function render(): void {
     pre.className = "json";
     pre.textContent = s.code;
     card.appendChild(pre);
-    out.appendChild(card);
-  });
+    return card;
+  }
 }
 
 const markClient = choices($("clients"), CLIENTS, (id) => { client = id; markClient(id); render(); });
@@ -134,7 +152,8 @@ const markPreset = choices($("presets"), PRESETS.map((p) => ({ id: p.id, label: 
 });
 
 const home = /Windows/i.test(navigator.userAgent) ? "/home/you" : /Mac/i.test(navigator.userAgent) ? "/Users/you" : "/home/you";
-input("f-key").value = `${home}/.cra-agent/agent.key`;
+const DEFAULT_KEY = `${home}/.cra-agent/agent.key`;
+input("f-key").value = DEFAULT_KEY;
 for (const id of ["f-daily", "f-seller", "f-payment", "f-rate", "f-allow", "f-key"]) {
   // A number typed by hand is no longer the preset's.
   $(id).addEventListener("input", () => { if (id !== "f-key") markPreset(null); render(); });

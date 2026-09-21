@@ -99,6 +99,21 @@ function clientStep(i: FactoryInput): Step {
   }
 }
 
+/**
+ * The whole setup as one line for a terminal. `cra-agent init` runs on the visitor's machine: it
+ * makes the key there, writes the client's config with a copy of the old one, and prints the
+ * address to fund. The key path is left to it unless the visitor changed the default.
+ */
+export function oneCommand(i: FactoryInput, defaultKeyFile: string): Step {
+  const keyFlag = i.keyFile === defaultKeyFile ? "" : ` --key-file '${i.keyFile}'`;
+  const where = i.client === "claude-desktop" ? "writes the entry into Claude's config file and keeps a copy of the old one" : i.client === "cursor" ? "writes the entry into Cursor's config file and keeps a copy of the old one" : i.client === "claude-code" ? "prints the one command that adds it to Claude Code" : "prints the three lines that set up your terminal";
+  return {
+    title: "Paste this in a terminal",
+    explain: `Needs Node 20 or newer. It installs the agent, creates its key on your machine in a file only you can read, checks the limits, ${where}, and tells you the address to send money to. If a key is already there it keeps it.`,
+    code: `npm i -g @cra-agent/mcp && cra-agent init --client ${i.client} --network ${i.network} --policy '${policyString(i)}'${keyFlag}`,
+  };
+}
+
 export function steps(i: FactoryInput): Step[] {
   const dir = i.keyFile.replace(/[/\\][^/\\]*$/, "");
   const firstUrl = "https://api.cra-agent.tech/v1/paid/fx/execution?symbol=EURC";

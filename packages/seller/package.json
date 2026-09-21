@@ -1,6 +1,6 @@
 {
   "name": "@cra-agent/seller",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Put a USDC price on a Hono or Express route with x402, settled on Arc through Circle Gateway.",
   "keywords": [
     "agent-payments",
@@ -42,7 +42,7 @@
     "@x402/extensions": "^2.26.0",
     "@x402/hono": "^2.25.0",
     "hono": ">=4",
-    "@cra-agent/accounting": "0.0.3"
+    "@cra-agent/accounting": "0.0.4"
   },
   "peerDependencies": {
     "express": ">=4",

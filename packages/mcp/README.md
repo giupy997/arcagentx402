@@ -10,7 +10,15 @@ The model never sees the key, and it cannot raise its own limit: both are read f
 npm i -g @cra-agent/mcp
 ```
 
-## Use it from an MCP client
+## Set it up in one command
+
+```bash
+cra-agent init --client claude-desktop
+```
+
+Creates the agent's key in `~/.cra-agent/agent.key` (readable only by you, never overwritten), checks the limits, writes the entry into the client's config file with a copy of the old one, and prints the address to fund. `--client` is `claude-desktop`, `cursor`, `claude-code` or `terminal`; `--policy`, `--network`, `--key-file` and `--dry-run` do what they say. [CRA Factory](https://cra-agent.tech/factory) writes the command for you from four questions.
+
+## Or by hand, from any MCP client
 
 ```json
 { "mcpServers": { "cra-agent": {

@@ -305,6 +305,9 @@ footer.site a { word-break: break-all; }
 .factory .head { align-items: flex-start; gap: 12px; }
 .factory .btn.copy { flex: none; height: 32px; padding: 0 12px; font-size: 12px; }
 .factory #problems div + div { margin-top: 6px; }
+.factory .by-hand { margin-top: 4px; }
+.factory .by-hand > summary { cursor: pointer; padding: 14px 2px; font-family: var(--mono); font-size: 13px; text-transform: uppercase; letter-spacing: .02em; color: var(--blue-600); }
+.factory .by-hand .chart-card { margin-top: 12px; }
 .factory .json { white-space: pre-wrap; word-break: break-all; }
 .try .wallet-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .try .wallet-row .btn { display: inline-flex; align-items: center; gap: 8px; }

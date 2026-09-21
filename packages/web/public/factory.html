@@ -74,9 +74,9 @@
   </div>
 
   <div class="chart-card wide">
-    <div class="head"><div><h2>4. Network and key file</h2><div class="sub">The agent gets its own new wallet. You will create its key yourself in a moment, on your machine: here you only say where the file will be.</div></div></div>
+    <div class="head"><div><h2>4. Network and key file</h2><div class="sub">The agent gets its own new wallet. Its key is created on your machine by the command below, never by this page. Leave the path as it is unless you want the file somewhere else.</div></div></div>
     <div class="choices" id="networks" role="radiogroup" aria-label="Network"></div>
-    <label class="field"><span>Key file, full path</span><input id="f-key" spellcheck="false" autocomplete="off"><small>Replace “you” with your user name. On Windows use WSL or Git Bash and a path like /home/you/.cra-agent/agent.key.</small></label>
+    <label class="field"><span>Key file, full path</span><input id="f-key" spellcheck="false" autocomplete="off"><small>Left as it is, the command uses the .cra-agent folder in your home. Change it only if you want another place, with the full path.</small></label>
   </div>
 
   <div class="chart-card wide">
@@ -89,7 +89,7 @@
 
   <div class="chart-card wide">
     <div class="head"><div><h2>What this page does not do</h2></div></div>
-    <p class="sub">It does not create a wallet, see a key, or send anything anywhere: everything above is put together in your browser, and the key is made by a command you run yourself. It does not hold your money either. The agent spends from its own small wallet, which you fill, and it can never spend more than what is in it or more than the limits you set.</p>
+    <p class="sub">It does not create a wallet, see a key, or send anything anywhere: everything above is put together in your browser, and the key is made on your machine by the command you paste. The command is open source: the “by hand” section shows every step it takes. It does not hold your money either. The agent spends from its own small wallet, which you fill, and it can never spend more than what is in it or more than the limits you set.</p>
     <p class="sub">Want to see a payment first, with no install? <a href="/try">Buy one API call from your browser wallet</a>. Every payment made through us is listed on <a href="/status">the status page</a>.</p>
   </div>
 </main>

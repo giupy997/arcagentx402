@@ -48,3 +48,20 @@ describe("what the factory hands to a visitor", () => {
     expect(inWords({ ...base, allow: ["api.cra-agent.tech"] })).toContain("only api.cra-agent.tech");
   });
 });
+
+describe("the one command", () => {
+  it("is accepted by the real init parser, with the limits intact", async () => {
+    const { parseInitArgs } = await import("../../mcp/src/cli/init.js");
+    const { oneCommand } = await import("../src/factory-config.js");
+    for (const p of PRESETS) {
+      const input = { ...base, ...p.values, client: "cursor" as const };
+      const line = oneCommand(input, base.keyFile).code;
+      expect(line.startsWith("npm i -g @cra-agent/mcp && cra-agent init ")).toBe(true);
+      // Split the way a shell would: spaces outside single quotes.
+      const argv = [...line.split("cra-agent init ")[1]!.matchAll(/'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2]!);
+      const parsed = parseInitArgs(argv, "/Users/you");
+      expect(parsed).toMatchObject({ client: "cursor", network: "arc", policy: policyString(input), keyFile: base.keyFile });
+    }
+    expect(oneCommand({ ...base, keyFile: "/opt/keys/a.key" }, base.keyFile).code).toContain("--key-file '/opt/keys/a.key'");
+  });
+});
