@@ -65,6 +65,11 @@ function inPlainWords(url: string, body: string): string {
       const best = [...rows].sort((a, b) => a.callErrors - b.callErrors || a.rttAvgMs - b.rttAvgMs)[0];
       return best ? `${rows.length} public access points measured. The most reliable right now is ${new URL(best.endpoint).host}: ${best.callErrors} failed calls, ${best.rttAvgMs} ms on average.` : "Measurements for the public access points.";
     }
+    if (url.includes("/market/prices")) {
+      const p = (d.prices ?? []) as Array<Record<string, any>>;
+      const fmt = (v: number | null) => (v === null ? "no trades" : v >= 100 ? `$${v.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : `$${v.toFixed(4)}`);
+      return p.map((x) => `${x.symbol} ${fmt(x.last)}${x.change24hPct === null ? "" : ` (${x.change24hPct > 0 ? "+" : ""}${x.change24hPct}% in 24h)`}`).join(", ") + ".";
+    }
     if (url.includes("/arc/wallet")) return `This ${d.type} holds ${d.usdc} USDC${d.cra === undefined ? "" : ` and ${d.cra} CRA`}, and has sent ${d.transactionsSent} transactions.`;
     if (url.includes("/arc/token")) return `${d.name ?? "Unnamed token"} (${d.symbol ?? "no ticker"}): ${d.totalSupply ?? "unknown"} in existence, ${d.decimals} decimals.`;
     if (url.includes("/arc/tx")) return `This transaction ${d.status === "success" ? "went through" : d.status === "reverted" ? "failed" : "is still pending"}. It was a ${d.kind}, cost $${d.feeUsdc} in fees, and moved tokens ${(d.transfers ?? []).length} time(s).`;

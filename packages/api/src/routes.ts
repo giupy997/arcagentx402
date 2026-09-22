@@ -35,6 +35,15 @@ const WINDOW: QueryParam = { name: "window", type: "integer", description: "Wind
 
 const DATA_ROUTES: readonly PaidRoute[] = [
   {
+    path: "/v1/paid/market/prices",
+    group: "Arc network",
+    plain: { label: "Bitcoin, Ether, euro and CRA prices on Arc, in one call", explain: "The price of every pair we watch, from real swaps on Arc: last trade and how many seconds ago it was, the last hour's average and range, the volume, and the change over 24 hours. Made for an agent that has to decide something and wants one call, not four." },
+    price: "$0.002",
+    summary: "Every pair at once: last price, freshness, hourly VWAP and range, 24h change",
+    description: "All pairs the collector prices against USDC (cirBTC, WETH, EURC, CRA) in one call: last executed price with its age in seconds, hourly volume-weighted price with the 5th-95th percentile range, trade count, volume, and 24h change. From real swaps on Arc, not a quote.",
+    preview: { hint: "pay $0.002 USDC via x402 for every pair at once; single pairs are free at /v1/fx?symbol=" },
+  },
+  {
     path: "/v1/paid/fees/forecast",
     group: "Arc network",
     plain: { label: "What a transaction on Arc costs right now", explain: "The network fee on Arc at this moment and for the next block, the range over the last day, and what common actions cost, like sending USDC or swapping. Useful before you send something, to know if now is a cheap or an expensive moment." },

@@ -645,3 +645,49 @@ export async function settlementsSummary(db: Db, ownPayers: readonly string[], l
     })),
   };
 }
+
+export interface MarketPrice {
+  symbol: string;
+  pair: string;
+  /** USDC per whole unit, from the last executed swap on Arc. */
+  last: number | null;
+  /** How many seconds ago that swap was: the agent decides what "fresh" means to it. */
+  ageSeconds: number | null;
+  /** The last hour, volume-weighted, with the range most of the volume executed in. */
+  hour: { vwap: number | null; low: number | null; high: number | null; trades: number; volumeUsdc: string };
+  /** Change of the hourly VWAP against the one 24 hours earlier, in percent. Null without enough history. */
+  change24hPct: number | null;
+}
+export interface MarketPrices {
+  at: number;
+  source: string;
+  prices: MarketPrice[];
+}
+
+/** All the pairs at once, for an agent deciding something: one call, one shape, a freshness figure on each. */
+export async function marketPrices(db: Db, pairs: ReadonlyArray<{ symbol: string; decimals: number }>): Promise<MarketPrices> {
+  const now = Math.floor(Date.now() / 1000);
+  const prices = await Promise.all(
+    pairs.map(async ({ symbol, decimals }) => {
+      const [hour, dayAgo] = await Promise.all([
+        fxSummary(db, 60, symbol, decimals),
+        db.query<{ vwap: string | null }>(
+          `SELECT sum(rate * usdc_amount) / nullif(sum(usdc_amount), 0) AS vwap FROM fx_trades
+           WHERE base_symbol = $1 AND "timestamp" BETWEEN $2 AND $3`,
+          [symbol, now - 86400 - 3600, now - 86400],
+        ),
+      ]);
+      const before = dayAgo.rows[0]?.vwap === null || dayAgo.rows[0]?.vwap === undefined ? null : Number(dayAgo.rows[0].vwap);
+      const vwap = hour.window.vwap;
+      return {
+        symbol,
+        pair: hour.pair,
+        last: hour.last?.rate ?? null,
+        ageSeconds: hour.last ? now - hour.last.at : null,
+        hour: { vwap, low: hour.window.low, high: hour.window.high, trades: hour.window.trades, volumeUsdc: hour.window.volumeUsdc },
+        change24hPct: vwap !== null && before !== null && before > 0 ? Number((((vwap - before) / before) * 100).toFixed(3)) : null,
+      };
+    }),
+  );
+  return { at: now, source: "executed swaps on Arc mainnet, read by our own collector; routed hops and mispriced legs excluded, running median as reference", prices };
+}

@@ -3,7 +3,7 @@ import { compareUsdc6, formatUsdc6, parseUsdc6 } from "@cra-agent/accounting";
 import type { Logger } from "pino";
 import { createSeller, type SettlementEvent } from "@cra-agent/seller";
 import type { Db } from "./db.js";
-import { deployStats, feeEstimate, feeSummary, fxSummary, recentDeploys, recordSettlement, rpcStatus } from "./queries.js";
+import { deployStats, feeEstimate, feeSummary, fxSummary, marketPrices, recentDeploys, recordSettlement, rpcStatus } from "./queries.js";
 import { PAIRS, resolvePair } from "./pairs.js";
 import { PAID_ROUTES, type QueryParam } from "./routes.js";
 import { mountToolHandlers } from "./tools.js";
@@ -121,6 +121,7 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
     return c.json({ recent: await recentDeploys(db, limit, network), perHour: await deployStats(db) });
   });
   app.get(`${prefix}/rpc/health`, async (c) => c.json(await rpcStatus(db)));
+  app.get(`${prefix}/market/prices`, async (c) => c.json(await marketPrices(db, PAIRS)));
   // Executed prices for any pair the collector watches against USDC: ?symbol=EURC (default) or the project token.
   app.get(`${prefix}/fx/execution`, async (c) => {
     const w = Math.min(1440, Math.max(5, Number(c.req.query("window") ?? 60)));
