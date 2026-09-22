@@ -24,8 +24,33 @@ export interface NetworkSummary {
   collector: { lastBlockAgeSeconds: number | null; gapsOpen: number };
 }
 
+/**
+ * Blocks and transactions collected so far. Counting 1.5M rows on every call was the biggest load on
+ * the database, so the count is kept in memory and only the blocks above the last counted number
+ * are added. Backfill inserts older blocks too, so a full recount runs every ten minutes.
+ */
+const totals = { upTo: -1n, blocks: 0n, txs: 0n, fullAt: 0 };
+async function blockTotals(db: Db): Promise<{ blocks: number; txs: number }> {
+  const full = Date.now() - totals.fullAt > 600_000;
+  const r = await db.query<{ n: string; txs: string; top: string | null }>(
+    full ? "SELECT count(*) AS n, coalesce(sum(tx_count),0) AS txs, max(number) AS top FROM blocks" : "SELECT count(*) AS n, coalesce(sum(tx_count),0) AS txs, max(number) AS top FROM blocks WHERE number > $1",
+    full ? [] : [totals.upTo.toString()],
+  );
+  const row = r.rows[0]!;
+  if (full) {
+    totals.blocks = BigInt(row.n);
+    totals.txs = BigInt(row.txs);
+    totals.fullAt = Date.now();
+  } else {
+    totals.blocks += BigInt(row.n);
+    totals.txs += BigInt(row.txs);
+  }
+  if (row.top !== null) totals.upTo = BigInt(row.top) > totals.upTo ? BigInt(row.top) : totals.upTo;
+  return { blocks: Number(totals.blocks), txs: Number(totals.txs) };
+}
+
 export async function networkSummary(db: Db, network: string, chainId: number): Promise<NetworkSummary> {
-  const [head, chain, rate, fin, totals, gaps, best] = await Promise.all([
+  const [head, chain, rate, fin, deploys, gaps, best, counted] = await Promise.all([
     db.query<{ number: string; timestamp: string; inserted_at: string }>("SELECT number, \"timestamp\", inserted_at FROM blocks ORDER BY number DESC LIMIT 1"),
     db.query<{ value: { genesisHash: string } }>("SELECT value FROM collector_state WHERE key = 'chain'"),
     db.query<{ blocks: string; txs: string; span: string }>(
@@ -37,11 +62,10 @@ export async function networkSummary(db: Db, network: string, chainId: number): 
               percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM observed_at) - "timestamp") AS p95, count(*) AS n
        FROM blocks WHERE observed_at IS NOT NULL AND observed_at > now() - interval '1 hour'`,
     ),
-    db.query<{ blocks: string; txs: string; deploys: string }>(
-      "SELECT (SELECT count(*) FROM blocks) AS blocks, (SELECT coalesce(sum(tx_count),0) FROM blocks) AS txs, (SELECT count(*) FROM contract_deploys) AS deploys",
-    ),
+    db.query<{ deploys: string }>("SELECT count(*) AS deploys FROM contract_deploys"),
     db.query<{ n: string }>("SELECT count(*) AS n FROM block_gaps"),
     db.query<{ best: string | null }>("SELECT max(latest) AS best FROM head_observations WHERE observed_at > now() - interval '2 minutes'"),
+    blockTotals(db),
   ]);
   const h = head.rows[0];
   const chainHead = best.rows[0]?.best === null || best.rows[0]?.best === undefined ? null : Number(best.rows[0].best);
@@ -59,7 +83,7 @@ export async function networkSummary(db: Db, network: string, chainId: number): 
     blockTimeSeconds: r && Number(r.blocks) > 1 && span > 0 ? Number((span / (Number(r.blocks) - 1)).toFixed(3)) : null,
     txPerSecond: r && span > 0 ? Number((Number(r.txs) / span).toFixed(2)) : null,
     finality: { p50Seconds: num(fin.rows[0]?.p50), p95Seconds: num(fin.rows[0]?.p95), samples: Number(fin.rows[0]?.n ?? 0) },
-    totals: { blocks: Number(totals.rows[0]?.blocks ?? 0), transactions: Number(totals.rows[0]?.txs ?? 0), deploys: Number(totals.rows[0]?.deploys ?? 0) },
+    totals: { blocks: counted.blocks, transactions: counted.txs, deploys: Number(deploys.rows[0]?.deploys ?? 0) },
     collector: { lastBlockAgeSeconds: h ? Math.round((Date.now() - new Date(h.inserted_at).getTime()) / 1000) : null, gapsOpen: Number(gaps.rows[0]?.n ?? 0) },
   };
 }
@@ -85,11 +109,11 @@ export async function feeSummary(db: Db, windowMinutes = 60): Promise<FeeSummary
   const [cur, day, series, ops] = await Promise.all([
     db.query<{ number: string; base_fee_per_gas: string; next_base_fee_per_gas: string | null }>("SELECT number, base_fee_per_gas, next_base_fee_per_gas FROM blocks ORDER BY number DESC LIMIT 1"),
     db.query<{ mn: string | null; mx: string | null; util: number | null }>(
-      `SELECT min(base_fee_per_gas) AS mn, max(base_fee_per_gas) AS mx, avg(gas_used_ratio) AS util FROM blocks WHERE "timestamp" > extract(epoch FROM now()) - 86400`,
+      `SELECT min(base_fee_per_gas) AS mn, max(base_fee_per_gas) AS mx, avg(gas_used_ratio) AS util FROM blocks WHERE "timestamp" > (extract(epoch FROM now())::bigint - 86400)`,
     ),
     db.query<{ t: string; fee: string; util: number; n: string }>(
       `SELECT (("timestamp" / 60) * 60) AS t, avg(base_fee_per_gas) AS fee, avg(gas_used_ratio) AS util, count(*) AS n
-       FROM blocks WHERE "timestamp" > extract(epoch FROM now()) - $1 GROUP BY 1 ORDER BY 1`,
+       FROM blocks WHERE "timestamp" > (extract(epoch FROM now())::bigint - $1::bigint) GROUP BY 1 ORDER BY 1`,
       [windowMinutes * 60],
     ),
     db.query<{ op: string; n: string; fee: string | null; failed: string }>(
@@ -145,7 +169,7 @@ export async function feeEstimate(db: Db, gas: bigint): Promise<{ gas: string; b
 export async function activity(db: Db, windowMinutes = 60) {
   const [perMinute, failed, selectors, emitters] = await Promise.all([
     db.query<{ t: string; txs: string; blocks: string }>(
-      `SELECT (("timestamp" / 60) * 60) AS t, sum(tx_count) AS txs, count(*) AS blocks FROM blocks WHERE "timestamp" > extract(epoch FROM now()) - $1 GROUP BY 1 ORDER BY 1`,
+      `SELECT (("timestamp" / 60) * 60) AS t, sum(tx_count) AS txs, count(*) AS blocks FROM blocks WHERE "timestamp" > (extract(epoch FROM now())::bigint - $1::bigint) GROUP BY 1 ORDER BY 1`,
       [windowMinutes * 60],
     ),
     db.query<{ n: string; failed: string }>(
@@ -208,7 +232,7 @@ export async function recentDeploys(db: Db, limit: number, network: string) {
 export async function deployStats(db: Db) {
   const r = await db.query<{ t: string; n: string; deployers: string }>(
     `SELECT (block_timestamp / 3600) * 3600 AS t, count(*) AS n, count(DISTINCT deployer) AS deployers FROM contract_deploys
-     WHERE block_timestamp > extract(epoch FROM now()) - 86400 GROUP BY 1 ORDER BY 1`,
+     WHERE block_timestamp > (extract(epoch FROM now())::bigint - 86400) GROUP BY 1 ORDER BY 1`,
   );
   return r.rows.map((x) => ({ t: Number(x.t), deploys: Number(x.n), deployers: Number(x.deployers) }));
 }
@@ -303,13 +327,13 @@ export async function tokenSummary(db: Db, address: string | null, distributor: 
   const [burn, pay, perHour, recent] = await Promise.all([
     db.query<{ total: string | null; n: string; last24h: string | null; last_at: string | null }>(
       `SELECT sum(amount) AS total, count(*) AS n,
-              sum(amount) FILTER (WHERE "timestamp" > extract(epoch FROM now()) - 86400) AS last24h,
+              sum(amount) FILTER (WHERE "timestamp" > (extract(epoch FROM now())::bigint - 86400)) AS last24h,
               max("timestamp") AS last_at
        FROM token_events WHERE kind = 'burn'`,
     ),
     db.query<{ total: string | null; n: string; last24h: string | null; recipients: string; last_at: string | null }>(
       `SELECT sum(amount) AS total, count(*) AS n,
-              sum(amount) FILTER (WHERE "timestamp" > extract(epoch FROM now()) - 86400) AS last24h,
+              sum(amount) FILTER (WHERE "timestamp" > (extract(epoch FROM now())::bigint - 86400)) AS last24h,
               count(DISTINCT "to") AS recipients, max("timestamp") AS last_at
        FROM token_events WHERE kind = 'payout'`,
     ),
@@ -317,7 +341,7 @@ export async function tokenSummary(db: Db, address: string | null, distributor: 
       `SELECT ("timestamp" / 3600) * 3600 AS t,
               sum(amount) FILTER (WHERE kind = 'burn') AS burned,
               sum(amount) FILTER (WHERE kind = 'payout') AS payout
-       FROM token_events WHERE "timestamp" > extract(epoch FROM now()) - 86400 * 3 GROUP BY 1 ORDER BY 1`,
+       FROM token_events WHERE "timestamp" > (extract(epoch FROM now())::bigint - 259200) GROUP BY 1 ORDER BY 1`,
     ),
     db.query<{ kind: "burn" | "payout"; block_number: string; timestamp: string; tx_hash: Buffer; from: Buffer; to: Buffer; amount: string }>(
       `SELECT kind, block_number, "timestamp", tx_hash, "from", "to", amount FROM token_events ORDER BY "timestamp" DESC, log_index DESC LIMIT 25`,
@@ -392,7 +416,7 @@ const BUCKETS = ["<100", "100-1k", "1k-10k", "10k+"];
  * `decimals` is the base token's: rates are per whole unit, so an 18-decimal token is scaled here.
  */
 export async function fxSummary(db: Db, windowMinutes = 60, symbol = "EURC", decimals = 6): Promise<FxSummary> {
-  const since = `extract(epoch FROM now()) - ${windowMinutes * 60}`;
+  const since = `(extract(epoch FROM now())::bigint - ${windowMinutes * 60})`;
   // USDC per whole base unit = raw usdc / raw base * 10^(decimals - 6).
   const scale = `* 1e${decimals - 6}`;
   const rate = `sum(usdc_amount) / nullif(sum(eurc_amount), 0) ${scale}`;
