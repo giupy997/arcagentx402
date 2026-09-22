@@ -536,12 +536,15 @@ export interface SettlementRow {
   route: string | null;
 }
 
+/** An EVM address compares case-insensitively; a Solana address is case-sensitive and stays as it is. */
+export const canonicalAddress = (a: string): string => (a.startsWith("0x") ? a.toLowerCase() : a);
+
 /** Written as each payment ends. The unique index on tx makes a repeated report a no-op. */
 export async function recordSettlement(db: Db, r: SettlementRow): Promise<void> {
   await db.query(
     `INSERT INTO settlements (rail, network, outcome, payer, pay_to, amount_usdc6, tx, reason, route)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT DO NOTHING`,
-    [r.rail, r.network, r.outcome, r.payer?.toLowerCase() ?? null, r.payTo.toLowerCase(), r.amountUsdc6, r.tx, r.reason, r.route],
+    [r.rail, r.network, r.outcome, r.payer ? canonicalAddress(r.payer) : null, canonicalAddress(r.payTo), r.amountUsdc6, r.tx, r.reason, r.route],
   );
 }
 
@@ -585,7 +588,7 @@ export async function settlementsSummary(db: Db, ownPayers: readonly string[], l
   const selftest = tables.rows[0].l
     ? (await db.query<{ payer: string }>("SELECT DISTINCT lower(payer) AS payer FROM rail_payments WHERE agent_id = 'selftest' AND payer IS NOT NULL")).rows.map((r) => r.payer)
     : [];
-  const ours = [...new Set([...selftest, ...ownPayers.map((a) => a.toLowerCase())])];
+  const ours = [...new Set([...selftest, ...ownPayers.map(canonicalAddress)])];
   const tally = `count(*) FILTER (WHERE outcome = 'settled') AS settled, count(*) FILTER (WHERE outcome = 'failed') AS failed,
     count(*) FILTER (WHERE outcome = 'not_charged') AS not_charged, coalesce(sum(amount_usdc6) FILTER (WHERE outcome = 'settled'), 0) AS volume,
     count(DISTINCT payer) FILTER (WHERE outcome = 'settled') AS payers`;

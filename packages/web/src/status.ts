@@ -16,7 +16,7 @@ interface Settlements {
 
 const $ = (id: string) => document.getElementById(id)!;
 const esc = (s: string | null | undefined) => (s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
-const EXPLORERS: Record<string, string> = { direct: "https://explorer.arc.io", gateway: "https://explorer.arc.io", base: "https://basescan.org" };
+const EXPLORERS: Record<string, string> = { direct: "https://explorer.arc.io", gateway: "https://explorer.arc.io", base: "https://basescan.org", solana: "https://solscan.io" };
 let offline = false;
 
 function showOffline(): void {
@@ -36,6 +36,8 @@ const OUTCOME: Record<string, string> = {
 /** Only a real hash is a link. A batched payment carries a transfer id, which no explorer knows. */
 function proof(p: Payment): string {
   if (!p.tx) return esc(p.reason ?? "—");
+  // A Solana signature is base58 and long; an EVM hash is 0x and 64 hex digits. Anything else is a transfer id.
+  if (p.rail === "solana" && /^[1-9A-HJ-NP-Za-km-z]{80,90}$/.test(p.tx)) return `<a href="${EXPLORERS.solana}/tx/${esc(p.tx)}" rel="noopener">${esc(short(p.tx, 8))}</a>`;
   if (!/^0x[0-9a-fA-F]{64}$/.test(p.tx)) return `<span title="${esc(p.tx)}">${esc(short(p.tx, 8))}</span>`;
   return `<a href="${EXPLORERS[p.rail] ?? EXPLORERS.direct}/tx/${esc(p.tx)}" rel="noopener">${esc(short(p.tx, 8))}</a>`;
 }

@@ -85,7 +85,7 @@ app.get("/v1/token", async (c) =>
   ),
 );
 /** Wallets of ours besides the self-test one, so the status page never counts them as customers. */
-const OWN_PAYERS = (process.env.OWN_PAYERS ?? "").split(",").map((a) => a.trim()).filter((a) => /^0x[0-9a-fA-F]{40}$/.test(a));
+const OWN_PAYERS = (process.env.OWN_PAYERS ?? "").split(",").map((a) => a.trim()).filter((a) => /^0x[0-9a-fA-F]{40}$/.test(a) || /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a));
 /** What the facilitator next door says about itself: who signs, and how much gas money it has left. */
 async function facilitatorHealth(): Promise<{ ok: boolean; signer: string | null; gasUsdc: string | null } | null> {
   const url = process.env.DIRECT_FACILITATOR_URL;
