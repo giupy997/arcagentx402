@@ -170,6 +170,7 @@ function readSell(): SellInput {
   return {
     target: input("s-target").value.trim(),
     payTo: input("s-payto").value.trim(),
+    payToSolana: input("s-solana").value.trim(),
     price: input("s-price").value.trim(),
     name: input("s-name").value.trim(),
     free: $<HTMLTextAreaElement>("s-free").value.split(/[\n,]+/).map((f) => f.trim()).filter(Boolean),
@@ -205,7 +206,7 @@ function renderSell(): void {
 
 const markSellNetwork = choices($("s-networks"), NETWORKS, (id) => { sellNetwork = id; markSellNetwork(id); renderSell(); });
 markSellNetwork(sellNetwork);
-for (const id of ["s-target", "s-payto", "s-price", "s-name", "s-free", "s-public"]) $(id).addEventListener("input", renderSell);
+for (const id of ["s-target", "s-payto", "s-solana", "s-price", "s-name", "s-free", "s-public"]) $(id).addEventListener("input", renderSell);
 
 type Mode = "buy" | "sell";
 const MODES: Array<{ id: Mode; label: string; explain: string }> = [

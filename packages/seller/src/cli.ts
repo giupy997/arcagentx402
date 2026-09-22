@@ -6,6 +6,7 @@
  *
  *   --target <url>          the API to sell (required)
  *   --pay-to <address>      the wallet that gets paid, on Arc (required)
+ *   --pay-to-solana <addr>  also sell to buyers on Solana, paid on this Solana address
  *   --price <usd>           price of every call, like 0.002
  *   --route "<pat>=<usd>"   price of one path, repeatable: --route "GET /v1/forecast=0.002" --route "/v1/render/*=0.05"
  *   --free <pattern>        a path served without payment, repeatable: --free /health
@@ -40,6 +41,7 @@ function main(): void {
   const app = createProxyApp({
     target: a.target,
     payTo: a.payTo,
+    ...(a.payToSolana ? { payToSolana: a.payToSolana } : {}),
     network: a.network,
     routes: a.routes,
     free: a.free,
@@ -59,6 +61,7 @@ function main(): void {
     console.log(`Selling ${a.target} on http://localhost:${a.port}`);
     for (const r of a.routes) console.log(`  ${r.pattern.padEnd(28)} ${r.price} per call`);
     for (const f of a.free) console.log(`  ${f.padEnd(28)} free`);
+    if (a.payToSolana) console.log(`Also for sale on Solana, paid to ${a.payToSolana} there.`);
     console.log(`Paid to ${a.payTo} on ${a.network === "arc" ? "Arc mainnet" : "Arc testnet"}, settled ${a.facilitatorUrl ? `by ${a.facilitatorUrl}` : "through Circle Gateway"}.`);
     console.log(`What is for sale, for anyone to read: http://localhost:${a.port}/.well-known/x402`);
     console.log("Buyers need a public https address in front of this port. Once you have one, add it to the marketplace with --list <url>.");

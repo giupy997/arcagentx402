@@ -17,6 +17,7 @@ import { BatchFacilitatorClient, GatewayEvmScheme } from "@circle-fin/x402-batch
 import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
 import { HTTPFacilitatorClient, type FacilitatorClient, type RouteConfig } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions";
 import type { Network } from "@x402/core/types";
 import type { MiddlewareHandler } from "hono";
@@ -47,12 +48,28 @@ export interface DiscoveryRail {
   readonly tags?: readonly string[];
 }
 
+/**
+ * A rail on Solana, where most x402 buyers are today. The buyer pays USDC on Solana and the seller
+ * is paid there, on the address given: nothing crosses chains. Settled by an open facilitator that
+ * completes the buyer's transaction and pays its fee (PayAI by default).
+ */
+export interface SolanaRail {
+  /** The seller's Solana address. Its USDC token account is created by the first payment if missing. */
+  readonly payTo: string;
+  readonly facilitatorUrl?: string;
+}
+
+export const SOLANA_MAINNET: Network = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
+export const SOLANA_DEVNET: Network = "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1";
+export const PAYAI_FACILITATOR = "https://facilitator.payai.network";
+
 export interface SellerConfig {
   readonly sellerAddress: string;
   readonly network: SellerNetwork;
   readonly facilitatorUrl?: string;
   readonly serviceName?: string;
   readonly discovery?: DiscoveryRail;
+  readonly solana?: SolanaRail;
   /**
    * How Arc payments are settled. "gateway" (default) is Circle Gateway: batched, cheapest at
    * volume, but the buyer has to deposit first. "direct" is a plain EIP-3009 authorization settled
@@ -114,6 +131,7 @@ export interface Seller {
 /** Shared by the Hono and Express flavours. */
 export function resolveNetwork(cfg: SellerConfig): { network: Network; facilitatorUrl: string } {
   if (!/^0x[0-9a-fA-F]{40}$/.test(cfg.sellerAddress)) throw new Error("sellerAddress must be a 0x address");
+  if (cfg.solana && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(cfg.solana.payTo)) throw new Error("solana.payTo must be a Solana address");
   return { network: CAIP2[cfg.network], facilitatorUrl: cfg.facilitatorUrl ?? FACILITATOR[cfg.network] };
 }
 
@@ -126,8 +144,14 @@ export function buildRoutes(cfg: SellerConfig, network: Network, pattern: string
   const arc = { scheme: "exact", network, payTo: cfg.sellerAddress, price: arcPrice, ...timeout };
   const rail = cfg.discovery;
   const method = pattern.split(" ")[0] ?? "GET";
+  // Arc first: a buyer that can pay there should. Then the catalogued rail, then Solana.
+  const accepts = [
+    arc,
+    ...(rail ? [{ scheme: "exact", network: rail.network ?? BASE_MAINNET, payTo: rail.payTo, price, ...timeout }] : []),
+    ...(cfg.solana ? [{ scheme: "exact", network: cfg.network === "arc" ? SOLANA_MAINNET : SOLANA_DEVNET, payTo: cfg.solana.payTo, price, ...timeout }] : []),
+  ];
   return {
-    accepts: rail ? [arc, { scheme: "exact", network: rail.network ?? BASE_MAINNET, payTo: rail.payTo, price, ...timeout }] : arc,
+    accepts: accepts.length === 1 ? arc : accepts,
     ...(rail
       ? {
           // What the catalogue shows about this route: how to call it and what comes back.
@@ -191,7 +215,12 @@ function assembleServer(cfg: SellerConfig, network: Network, facilitatorUrl: str
   }
   const circle = new BatchFacilitatorClient({ url: facilitatorUrl }) as unknown as FacilitatorClient;
   const rail = cfg.discovery;
-  if (!rail) return new x402ResourceServer(circle).register(network, new GatewayEvmScheme());
+  if (!rail && !cfg.solana) return new x402ResourceServer(circle).register(network, new GatewayEvmScheme());
+  if (!rail) {
+    // Solana alone: its facilitator does not claim Arc, so the order is free; it goes first for symmetry with below.
+    const payai = new HTTPFacilitatorClient({ url: cfg.solana!.facilitatorUrl ?? PAYAI_FACILITATOR });
+    return new x402ResourceServer([payai, circle]).register(network, new GatewayEvmScheme()).register(solanaNetwork(cfg), new ExactSvmScheme());
+  }
   // Credentials when the facilitator wants them, plain HTTP when it is open to anyone.
   const catalogued = new HTTPFacilitatorClient(
     rail.cdpKeyId && rail.cdpKeySecret
@@ -200,11 +229,15 @@ function assembleServer(cfg: SellerConfig, network: Network, facilitatorUrl: str
   );
   // Order matters: the first facilitator that claims a network gets it. Circle claims Base too, so
   // the catalogued one goes first and Arc still lands on Circle, which is the only one that has it.
-  return new x402ResourceServer([catalogued, circle])
+  const solana = cfg.solana ? new HTTPFacilitatorClient({ url: cfg.solana.facilitatorUrl ?? PAYAI_FACILITATOR }) : null;
+  const server = new x402ResourceServer(solana ? [catalogued, solana, circle] : [catalogued, circle])
     .register(network, new GatewayEvmScheme())
     .register(rail.network ?? BASE_MAINNET, new ExactEvmScheme())
     .registerExtension(bazaarResourceServerExtension);
+  return cfg.solana ? server.register(solanaNetwork(cfg), new ExactSvmScheme()) : server;
 }
+
+const solanaNetwork = (cfg: SellerConfig): Network => (cfg.network === "arc" ? SOLANA_MAINNET : SOLANA_DEVNET);
 
 export function createSeller(cfg: SellerConfig): Seller {
   const { network, facilitatorUrl } = resolveNetwork(cfg);

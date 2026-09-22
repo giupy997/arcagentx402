@@ -59,16 +59,19 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
     } catch {
       route = null;
     }
-    const row = { rail: e.network === arcNetwork ? arcRail : ("base" as const), network: e.network, outcome: e.outcome, payer: e.payer, payTo: e.payTo, amountUsdc6: e.amount, tx: e.transaction, reason: e.reason, route };
+    const row = { rail: e.network === arcNetwork ? arcRail : e.network.startsWith("solana:") ? ("solana" as const) : ("base" as const), network: e.network, outcome: e.outcome, payer: e.payer, payTo: e.payTo, amountUsdc6: e.amount, tx: e.transaction, reason: e.reason, route };
     return recordSettlement(db, row).catch((err: unknown) => log.warn({ err, tx: e.transaction }, "settlement not recorded"));
   };
 
   // Priced from the shared catalogue, so the OpenAPI document and the 402 always agree.
+  // The same routes for sale to buyers on Solana, paid there. On by giving a Solana address.
+  const solanaPayTo = process.env.SOLANA_SELLER_ADDRESS;
   const seller = createSeller({
     sellerAddress,
     network: network === "mainnet" ? "arc" : "arcTestnet",
     serviceName: "CRA AGENT data",
     onSettlement: record("gateway"),
+    ...(solanaPayTo ? { solana: { payTo: solanaPayTo } } : {}),
     ...(discovery ? { discovery } : {}),
   });
   for (const r of PAID_ROUTES) {
@@ -145,11 +148,13 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
       description: "Arc network data, executed prices for cirBTC, WETH, EURC and CRA, and public sources as clean JSON. Settled only when the call succeeds.",
       network: seller.network,
       payTo: seller.sellerAddress,
+      ...(solanaPayTo ? { solana: { payTo: solanaPayTo } } : {}),
+      networks: [seller.network, ...(discovery ? ["eip155:8453"] : []), ...(solanaPayTo ? ["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"] : [])],
       settlement: directFacilitator ? "circle-gateway on /v1/paid, direct on /v1/direct" : "circle-gateway",
       routes: PAID_ROUTES.map((r) => ({ pattern: `GET ${r.path}`, priceUsd: r.price.replace("$", ""), description: r.summary })),
       poweredBy: "https://cra-agent.tech",
     }),
   );
   app.get("/v1/paid", (c) => c.json({ seller: seller.sellerAddress, network: seller.network, facilitator: seller.facilitatorUrl, routes: Object.entries(seller.routes).map(([k, v]) => ({ route: k, price: String((Array.isArray(v.accepts) ? v.accepts[0] : v.accepts)?.price), description: v.description ?? null })) }));
-  log.info({ seller: sellerAddress, network: seller.network, routes: Object.keys(seller.routes).length, discovery: discovery ? `${basePayTo} via ${discoveryFacilitator ?? "coinbase"}` : "off" }, "paid endpoints mounted");
+  log.info({ seller: sellerAddress, network: seller.network, routes: Object.keys(seller.routes).length, solana: solanaPayTo ?? "off", discovery: discovery ? `${basePayTo} via ${discoveryFacilitator ?? "coinbase"}` : "off" }, "paid endpoints mounted");
 }

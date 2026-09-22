@@ -20,6 +20,7 @@ A caller who has not paid gets `402 Payment Required` with the price; a caller w
 |---|---|
 | `--target <url>` | The API to sell. Can be private or on localhost. |
 | `--pay-to <address>` | The wallet that gets paid, on Arc. |
+| `--pay-to-solana <address>` | Also sell to buyers on Solana, where most x402 buyers are: they pay USDC on Solana, to this address. Settled by PayAI's open facilitator. |
 | `--price <usd>` | Price of every call. |
 | `--route "<pattern>=<usd>"` | Price of one path, repeatable: `--route "GET /v1/render/*=0.05"`. Checked before `--price`. |
 | `--free <pattern>` | A path served without payment, repeatable. |

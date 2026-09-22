@@ -24,6 +24,8 @@ export interface ProxyOptions {
   /** The API being sold, e.g. https://api.example.com. A path on it is kept as a prefix. */
   readonly target: string;
   readonly payTo: string;
+  /** A Solana address: the same routes are then also for sale to buyers on Solana, paid there. */
+  readonly payToSolana?: string;
   readonly network: SellerConfig["network"];
   readonly routes: readonly PricedPath[];
   /** Paths served without payment, in the same syntax. Health checks, docs. */
@@ -87,6 +89,7 @@ export function createProxyApp(opts: ProxyOptions): Hono {
     sellerAddress: opts.payTo,
     network: opts.network,
     ...(opts.name ? { serviceName: opts.name } : {}),
+    ...(opts.payToSolana ? { solana: { payTo: opts.payToSolana } } : {}),
     ...(opts.onSettlement ? { onSettlement: opts.onSettlement } : {}),
     ...(opts.facilitatorUrl ? { settlement: "direct" as const, facilitatorUrl: opts.facilitatorUrl } : {}),
   });
@@ -101,6 +104,8 @@ export function createProxyApp(opts: ProxyOptions): Hono {
       description: opts.description ?? null,
       network: seller.network,
       payTo: seller.sellerAddress,
+      ...(opts.payToSolana ? { solana: { payTo: opts.payToSolana } } : {}),
+      networks: [seller.network, ...(opts.payToSolana ? [opts.network === "arc" ? "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" : "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"] : [])],
       settlement: opts.facilitatorUrl ? "direct" : "circle-gateway",
       routes: routes.map((r) => ({ pattern: r.pattern, priceUsd: r.price.replace("$", ""), description: r.description ?? null })),
       free: [...(opts.free ?? [])],

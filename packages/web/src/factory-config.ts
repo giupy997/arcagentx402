@@ -143,6 +143,8 @@ export interface SellInput {
   readonly target: string;
   /** The wallet that gets paid. */
   readonly payTo: string;
+  /** A Solana address, when the seller wants Solana buyers too. Empty otherwise. */
+  readonly payToSolana: string;
   /** Dollars per call, as typed. */
   readonly price: string;
   readonly name: string;
@@ -157,6 +159,7 @@ export function sellProblems(i: SellInput): string[] {
   const out: string[] = [];
   if (!/^https?:\/\/[^\s'"`$]+$/i.test(i.target)) out.push("The address of your API must start with http:// or https://, with no spaces or quotes.");
   if (!/^0x[0-9a-fA-F]{40}$/.test(i.payTo)) out.push("The wallet is a 0x address, 42 characters long. Paste it from your wallet.");
+  if (i.payToSolana && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(i.payToSolana)) out.push("The Solana address does not look like one. Paste it from your Solana wallet, or leave it empty.");
   if (!AMOUNT.test(i.price) || Number(i.price) <= 0) out.push("The price must be an amount in dollars, like 0.002.");
   if (/['"`$\\]/.test(i.name)) out.push("The name cannot contain quotes, backticks, dollar signs or backslashes.");
   for (const f of i.free) if (!/^\/[^\s'"`$]*$/.test(f)) out.push(`\u201c${f}\u201d is not a path. Write it like /health.`);
@@ -167,6 +170,7 @@ export function sellProblems(i: SellInput): string[] {
 /** The one line that starts selling. Every value is single-quoted, and the checks above keep quotes out of them. */
 export function sellCommand(i: SellInput): Step {
   const parts = [`npx -y @cra-agent/seller --target '${i.target}' --pay-to ${i.payTo} --price ${i.price}`];
+  if (i.payToSolana) parts.push(`--pay-to-solana ${i.payToSolana}`);
   if (i.name) parts.push(`--name '${i.name}'`);
   for (const f of i.free) parts.push(`--free '${f}'`);
   if (i.network !== "arc") parts.push(`--network ${i.network}`);
@@ -180,7 +184,8 @@ export function sellCommand(i: SellInput): Step {
 
 export function sellInWords(i: SellInput): string {
   const free = i.free.length ? ` These paths stay free: ${i.free.join(", ")}.` : "";
-  return `Every call to ${i.name || "your API"} will cost $${i.price}, paid in USDC on ${i.network === "arc" ? "Arc mainnet" : "Arc testnet"} to ${i.payTo.slice(0, 6)}\u2026${i.payTo.slice(-4)}.${free} Buyers are AI agents (ours or any x402 client). The money lands in the Circle Gateway balance of that wallet: you collect it with one command, shown below.`;
+  const solana = i.payToSolana ? ` Buyers on Solana can pay too, in USDC on Solana, to ${i.payToSolana.slice(0, 4)}\u2026${i.payToSolana.slice(-4)}.` : "";
+  return `Every call to ${i.name || "your API"} will cost $${i.price}, paid in USDC on ${i.network === "arc" ? "Arc mainnet" : "Arc testnet"} to ${i.payTo.slice(0, 6)}\u2026${i.payTo.slice(-4)}.${free}${solana} Buyers are AI agents (ours or any x402 client). The money lands in the Circle Gateway balance of that wallet: you collect it with one command, shown below.`;
 }
 
 export function sellNextSteps(i: SellInput): Step[] {

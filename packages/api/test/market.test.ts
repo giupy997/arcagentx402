@@ -11,6 +11,7 @@ describe("what a listing is allowed to say about itself", () => {
     const a = readChallenge(v2, "", ARC);
     expect(a.accept).toMatchObject({ network: ARC, amount: "2000", payTo: PAY_TO });
     expect(a.description).toBe("Forecasts");
+    expect(a.networks).toEqual([ARC, "eip155:8453"]);
     const v1 = JSON.stringify({ accepts: [{ scheme: "exact", network: ARC, maxAmountRequired: "1500", payTo: PAY_TO }] });
     expect(readChallenge(undefined, v1, ARC).accept.amount).toBe("1500");
   });

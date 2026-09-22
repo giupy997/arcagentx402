@@ -15,6 +15,7 @@ interface Listing {
   priceUsd: string;
   payTo: string;
   rail: string;
+  networks?: string[];
   routes: Array<{ pattern: string; priceUsd: string; description: string | null }> | null;
   online: boolean;
   addedAt: number;
@@ -26,13 +27,19 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 const esc = (s: string | null | undefined) => (s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const EXPLORER = "https://explorer.arc.io";
 const RAIL: Record<string, string> = { gateway: "agents (Circle Gateway)", direct: "agents and browser wallets" };
+const CHAIN: Record<string, string> = { "eip155:5042": "Arc", "eip155:8453": "Base", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "Solana", "eip155:5042002": "Arc testnet", "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1": "Solana devnet" };
+/** "Arc: agents and browser wallets · Solana, Base" */
+const whoCanPay = (l: Listing): string => {
+  const others = (l.networks ?? []).filter((n) => !n.startsWith("eip155:5042")).map((n) => CHAIN[n] ?? n);
+  return `Arc: ${RAIL[l.rail] ?? l.rail}${others.length ? ` · also ${others.join(", ")}` : ""}`;
+};
 
 /** Only an https address becomes a link, and it never passes our page as its referrer. */
 const link = (url: string, text: string): string => (/^https:\/\//i.test(url) ? `<a href="${esc(url)}" rel="noopener noreferrer nofollow ugc" target="_blank">${esc(text)}</a>` : esc(text));
 
 function row(l: Listing): string {
   const more = l.routes && l.routes.length > 1 ? `<div class="sub">${l.routes.length} priced paths, from $${esc([...l.routes].sort((a, b) => Number(a.priceUsd) - Number(b.priceUsd))[0]!.priceUsd)}</div>` : "";
-  return `<tr><td><b>${esc(l.name ?? l.host)}</b><div class="sub mono">${link(l.url, l.host)}</div></td><td>${esc(l.description ?? "—")}${more}</td><td class="num">$${esc(l.priceUsd)}</td><td>${esc(RAIL[l.rail] ?? l.rail)}</td><td class="mono"><a href="${EXPLORER}/address/${esc(l.payTo)}" rel="noopener">${esc(short(l.payTo))}</a></td><td>${
+  return `<tr><td><b>${esc(l.name ?? l.host)}</b><div class="sub mono">${link(l.url, l.host)}</div></td><td>${esc(l.description ?? "—")}${more}</td><td class="num">$${esc(l.priceUsd)}</td><td>${esc(whoCanPay(l))}</td><td class="mono"><a href="${EXPLORER}/address/${esc(l.payTo)}" rel="noopener">${esc(short(l.payTo))}</a></td><td>${
     l.online ? '<span class="status"><span class="dot ok"></span>answers</span>' : '<span class="status"><span class="dot bad"></span>not answering</span>'
   }<div class="sub">checked ${ago(l.checkedAt)}</div></td></tr>`;
 }
@@ -44,7 +51,7 @@ async function refresh(): Promise<void> {
     if (dot) dot.className = "dot ok";
     $("market-note").textContent = d.note ?? "";
     $("market-table").innerHTML = d.listings.length
-      ? `<table class="data"><thead><tr><th>Who</th><th>What it says it sells</th><th class="num">Price of this call</th><th>Who can pay</th><th>Paid to</th><th>Status</th></tr></thead><tbody>${d.listings.map(row).join("")}</tbody></table>`
+      ? `<table class="data"><thead><tr><th>Who</th><th>What it says it sells</th><th class="num">Price of this call</th><th>Who can pay, where</th><th>Paid to</th><th>Status</th></tr></thead><tbody>${d.listings.map(row).join("")}</tbody></table>`
       : '<div class="empty">Nothing listed yet. Be the first: add an endpoint below.</div>';
     $("market-count").textContent = `${d.listings.length} listed`;
   } catch (err) {

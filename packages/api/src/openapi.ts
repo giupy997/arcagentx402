@@ -19,7 +19,7 @@ export interface OpenApiOptions {
 
 const GUIDANCE = `CRA AGENT sells Arc chain data by the call over x402, settled in USDC on Arc through Circle Gateway.
 
-Free routes under /v1 need no payment and no signup. Priced routes under /v1/paid answer 402 with the
+Free routes under /v1 need no payment and no signup. Every paid route can also be paid on Solana (USDC, settled by PayAI): the 402 lists both networks, pick the one your wallet is on. Priced routes under /v1/paid answer 402 with the
 payment requirements in the payment-required header; pay with any x402 client and repeat the request.
 
 Two things worth knowing before you buy. The payment is settled only after the handler succeeds, so a

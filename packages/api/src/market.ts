@@ -21,6 +21,8 @@ export interface Probe {
   network: string;
   amountUsdc6: string;
   rail: "gateway" | "direct";
+  /** Every network the 402 offers, Arc first. */
+  networks: string[];
   routes: Array<{ pattern: string; priceUsd: string; description: string | null }> | null;
 }
 
@@ -44,7 +46,7 @@ interface Accept {
 }
 
 /** What a 402 asks for on the given network, from the v2 header or the v1 body. */
-export function readChallenge(header: string | undefined, body: string, network: string): { accept: Accept; description: string | null } {
+export function readChallenge(header: string | undefined, body: string, network: string): { accept: Accept; description: string | null; networks: string[] } {
   let doc: { accepts?: Accept[]; resource?: { description?: string }; description?: string } | null = null;
   for (const source of [header ? Buffer.from(header, "base64").toString("utf8") : null, body]) {
     if (doc || !source) continue;
@@ -59,7 +61,8 @@ export function readChallenge(header: string | undefined, body: string, network:
   if (!accept) throw new NotListable(`it does not take payment on Arc (${network}). Networks it offers: ${[...new Set(doc.accepts.map((a) => a.network))].join(", ") || "none"}`);
   const amount = accept.amount ?? accept.maxAmountRequired;
   if (!accept.payTo || !/^0x[0-9a-fA-F]{40}$/.test(accept.payTo) || !amount || !/^\d{1,12}$/.test(amount)) throw new NotListable("its payment requirements are malformed");
-  return { accept: { ...accept, amount }, description: clean(doc.resource?.description ?? doc.description, 240) };
+  const networks = [network, ...[...new Set(doc.accepts.map((a) => a.network).filter((n): n is string => typeof n === "string" && n !== network))].slice(0, 8)];
+  return { accept: { ...accept, amount }, description: clean(doc.resource?.description ?? doc.description, 240), networks };
 }
 
 export async function probe(rawUrl: string, network: string): Promise<Probe> {
@@ -71,7 +74,7 @@ export async function probe(rawUrl: string, network: string): Promise<Probe> {
     throw err instanceof UnsafeUrl ? err : new NotListable(`could not reach it: ${err.message}`);
   });
   if (res.status !== 402) throw new NotListable(`it answered ${res.status}, not 402 Payment Required. List the address of a paid route, called without paying`);
-  const { accept, description } = readChallenge(res.headers["payment-required"], res.body.toString("utf8"), network);
+  const { accept, description, networks } = readChallenge(res.headers["payment-required"], res.body.toString("utf8"), network);
 
   // A seller running our proxy, or anyone who cares to, names itself here. Optional: a miss changes nothing.
   // What this one route says about itself in its 402 comes first; the site-wide blurb is the fallback.
@@ -95,7 +98,7 @@ export async function probe(rawUrl: string, network: string): Promise<Probe> {
   } catch {
     /* no self-description: the 402 is enough */
   }
-  return { url: url.toString(), host: url.host, name, description: description ?? about, payTo: accept.payTo!.toLowerCase(), network, amountUsdc6: accept.amount!, rail: accept.extra?.name === "GatewayWalletBatched" ? "gateway" : "direct", routes };
+  return { url: url.toString(), host: url.host, name, description: description ?? about, payTo: accept.payTo!.toLowerCase(), network, amountUsdc6: accept.amount!, rail: accept.extra?.name === "GatewayWalletBatched" ? "gateway" : "direct", networks, routes };
 }
 
 interface Row {
@@ -103,10 +106,12 @@ interface Row {
   host: string;
   name: string | null;
   description: string | null;
+  network?: string;
   pay_to: string;
   amount_usdc6: string;
   rail: string;
   routes: Probe["routes"];
+  networks: string[] | null;
   added_at: string;
   checked_at: string;
   ok: boolean;
@@ -118,10 +123,10 @@ export function mountMarket(app: Hono, db: Db, network: string, log: Logger): vo
   const caip2 = network === "mainnet" ? "eip155:5042" : "eip155:5042002";
   const upsert = (p: Probe): Promise<unknown> =>
     db.query(
-      `INSERT INTO market_listings (url, host, name, description, pay_to, network, amount_usdc6, rail, routes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       ON CONFLICT (url) DO UPDATE SET name = $3, description = $4, pay_to = $5, amount_usdc6 = $7, rail = $8, routes = $9, checked_at = now(), ok = true, fails = 0`,
-      [p.url, p.host, p.name, p.description, p.payTo, p.network, p.amountUsdc6, p.rail, p.routes ? JSON.stringify(p.routes) : null],
+      `INSERT INTO market_listings (url, host, name, description, pay_to, network, amount_usdc6, rail, routes, networks)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (url) DO UPDATE SET name = $3, description = $4, pay_to = $5, amount_usdc6 = $7, rail = $8, routes = $9, networks = $10, checked_at = now(), ok = true, fails = 0`,
+      [p.url, p.host, p.name, p.description, p.payTo, p.network, p.amountUsdc6, p.rail, p.routes ? JSON.stringify(p.routes) : null, p.networks],
     );
 
   /** One submitter cannot flood the page: a handful of tries an hour per address. */
@@ -179,13 +184,13 @@ export function mountMarket(app: Hono, db: Db, network: string, log: Logger): vo
     void refresh();
     // A listing that has failed two days of checks is gone, not offline.
     const rows = await db.query<Row>(
-      `SELECT url, host, name, description, pay_to, amount_usdc6, rail, routes, extract(epoch FROM added_at)::bigint AS added_at, extract(epoch FROM checked_at)::bigint AS checked_at, ok
+      `SELECT url, host, name, description, pay_to, amount_usdc6, rail, routes, networks, extract(epoch FROM added_at)::bigint AS added_at, extract(epoch FROM checked_at)::bigint AS checked_at, ok
        FROM market_listings WHERE NOT hidden AND fails < 48 ORDER BY ok DESC, added_at DESC LIMIT 500`,
     );
     return c.json({
       network: caip2,
       note: "Everything shown about a listing was read from the endpoint itself, called without paying. We do not vouch for what it sells: check the price your wallet or your agent shows before paying.",
-      listings: rows.rows.map((r) => ({ url: r.url, host: r.host, name: r.name, description: r.description, priceUsd: usd(r.amount_usdc6), payTo: r.pay_to, rail: r.rail, routes: r.routes, online: r.ok, addedAt: Number(r.added_at), checkedAt: Number(r.checked_at) })),
+      listings: rows.rows.map((r) => ({ url: r.url, host: r.host, name: r.name, description: r.description, priceUsd: usd(r.amount_usdc6), payTo: r.pay_to, rail: r.rail, networks: r.networks ?? [r.network ?? caip2], routes: r.routes, online: r.ok, addedAt: Number(r.added_at), checkedAt: Number(r.checked_at) })),
     });
   });
 }

@@ -50,3 +50,18 @@ describe("what a priced route advertises", () => {
     expect(typeof r.unpaidResponseBody).toBe("function");
   });
 });
+
+describe("the Solana rail", () => {
+  it("adds Solana mainnet as a third option, paid on the Solana address, at the same price", () => {
+    const cfg: SellerConfig = { ...withRail, solana: { payTo: "CjNFTjvBhbJJd2B5ePPMHRLx1ELZpa8dwQgGL727eKww" } };
+    const r = buildRoutes(cfg, arc, "GET /v1/paid/x", "$0.001", {});
+    const accepts = r.accepts as any[];
+    expect(accepts.map((a) => a.network)).toEqual(["eip155:5042", BASE_MAINNET, "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]);
+    expect(accepts[2]).toMatchObject({ scheme: "exact", payTo: "CjNFTjvBhbJJd2B5ePPMHRLx1ELZpa8dwQgGL727eKww", price: "$0.001" });
+  });
+  it("works without a discovery rail, and refuses an address that is not Solana's", () => {
+    const r = buildRoutes({ ...base, solana: { payTo: "CjNFTjvBhbJJd2B5ePPMHRLx1ELZpa8dwQgGL727eKww" } }, arc, "GET /x", "$0.001", {});
+    expect((r.accepts as any[]).map((a) => a.network)).toEqual(["eip155:5042", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"]);
+    expect(() => resolveNetwork({ ...base, solana: { payTo: "0x33b37c6d7a98b58da3Ccb3F36A4b578053d0Ea74" } })).toThrow(/Solana address/);
+  });
+});
