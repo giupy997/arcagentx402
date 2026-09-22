@@ -49,3 +49,8 @@
   from = "/market"
   to = "/market.html"
   status = 200
+
+[[redirects]]
+  from = "/lane"
+  to = "/lane.html"
+  status = 200
