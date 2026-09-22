@@ -54,3 +54,8 @@
   from = "/lane"
   to = "/lane.html"
   status = 200
+
+[[redirects]]
+  from = "/register"
+  to = "/register.html"
+  status = 200
