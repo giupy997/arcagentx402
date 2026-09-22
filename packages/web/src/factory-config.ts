@@ -153,6 +153,8 @@ export interface SellInput {
   readonly network: Network;
   /** The public https address buyers will call, when the seller already has one. */
   readonly publicUrl: string;
+  /** Settle through our facilitator, so browser wallets can pay. Needs the wallet registered. */
+  readonly browserWallets: boolean;
 }
 
 export function sellProblems(i: SellInput): string[] {
@@ -174,6 +176,7 @@ export function sellCommand(i: SellInput): Step {
   if (i.name) parts.push(`--name '${i.name}'`);
   for (const f of i.free) parts.push(`--free '${f}'`);
   if (i.network !== "arc") parts.push(`--network ${i.network}`);
+  if (i.browserWallets) parts.push("--facilitator cra");
   if (i.publicUrl) parts.push(`--list '${i.publicUrl}'`);
   return {
     title: "Run this where your API runs",
@@ -184,12 +187,16 @@ export function sellCommand(i: SellInput): Step {
 
 export function sellInWords(i: SellInput): string {
   const free = i.free.length ? ` These paths stay free: ${i.free.join(", ")}.` : "";
+  const browser = i.browserWallets ? " Browser wallets can pay too, settled by the CRA facilitator, once the wallet is registered." : "";
   const solana = i.payToSolana ? ` Buyers on Solana can pay too, in USDC on Solana, to ${i.payToSolana.slice(0, 4)}\u2026${i.payToSolana.slice(-4)}.` : "";
-  return `Every call to ${i.name || "your API"} will cost $${i.price}, paid in USDC on ${i.network === "arc" ? "Arc mainnet" : "Arc testnet"} to ${i.payTo.slice(0, 6)}\u2026${i.payTo.slice(-4)}.${free}${solana} Buyers are AI agents (ours or any x402 client). The money lands in the Circle Gateway balance of that wallet: you collect it with one command, shown below.`;
+  return `Every call to ${i.name || "your API"} will cost $${i.price}, paid in USDC on ${i.network === "arc" ? "Arc mainnet" : "Arc testnet"} to ${i.payTo.slice(0, 6)}\u2026${i.payTo.slice(-4)}.${free}${browser}${solana} Buyers are AI agents (ours or any x402 client). The money lands in the Circle Gateway balance of that wallet: you collect it with one command, shown below.`;
 }
 
 export function sellNextSteps(i: SellInput): Step[] {
   return [
+    ...(i.browserWallets
+      ? [{ title: "Register the wallet that gets paid", explain: "Once, with the wallet you gave as --pay-to: connect it on the page below and sign a message. No transaction, nothing moves. Until it is registered, the facilitator refuses payments to it and the command tells you so at start.", code: "https://cra-agent.tech/register" }]
+      : []),
     {
       title: "Give it a public https address",
       explain: "Buyers cannot reach port 8402 on your machine. Point your usual reverse proxy at it, the same way you publish your API today. With Caddy that is two lines; nginx, Cloudflare or a platform's router do the same. To try it for ten minutes without any of that, a tunnel works too.",

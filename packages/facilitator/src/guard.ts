@@ -12,6 +12,8 @@ import { compareUsdc6, usdc6, type Usdc6 } from "@cra-agent/accounting";
 export interface GuardRules {
   /** Lowercase addresses this facilitator settles for. Empty means nothing is allowed. */
   readonly payTo: ReadonlySet<string>;
+  /** Sellers that registered while running, on top of the fixed ones. */
+  readonly registered?: { has(address: string): boolean };
   /** CAIP-2 network to the one asset (lowercase) accepted on it. */
   readonly assets: ReadonlyMap<string, string>;
   readonly minAmount: Usdc6;
@@ -32,7 +34,7 @@ export function refuse(req: GuardedRequirements, rules: GuardRules): string | nu
   const asset = rules.assets.get(req.network);
   if (!asset) return `network ${req.network} is not settled here`;
   if (req.asset.toLowerCase() !== asset) return `asset ${req.asset} is not settled on ${req.network}`;
-  if (!rules.payTo.has(req.payTo.toLowerCase())) return `this facilitator does not settle for ${req.payTo}`;
+  if (!rules.payTo.has(req.payTo.toLowerCase()) && !rules.registered?.has(req.payTo)) return `this facilitator does not settle for ${req.payTo}: register the wallet first`;
   if (!/^\d{1,30}$/.test(req.amount)) return "amount is not a whole number of base units";
   const amount = usdc6(BigInt(req.amount));
   if (compareUsdc6(amount, rules.minAmount) < 0) return `amount ${req.amount} is below the minimum ${rules.minAmount}`;

@@ -27,6 +27,7 @@ A caller who has not paid gets `402 Payment Required` with the price; a caller w
 | `--name`, `--description` | Shown to buyers and in directories. |
 | `--upstream-header "Name: value"` | Added to requests sent to your API, e.g. its own key. Never sent back to buyers. |
 | `--network`, `--port` | `arc` (default) or `arcTestnet`; port 8402 by default. |
+| `--facilitator cra` | Settle through the CRA facilitator instead of Circle Gateway: browser wallets can then pay you, and it pays the gas. The `--pay-to` wallet registers once, with a signature, at [cra-agent.tech/register](https://cra-agent.tech/register); each wallet gets 200 settlements a day. |
 | `--list <public-url>` | Once running, add this public https address to the [CRA market](https://cra-agent.tech/market). |
 
 What is for sale is published, free to read, at `/.well-known/x402`. Payments settle through Circle Gateway and add up in the Gateway balance of `--pay-to`; collect them with `cra-agent withdraw <usdc>` from [`@cra-agent/mcp`](https://www.npmjs.com/package/@cra-agent/mcp). [CRA Factory](https://cra-agent.tech/factory#sell) writes the command for you.

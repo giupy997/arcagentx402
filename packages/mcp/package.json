@@ -1,6 +1,6 @@
 {
   "name": "@cra-agent/mcp",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "MCP server and CLI that let an AI agent pay for x402 APIs in USDC on Arc, under a spending policy the model cannot change.",
   "keywords": [
     "agent-payments",
@@ -30,14 +30,14 @@
     "cli": "node --env-file-if-exists=../../.env --import tsx src/cli/rail.ts"
   },
   "dependencies": {
-    "@cra-agent/accounting": "0.0.6",
-    "@cra-agent/identity": "0.0.6",
-    "@cra-agent/ledger": "0.0.6",
-    "@cra-agent/policy": "0.0.6",
-    "@cra-agent/router": "0.0.6",
+    "@cra-agent/accounting": "0.0.7",
+    "@cra-agent/identity": "0.0.7",
+    "@cra-agent/ledger": "0.0.7",
+    "@cra-agent/policy": "0.0.7",
+    "@cra-agent/router": "0.0.7",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "zod": "^3.25.0",
-    "@cra-agent/escrow": "0.0.6",
+    "@cra-agent/escrow": "0.0.7",
     "viem": "^2.31.0"
   },
   "files": [

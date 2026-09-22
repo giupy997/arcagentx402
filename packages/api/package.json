@@ -8,12 +8,13 @@
     "start": "node --env-file-if-exists=../../.env --import tsx src/main.ts"
   },
   "dependencies": {
-    "@cra-agent/accounting": "0.0.6",
+    "@cra-agent/accounting": "0.0.7",
     "@hono/node-server": "^1.14.0",
     "hono": "^4.7.0",
     "pg": "^8.16.0",
     "pino": "^9.7.0",
+    "viem": "^2.31.0",
     "zod": "^3.25.0",
-    "@cra-agent/seller": "0.0.6"
+    "@cra-agent/seller": "0.0.7"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@cra-agent/identity",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Signing and seller identity for agent payments on Arc: explicit signature scheme, ERC-8004 resolution that fails closed, RPC endpoint selection.",
   "keywords": [
     "agent-payments",

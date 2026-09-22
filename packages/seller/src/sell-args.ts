@@ -53,7 +53,8 @@ export function parseSellArgs(argv: readonly string[]): SellArgs {
     if (colon < 1) throw new Error(`--upstream-header "${h}": expected "Name: value"`);
     upstreamHeaders[h.slice(0, colon).trim()] = h.slice(colon + 1).trim();
   }
-  const facilitatorUrl = one("facilitator");
+  // "cra" is our facilitator: it settles for registered wallets on Arc and lets browser wallets pay.
+  const facilitatorUrl = one("facilitator") === "cra" ? "https://api.cra-agent.tech/facilitator" : one("facilitator");
   const list = one("list");
   if (list && !/^https:\/\/\S+$/i.test(list)) throw new Error("--list takes the public https URL buyers will call");
   const name = one("name");

@@ -11,6 +11,7 @@ import { buildOpenApi } from "./openapi.js";
 import { PAIRS, resolvePair } from "./pairs.js";
 import { PAID_ROUTES } from "./routes.js";
 import { activity, deployStats, feeEstimate, feeSummary, fxSummary, networkSummary, recentDeploys, rpcStatus, selftestSummary, settlementsSummary, tokenSummary } from "./queries.js";
+import { mountFacilitator } from "./facilitator.js";
 import { mountLane } from "./lane.js";
 import { mountMarket } from "./market.js";
 import { mountPaidRoutes } from "./paid.js";
@@ -151,6 +152,7 @@ app.get("/v1/health", async (c) => {
 mountPaidRoutes(app, db, NETWORK, log);
 mountMarket(app, db, NETWORK, log);
 mountLane(app, db, log);
+mountFacilitator(app, db, NETWORK, log);
 
 app.onError((err, c) => {
   log.error({ err, path: c.req.path }, "request failed");
@@ -159,7 +161,7 @@ app.onError((err, c) => {
 
 if (existsSync(WEB_DIR)) {
   const rel = WEB_DIR.startsWith(process.cwd()) ? WEB_DIR.slice(process.cwd().length + 1) : WEB_DIR;
-  app.use("/*", serveStatic({ root: rel, rewriteRequestPath: (p) => (p === "/dashboard" || p === "/network" ? "/dashboard.html" : p === "/token" ? "/token.html" : p === "/try" ? "/try.html" : p === "/status" ? "/status.html" : p === "/factory" ? "/factory.html" : p === "/market" ? "/market.html" : p === "/lane" ? "/lane.html" : p) }));
+  app.use("/*", serveStatic({ root: rel, rewriteRequestPath: (p) => (p === "/dashboard" || p === "/network" ? "/dashboard.html" : p === "/token" ? "/token.html" : p === "/try" ? "/try.html" : p === "/status" ? "/status.html" : p === "/factory" ? "/factory.html" : p === "/market" ? "/market.html" : p === "/lane" ? "/lane.html" : p === "/register" ? "/register.html" : p) }));
   log.info({ webDir: WEB_DIR }, "serving web");
 } else {
   log.warn({ webDir: WEB_DIR }, "web dist not found: API only");

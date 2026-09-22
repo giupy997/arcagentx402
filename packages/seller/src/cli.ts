@@ -14,7 +14,8 @@
  *   --network <n>           arc (default) or arcTestnet
  *   --port <n>              default 8402
  *   --upstream-header "Name: value"   added to requests sent to your API, repeatable (e.g. its own key)
- *   --facilitator <url>     settle directly through this x402 facilitator instead of Circle Gateway
+ *   --facilitator <url|cra> settle directly through this x402 facilitator instead of Circle Gateway; "cra" is
+ *                           ours: browser wallets can then pay, after --pay-to registers at cra-agent.tech/register
  *   --list <public-url>     once running, add this public URL to the CRA marketplace
  *
  * Payments go through Circle Gateway: the money lands in the Gateway balance of --pay-to, from
@@ -25,6 +26,18 @@ import { createProxyApp } from "./proxy.js";
 import { parseSellArgs } from "./sell-args.js";
 
 const MARKET = process.env.CRA_MARKET_URL ?? "https://api.cra-agent.tech/v1/market";
+
+/** Our facilitator settles only for wallets that registered: say so before the first buyer finds out. */
+async function checkRegistered(payTo: string, facilitatorUrl: string): Promise<void> {
+  try {
+    const api = facilitatorUrl.replace(/\/facilitator\/?$/, "");
+    const s = (await (await fetch(`${api}/v1/facilitator/sellers/${payTo}`, { signal: AbortSignal.timeout(10_000) })).json()) as { registered?: boolean; settledToday?: number; dailyCap?: number | null };
+    if (s.registered) console.log(`Facilitator: ${payTo} is registered${s.dailyCap ? ` (${s.settledToday ?? 0}/${s.dailyCap} settlements used today)` : ""}.`);
+    else console.log(`Facilitator: ${payTo} is NOT registered yet. Payments will be refused until it is: sign once at https://cra-agent.tech/register with that wallet.`);
+  } catch {
+    console.log("Facilitator: could not check whether the wallet is registered. Make sure it is, at https://cra-agent.tech/register");
+  }
+}
 
 async function addToMarket(url: string): Promise<void> {
   try {
@@ -65,6 +78,7 @@ function main(): void {
     console.log(`Paid to ${a.payTo} on ${a.network === "arc" ? "Arc mainnet" : "Arc testnet"}, settled ${a.facilitatorUrl ? `by ${a.facilitatorUrl}` : "through Circle Gateway"}.`);
     console.log(`What is for sale, for anyone to read: http://localhost:${a.port}/.well-known/x402`);
     console.log("Buyers need a public https address in front of this port. Once you have one, add it to the marketplace with --list <url>.");
+    if (a.facilitatorUrl?.includes("cra-agent.tech")) void checkRegistered(a.payTo, a.facilitatorUrl);
     if (a.list) void addToMarket(a.list);
   });
 }

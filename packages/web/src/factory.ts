@@ -176,6 +176,7 @@ function readSell(): SellInput {
     free: $<HTMLTextAreaElement>("s-free").value.split(/[\n,]+/).map((f) => f.trim()).filter(Boolean),
     network: sellNetwork,
     publicUrl: input("s-public").value.trim().replace(/\/+$/, ""),
+    browserWallets: input("s-browser").checked,
   };
 }
 
@@ -206,6 +207,7 @@ function renderSell(): void {
 
 const markSellNetwork = choices($("s-networks"), NETWORKS, (id) => { sellNetwork = id; markSellNetwork(id); renderSell(); });
 markSellNetwork(sellNetwork);
+$("s-browser").addEventListener("change", renderSell);
 for (const id of ["s-target", "s-payto", "s-solana", "s-price", "s-name", "s-free", "s-public"]) $(id).addEventListener("input", renderSell);
 
 type Mode = "buy" | "sell";
