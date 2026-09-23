@@ -5,16 +5,50 @@
   "image": "https://cra-agent.tech/brand/logo.webp",
   "active": true,
   "x402Support": true,
-  "supportedTrust": ["reputation"],
-  "services": [
-    { "name": "web", "endpoint": "https://cra-agent.tech" },
-    { "name": "x402", "endpoint": "https://api.cra-agent.tech/.well-known/x402", "version": "2" },
-    { "name": "x402-search", "endpoint": "https://api.cra-agent.tech/v1/market/search" },
-    { "name": "x402-facilitator", "endpoint": "https://api.cra-agent.tech/facilitator/supported" },
-    { "name": "OpenAPI", "endpoint": "https://api.cra-agent.tech/openapi.json", "version": "3.1.0" },
-    { "name": "MCP", "endpoint": "https://www.npmjs.com/package/@cra-agent/mcp", "version": "0.0.9" },
-    { "name": "status", "endpoint": "https://cra-agent.tech/status" },
-    { "name": "source", "endpoint": "https://github.com/giupy997/arcagentx402" }
+  "supportedTrust": [
+    "reputation"
   ],
-  "registrations": []
+  "services": [
+    {
+      "name": "web",
+      "endpoint": "https://cra-agent.tech"
+    },
+    {
+      "name": "x402",
+      "endpoint": "https://api.cra-agent.tech/.well-known/x402",
+      "version": "2"
+    },
+    {
+      "name": "x402-search",
+      "endpoint": "https://api.cra-agent.tech/v1/market/search"
+    },
+    {
+      "name": "x402-facilitator",
+      "endpoint": "https://api.cra-agent.tech/facilitator/supported"
+    },
+    {
+      "name": "OpenAPI",
+      "endpoint": "https://api.cra-agent.tech/openapi.json",
+      "version": "3.1.0"
+    },
+    {
+      "name": "MCP",
+      "endpoint": "https://www.npmjs.com/package/@cra-agent/mcp",
+      "version": "0.0.9"
+    },
+    {
+      "name": "status",
+      "endpoint": "https://cra-agent.tech/status"
+    },
+    {
+      "name": "source",
+      "endpoint": "https://github.com/giupy997/arcagentx402"
+    }
+  ],
+  "registrations": [
+    {
+      "agentId": 186,
+      "agentRegistry": "eip155:5042:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+    }
+  ]
 }
