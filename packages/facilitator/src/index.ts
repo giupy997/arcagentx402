@@ -13,10 +13,10 @@ import { Hono } from "hono";
 import { createPublicClient, createWalletClient, http, publicActions, type Chain, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { refuse, type GuardRules } from "./guard.js";
-import type { SellerRegistry } from "./sellers.js";
+import { allowanceRefusal, type SellerRegistry } from "./sellers.js";
 
 export { refuse, type GuardRules, type GuardedRequirements } from "./guard.js";
-export { SellerRegistry, type SellerStatus } from "./sellers.js";
+export { allowanceRefusal, SellerRegistry, type SellerStatus } from "./sellers.js";
 
 export interface FacilitatorOptions {
   readonly chain: Chain;
@@ -28,6 +28,8 @@ export interface FacilitatorOptions {
   readonly rules: GuardRules;
   /** Sellers that register while running, each with a daily allowance of settlements. */
   readonly sellers?: SellerRegistry;
+  /** Gas (native wei) kept for the addresses named at start: under it, registered sellers wait. */
+  readonly gasReserveWei?: bigint;
   readonly log?: (event: string, data: Record<string, unknown>) => void;
 }
 
@@ -50,8 +52,18 @@ export function createFacilitator(opts: FacilitatorOptions) {
   };
   // The allowance is checked at verify as well as settle: a payment that will not be settled must
   // not pass verification, or the seller's API would answer the request and never be paid for it.
+  // The balance is read at most once a minute: every verify asking the chain would be a way to make us do RPC work.
+  let gas: { at: number; wei: bigint | null } = { at: 0, wei: null };
+  const gasLeft = async (): Promise<bigint | null> => {
+    if (Date.now() - gas.at > 60_000) {
+      const wei = await pub.getBalance({ address: account.address }).catch(() => null);
+      gas = { at: Date.now(), wei };
+    }
+    return gas.wei;
+  };
   const allowance = async (ctx: { requirements: PaymentRequirements }) => {
-    const reason = opts.sellers?.refuse(ctx.requirements.payTo) ?? null;
+    const registered = opts.sellers?.has(ctx.requirements.payTo) ?? false;
+    const reason = allowanceRefusal(ctx.requirements.payTo, opts.rules.payTo, opts.sellers, registered ? await gasLeft() : null, opts.gasReserveWei ?? 0n);
     if (reason) {
       log("refused", { reason, payTo: ctx.requirements.payTo, network: ctx.requirements.network });
       return { abort: true as const, reason };
@@ -111,7 +123,7 @@ export function createFacilitator(opts: FacilitatorOptions) {
     try {
       // On Arc the gas is USDC, held as the native balance with 18 decimals.
       const balance = await pub.getBalance({ address: account.address });
-      return c.json({ ok: balance > 0n, signer: account.address, network: opts.network, gasBalanceWei: balance.toString(), settlesFor: [...opts.rules.payTo], registeredSellers: opts.sellers?.size ?? 0, dailyCap: opts.sellers?.dailyCap ?? null });
+      return c.json({ ok: balance > 0n, signer: account.address, network: opts.network, gasBalanceWei: balance.toString(), settlesFor: [...opts.rules.payTo], registeredSellers: opts.sellers?.size ?? 0, dailyCap: opts.sellers?.dailyCap ?? null, sharedDailyCap: Number.isFinite(opts.sellers?.sharedDailyCap) ? opts.sellers!.sharedDailyCap : null, sharedSettledToday: opts.sellers?.sharedSettledToday ?? 0, gasReserveWei: (opts.gasReserveWei ?? 0n).toString() });
     } catch (err) {
       return c.json({ ok: false, signer: account.address, error: (err as Error).message.slice(0, 160) }, 503);
     }

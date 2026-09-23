@@ -23,8 +23,9 @@ function step(text: string, state: "" | "ok" | "bad" = ""): void {
 
 async function loadInfo(): Promise<void> {
   try {
-    const d = (await (await fetch(`${API_BASE}/v1/facilitator`)).json()) as { dailyCap?: number | null };
+    const d = (await (await fetch(`${API_BASE}/v1/facilitator`)).json()) as { dailyCap?: number | null; sharedDailyCap?: number | null };
     if (d.dailyCap) $("r-cap").textContent = String(d.dailyCap);
+    if (d.sharedDailyCap) $("r-shared").textContent = String(d.sharedDailyCap);
   } catch {
     /* the default stays */
   }

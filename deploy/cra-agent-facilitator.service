@@ -12,6 +12,9 @@ Environment=FACILITATOR_KEY_FILE=/opt/cra-agent/.secrets/facilitator.key
 # Sellers who registered through the API (signature checked there); each gets this many settlements a day.
 Environment=FACILITATOR_SELLERS_FILE=/opt/cra-agent/.secrets/facilitator-sellers.json
 Environment=FACILITATOR_DAILY_CAP=200
+# A wallet costs nothing to make: registered sellers also share one daily allowance, and a gas reserve is kept for our own routes.
+Environment=FACILITATOR_SHARED_DAILY_CAP=400
+Environment=FACILITATOR_GAS_RESERVE_USDC=0.5
 # The only addresses it will pay gas for. Anything else is refused before an RPC call is made.
 Environment=FACILITATOR_PAY_TO=0x33b37c6d7a98b58da3Ccb3F36A4b578053d0Ea74
 Environment=FACILITATOR_MAX_USDC=1

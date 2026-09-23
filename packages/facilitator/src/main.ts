@@ -11,6 +11,8 @@
  *   FACILITATOR_RPC_URL    optional, comma-separated, tried before the public endpoints
  *   FACILITATOR_SELLERS_FILE  where registered sellers are kept; registration is off without it
  *   FACILITATOR_DAILY_CAP  settlements a registered seller gets per UTC day, default 200
+ *   FACILITATOR_SHARED_DAILY_CAP  settlements all registered sellers get together per UTC day, default 400
+ *   FACILITATOR_GAS_RESERVE_USDC  gas kept for our own addresses: under it registered sellers wait, default 0.5
  */
 import { readFileSync } from "node:fs";
 import { serve } from "@hono/node-server";
@@ -35,8 +37,11 @@ const raw = readFileSync(env.FACILITATOR_KEY_FILE, "utf8").trim();
 const privateKey = (raw.startsWith("0x") ? raw : `0x${raw}`) as Hex;
 const rpcUrl = await pickRpcUrl(mergeRpcLists(parseRpcList(env.FACILITATOR_RPC_URL), PUBLIC_RPCS[network]), CHAIN_IDS[network]);
 
-const sellers = env.FACILITATOR_SELLERS_FILE ? new SellerRegistry(env.FACILITATOR_SELLERS_FILE, Number(env.FACILITATOR_DAILY_CAP ?? 200)) : undefined;
+const sellers = env.FACILITATOR_SELLERS_FILE ? new SellerRegistry(env.FACILITATOR_SELLERS_FILE, Number(env.FACILITATOR_DAILY_CAP ?? 200), Date.now, Number(env.FACILITATOR_SHARED_DAILY_CAP ?? 400)) : undefined;
 if (sellers && !(sellers.dailyCap >= 1)) throw new Error("FACILITATOR_DAILY_CAP must be a number of settlements per day");
+if (sellers && !(sellers.sharedDailyCap >= 1)) throw new Error("FACILITATOR_SHARED_DAILY_CAP must be a number of settlements per day");
+// Gas on Arc is USDC in 18-decimal native units; the reserve is given in dollars.
+const gasReserveWei = parseUsdc6(env.FACILITATOR_GAS_RESERVE_USDC ?? "0.5") * 10n ** 12n;
 
 const { app, address } = createFacilitator({
   chain: CHAINS[network],
@@ -45,8 +50,9 @@ const { app, address } = createFacilitator({
   privateKey,
   rules: { payTo, assets: new Map([[CAIP2[network], ARC_USDC]]), minAmount: usdc6(1n), maxAmount: parseUsdc6(env.FACILITATOR_MAX_USDC ?? "1"), ...(sellers ? { registered: sellers } : {}) },
   ...(sellers ? { sellers } : {}),
+  gasReserveWei,
   log,
 });
 
 const port = Number(env.FACILITATOR_PORT ?? 8792);
-serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, () => log("listening", { port, host: "127.0.0.1", signer: address, network: CAIP2[network], rpc: redactRpcUrl(rpcUrl), settlesFor: [...payTo], registeredSellers: sellers?.size ?? 0, dailyCap: sellers?.dailyCap ?? null }));
+serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, () => log("listening", { port, host: "127.0.0.1", signer: address, network: CAIP2[network], rpc: redactRpcUrl(rpcUrl), settlesFor: [...payTo], registeredSellers: sellers?.size ?? 0, dailyCap: sellers?.dailyCap ?? null, sharedDailyCap: sellers?.sharedDailyCap ?? null, gasReserveUsdc: env.FACILITATOR_GAS_RESERVE_USDC ?? "0.5" }));

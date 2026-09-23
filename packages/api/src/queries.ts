@@ -25,27 +25,46 @@ export interface NetworkSummary {
 }
 
 /**
- * Blocks and transactions collected so far. Counting 1.5M rows on every call was the biggest load on
- * the database, so the count is kept in memory and only the blocks above the last counted number
- * are added. Backfill inserts older blocks too, so a full recount runs every ten minutes.
+ * Blocks and transactions collected so far. Counting 1.5M rows is a full scan of a 2.6 GB table:
+ * fine when the table is cached, over the statement timeout when it is not. So the count is kept in
+ * memory and only blocks above the last counted number are added per call. Backfill inserts older
+ * blocks too, so a full recount runs every ten minutes, in the background, on its own connection
+ * with a longer timeout; only the very first one is waited for.
  */
-const totals = { upTo: -1n, blocks: 0n, txs: 0n, fullAt: 0 };
+const totals = { upTo: -1n, blocks: 0n, txs: 0n, fullAt: 0, generation: 0 };
+let recounting: Promise<void> | null = null;
+function recount(db: Db): Promise<void> {
+  recounting ??= (async () => {
+    const client = await db.connect();
+    try {
+      await client.query("SET statement_timeout = '180s'");
+      const r = await client.query<{ n: string; txs: string; top: string | null }>("SELECT count(*) AS n, coalesce(sum(tx_count),0) AS txs, max(number) AS top FROM blocks");
+      const row = r.rows[0]!;
+      totals.blocks = BigInt(row.n);
+      totals.txs = BigInt(row.txs);
+      totals.upTo = row.top === null ? -1n : BigInt(row.top);
+      totals.fullAt = Date.now();
+      totals.generation++;
+    } finally {
+      await client.query("RESET statement_timeout").catch(() => {});
+      client.release();
+      recounting = null;
+    }
+  })();
+  return recounting;
+}
 async function blockTotals(db: Db): Promise<{ blocks: number; txs: number }> {
-  const full = Date.now() - totals.fullAt > 600_000;
-  const r = await db.query<{ n: string; txs: string; top: string | null }>(
-    full ? "SELECT count(*) AS n, coalesce(sum(tx_count),0) AS txs, max(number) AS top FROM blocks" : "SELECT count(*) AS n, coalesce(sum(tx_count),0) AS txs, max(number) AS top FROM blocks WHERE number > $1",
-    full ? [] : [totals.upTo.toString()],
-  );
+  if (totals.fullAt === 0) await recount(db);
+  else if (Date.now() - totals.fullAt > 600_000 && !recounting) void recount(db).catch(() => {});
+  const generation = totals.generation;
+  const r = await db.query<{ n: string; txs: string; top: string | null }>("SELECT count(*) AS n, coalesce(sum(tx_count),0) AS txs, max(number) AS top FROM blocks WHERE number > $1", [totals.upTo.toString()]);
   const row = r.rows[0]!;
-  if (full) {
-    totals.blocks = BigInt(row.n);
-    totals.txs = BigInt(row.txs);
-    totals.fullAt = Date.now();
-  } else {
+  // A recount that finished meanwhile already includes these blocks: adding them would count them twice.
+  if (generation === totals.generation) {
     totals.blocks += BigInt(row.n);
     totals.txs += BigInt(row.txs);
+    if (row.top !== null && BigInt(row.top) > totals.upTo) totals.upTo = BigInt(row.top);
   }
-  if (row.top !== null) totals.upTo = BigInt(row.top) > totals.upTo ? BigInt(row.top) : totals.upTo;
   return { blocks: Number(totals.blocks), txs: Number(totals.txs) };
 }
 

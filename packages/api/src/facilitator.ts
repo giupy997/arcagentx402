@@ -42,6 +42,21 @@ export function mountFacilitator(app: Hono, db: Db, network: string, log: Logger
   };
   void sync();
 
+  /**
+   * A wallet costs nothing to make, so registrations are paced: a few an hour from one address, and
+   * a ceiling on how many sellers there are at all until the demand says otherwise. The gas itself
+   * is bounded in the facilitator; this keeps the list from being flooded.
+   */
+  const maxSellers = Number(process.env.FACILITATOR_MAX_SELLERS ?? 200);
+  const attempts = new Map<string, number[]>();
+  const paced = (c: Context): boolean => {
+    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+    const recent = (attempts.get(ip) ?? []).filter((t) => Date.now() - t < 3_600_000);
+    if (attempts.size > 10_000) attempts.clear();
+    attempts.set(ip, [...recent, Date.now()]);
+    return recent.length >= 5;
+  };
+
   app.get("/v1/facilitator", async (c) => {
     const origin = new URL(c.req.url).origin;
     let health: Record<string, unknown> | null = null;
@@ -56,14 +71,17 @@ export function mountFacilitator(app: Hono, db: Db, network: string, log: Logger
       scheme: "exact",
       asset: "0x3600000000000000000000000000000000000000",
       dailyCap: health?.dailyCap ?? null,
+      sharedDailyCap: health?.sharedDailyCap ?? null,
+      sharedSettledToday: health?.sharedSettledToday ?? null,
       registeredSellers: health?.registeredSellers ?? null,
       ok: health?.ok ?? false,
       register: `${origin.replace("api.", "")}/register`,
-      note: "Settles EIP-3009 USDC authorizations on Arc for registered sellers, paying the gas. A seller registers by signing a message with the wallet that gets paid. Each seller has a daily allowance of settlements; past it, buyers pay through Circle Gateway.",
+      note: "Settles EIP-3009 USDC authorizations on Arc for registered sellers, paying the gas. A seller registers by signing a message with the wallet that gets paid. Each seller has a daily allowance of settlements, all registered sellers share a second one, and a gas reserve is kept for our own routes; past any of them, buyers pay through Circle Gateway.",
     });
   });
 
   app.post("/v1/facilitator/sellers", async (c) => {
+    if (paced(c)) return c.json({ error: "too many registrations from here, try again in an hour" }, 429);
     const b = (await c.req.json().catch(() => null)) as { payTo?: unknown; issuedAt?: unknown; signature?: unknown } | null;
     if (typeof b?.payTo !== "string" || !ADDRESS.test(b.payTo)) return c.json({ error: "payTo must be a 0x address" }, 400);
     if (typeof b.issuedAt !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(b.issuedAt)) return c.json({ error: "issuedAt must be an ISO time in UTC" }, 400);
@@ -77,6 +95,8 @@ export function mountFacilitator(app: Hono, db: Db, network: string, log: Logger
       valid = false;
     }
     if (!valid) return c.json({ error: "the signature was not made by that wallet over that message" }, 400);
+    const known = await db.query<{ n: string; mine: string }>("SELECT count(*) AS n, count(*) FILTER (WHERE pay_to = $1) AS mine FROM facilitator_sellers", [b.payTo.toLowerCase()]);
+    if (Number(known.rows[0]!.mine) === 0 && Number(known.rows[0]!.n) >= maxSellers) return c.json({ error: "registration is full for now: write to us at x.com/Craagentarc" }, 503);
     await db.query("INSERT INTO facilitator_sellers (pay_to, issued_at, signature) VALUES ($1, $2, $3) ON CONFLICT (pay_to) DO NOTHING", [b.payTo.toLowerCase(), b.issuedAt, b.signature]);
     const pushed = await push(b.payTo.toLowerCase());
     log.info({ payTo: b.payTo.toLowerCase(), pushed }, "facilitator: seller registered");
