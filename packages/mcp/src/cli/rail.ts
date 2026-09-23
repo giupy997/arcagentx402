@@ -2,6 +2,7 @@
 /**
  * Tiny CLI over the same rail the MCP server uses. For humans and for smoke tests.
  *   cra-agent quote <url>        cra-agent pay <url> [max usdc]        cra-agent balance
+ *   cra-agent pay <url> [max usdc] --body '{"query":"x402"}'    a POST with a JSON body (--method POST without one)
  *   cra-agent deposit <usdc>     cra-agent ledger [n]       cra-agent policy
  *   cra-agent withdraw <usdc> [max fee]    Gateway balance back to the wallet: how a seller collects
  *   cra-agent verify <receipt.json> [agent]    checks a signed receipt; needs no key and no network
@@ -17,6 +18,29 @@ import { CAIP2, registerIdentity, type ArcNetwork } from "@cra-agent/identity";
 import { fit, forAgent, NOTHING_SPENT, searchMarket } from "../search.js";
 import { railFromEnv } from "../rail-from-env.js";
 import { runInit } from "./init.js";
+
+/** The url and the amount in order, and --method / --body wherever they are. A body means POST. */
+function callOptions(args: readonly string[]): { positional: string[]; method: "GET" | "POST"; body: string | undefined } {
+  const positional: string[] = [];
+  let method: string | undefined;
+  let body: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--method") method = args[++i];
+    else if (args[i] === "--body") body = args[++i];
+    else positional.push(args[i]!);
+  }
+  const m = (method ?? (body === undefined ? "GET" : "POST")).toUpperCase();
+  if (m !== "GET" && m !== "POST") throw new Error("--method is GET or POST");
+  if (body !== undefined && m === "GET") throw new Error("a body goes with POST: drop --method GET");
+  if (body !== undefined) {
+    try {
+      JSON.parse(body);
+    } catch {
+      throw new Error(`--body must be JSON, like '{"query":"x402"}'`);
+    }
+  }
+  return { positional, method: m, body };
+}
 
 const out = (v: unknown) => console.log(JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x), 2));
 
@@ -62,16 +86,20 @@ async function main(): Promise<void> {
   const { rail, ledger, policy, network, agentId, signer, escrow, rpcUrl } = await railFromEnv();
   switch (cmd) {
     case "quote": {
-      if (!arg) throw new Error("usage: quote <url>");
-      out((await rail.quote(arg)) ?? { free: true, url: arg });
+      const { positional, method } = callOptions(process.argv.slice(3));
+      const url = positional[0];
+      if (!url) throw new Error("usage: quote <url> [--method POST]");
+      out((await rail.quote(url, method === "GET" ? undefined : { method })) ?? { free: true, url });
       break;
     }
     case "pay": {
-      if (!arg) throw new Error("usage: pay <url> [max usdc: refuse if the seller asks more at pay time]");
-      const max = process.argv[4];
+      const { positional, method, body } = callOptions(process.argv.slice(3));
+      const [url, max] = positional;
+      if (!url) throw new Error("usage: pay <url> [max usdc: refuse if the seller asks more at pay time] [--body '<json>'] [--method POST]");
       if (max !== undefined && !/^\d{1,6}(\.\d{1,6})?$/.test(max)) throw new Error("the ceiling is an amount in USDC, like 0.002");
+      const init: RequestInit = { method, headers: { accept: "application/json", ...(body === undefined ? {} : { "content-type": "application/json" }) }, ...(body === undefined ? {} : { body }) };
       try {
-        const { response, receipt } = await rail.fetch(arg, { headers: { accept: "application/json" } }, max === undefined ? {} : { maxUsdc: max });
+        const { response, receipt } = await rail.fetch(url, init, max === undefined ? {} : { maxUsdc: max });
         const body = await response.text();
         out({ status: response.status, receipt, body: body.slice(0, 600) });
       } catch (err) {

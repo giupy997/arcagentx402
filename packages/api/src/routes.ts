@@ -288,7 +288,7 @@ export const FREE_ROUTES: readonly FreeRoute[] = [
   {
     path: "/v1/market/search",
     summary: "Find paid APIs on Arc",
-    description: "Search our routes and every endpoint on the CRA market, each verified to answer 402 on Arc. Returns the URL to call with example parameters, the price, what it sells and who is paid.",
+    description: "Search our routes, every endpoint on the CRA market (each checked to answer 402 on Arc) and the endpoints Circle's x402 catalogue lists as payable on Arc. Returns the method and URL to call with example parameters, where each parameter goes, the price, what it sells, who is paid and who listed it.",
     params: [
       { name: "q", type: "string", description: "What you need, in a few words.", example: "bitcoin price" },
       { name: "maxPriceUsd", type: "string", description: "Only results at or under this price per call." },

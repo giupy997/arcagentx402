@@ -44,7 +44,7 @@ describe("what an agent finds for a few words", () => {
     expect(tx.params.find((p) => p.name === "hash")).toMatchObject({ required: true });
     expect(tx.direct?.url).toContain("/v1/direct/arc/tx?hash=");
     expect(tx.direct?.priceUsd).toBe("0.003");
-    expect(exampleUrl("https://x.io", "/a", [{ name: "q", type: "string", description: "", required: true, example: "two words" }])).toBe("https://x.io/a?q=two%20words");
+    expect(exampleUrl("https://x.io", "/a", [{ name: "q", in: "query", type: "string", description: "", required: true, example: "two words" }])).toBe("https://x.io/a?q=two%20words");
   });
 
   it("ranks a cheaper seller of the same thing first, and puts ours first on a tie", () => {

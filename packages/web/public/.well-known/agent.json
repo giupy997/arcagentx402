@@ -1,7 +1,7 @@
 {
   "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
   "name": "CRA AGENT",
-  "description": "Payments for AI agents on Arc, Circle's USDC-native L1, over x402. A buyer agent searches what is for sale on Arc, checks each price against a spending policy it cannot change, pays in USDC (through Circle Gateway or a direct EIP-3009 authorization) and keeps a signed receipt. Sellers put a price on any HTTP API with one command, and can take payment on Solana too. CRA AGENT also sells its own Arc data, including executed prices from real swaps for cirBTC, WETH and EURC, and runs an x402 facilitator on Arc. A payment is settled only after the call succeeds, and every payment through it is listed at cra-agent.tech/status.",
+  "description": "Payments for AI agents on Arc, Circle's USDC-native L1, over x402. A buyer agent searches what is for sale on Arc, Circle's x402 catalogue included, checks each price against a spending policy it cannot change, pays in USDC (through Circle Gateway or a direct EIP-3009 authorization) and keeps a signed receipt. Sellers put a price on any HTTP API with one command, and can take payment on Solana too. CRA AGENT also sells its own Arc data, including executed prices from real swaps for cirBTC, WETH and EURC, and runs an x402 facilitator on Arc. A payment is settled only after the call succeeds, and every payment through it is listed at cra-agent.tech/status.",
   "image": "https://cra-agent.tech/brand/logo.webp",
   "active": true,
   "x402Support": true,
@@ -34,7 +34,7 @@
     {
       "name": "MCP",
       "endpoint": "https://www.npmjs.com/package/@cra-agent/mcp",
-      "version": "0.0.10"
+      "version": "0.0.11"
     },
     {
       "name": "status",

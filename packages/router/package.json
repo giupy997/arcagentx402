@@ -1,6 +1,6 @@
 {
   "name": "@cra-agent/router",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "The buyer side of x402 on Arc: quote, policy check, gas-free payment through Circle Gateway, receipt and settlement proof.",
   "keywords": [
     "agent-payments",
@@ -29,10 +29,10 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@cra-agent/accounting": "0.0.10",
-    "@cra-agent/identity": "0.0.10",
-    "@cra-agent/ledger": "0.0.10",
-    "@cra-agent/policy": "0.0.10",
+    "@cra-agent/accounting": "0.0.11",
+    "@cra-agent/identity": "0.0.11",
+    "@cra-agent/ledger": "0.0.11",
+    "@cra-agent/policy": "0.0.11",
     "@circle-fin/x402-batching": "^3.4.0",
     "@x402/core": "^2.25.0",
     "@x402/evm": "^2.25.0",

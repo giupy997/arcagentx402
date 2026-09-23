@@ -1,11 +1,11 @@
 /**
  * Finding something to buy.
  *
- * The market's search answers with URLs and prices; this checks each one against the agent's own
- * policy the same way a payment would be checked, with what it has already spent, so the agent does
- * not spend a quote on something it may not buy. It also picks which of a route's two addresses the
- * agent can actually pay: the batched one needs a Circle Gateway deposit, the direct one only USDC
- * in the wallet.
+ * The market's search answers with URLs and prices, from our routes, the CRA market and Circle's
+ * x402 catalogue. This checks each one against the agent's own policy the same way a payment would
+ * be checked, with what it has already spent, so the agent does not spend a quote on something it
+ * may not buy. It also picks which of a route's two addresses the agent can actually pay: the
+ * batched one needs a Circle Gateway deposit, the direct one only USDC in the wallet.
  */
 import { compareUsdc6, parseUsdc6, usdc6, type Usdc6 } from "@cra-agent/accounting";
 import { evaluatePolicy, type SpendPolicy } from "@cra-agent/policy";
@@ -14,10 +14,12 @@ export const MARKET_API = process.env.CRA_MARKET_API ?? "https://api.cra-agent.t
 
 export interface FoundParam {
   name: string;
+  /** query string, a {placeholder} in the path, or the JSON body. Absent from older answers: query. */
+  in?: "query" | "path" | "body";
   type: string;
   description: string;
   required: boolean;
-  example: string | number | null;
+  example: unknown;
 }
 export interface Found {
   url: string;
@@ -32,6 +34,9 @@ export interface Found {
   network: string;
   rail: "gateway" | "direct";
   direct: { url: string; priceUsd: string } | null;
+  /** For a POST, a JSON body from the seller's own examples, when it gave any. */
+  body?: Record<string, unknown> | null;
+  /** cra-agent, market or circle. */
   source: string;
   online: boolean;
   score: number;
@@ -78,18 +83,25 @@ export interface Fit {
 export function fit(found: Found, policy: SpendPolicy, agentNetwork: string, spent: Spending, gatewayAvailable: string | null): Fit {
   let url = found.url;
   let priceUsd = found.priceUsd;
-  // A batched route cannot be paid from an empty Gateway balance; the same route settled directly can.
-  if (found.rail === "gateway" && found.direct && gatewayAvailable !== null) {
-    const enough = compareUsdc6(parseUsdc6(gatewayAvailable), parseUsdc6(found.priceUsd)) >= 0;
-    if (!enough) ({ url, priceUsd } = found.direct);
-  }
-  if (found.network !== agentNetwork) return { url, priceUsd, payable: false, rule: "network", reason: `sold on ${found.network}; this agent pays on ${agentNetwork}` };
   let amount: Usdc6;
   try {
     amount = parseUsdc6(priceUsd);
   } catch {
     return { url, priceUsd, payable: false, rule: "price", reason: `the price ${priceUsd} is not an amount this agent can pay` };
   }
+  // A batched route cannot be paid from an empty Gateway balance; the same route settled directly can.
+  const short = gatewayAvailable !== null && found.rail === "gateway" && compareUsdc6(parseUsdc6(gatewayAvailable), amount) < 0;
+  if (short && found.direct) {
+    ({ url, priceUsd } = found.direct);
+    try {
+      amount = parseUsdc6(priceUsd);
+    } catch {
+      return { url, priceUsd, payable: false, rule: "price", reason: `the price ${priceUsd} is not an amount this agent can pay` };
+    }
+  }
+  if (found.network !== agentNetwork) return { url, priceUsd, payable: false, rule: "network", reason: `sold on ${found.network}; this agent pays on ${agentNetwork}` };
+  // Sold only through Gateway, and the deposit does not cover it: say so now rather than after a quote.
+  if (short && !found.direct) return { url, priceUsd, payable: false, rule: "gateway", reason: `sold only through Circle Gateway, and this agent's Gateway balance is ${gatewayAvailable} USDC: deposit first with arc_deposit` };
   const d = evaluatePolicy(policy, {
     amount,
     network: found.network,
@@ -105,15 +117,20 @@ export function fit(found: Found, policy: SpendPolicy, agentNetwork: string, spe
   return d.allow ? { url, priceUsd, payable: true } : { url, priceUsd, payable: false, rule: d.rule, reason: d.reason };
 }
 
-/** A result as an agent should read it: what it is, where to call, what it costs, whether it may. */
+const LISTED_BY: Record<string, string> = { "cra-agent": "CRA AGENT", market: "CRA market", circle: "Circle's x402 catalogue" };
+
+/** A result as an agent should read it: what it is, how to call it, what it costs, whether it may. */
 export function forAgent(found: Found, f: Fit | null) {
   const what = found.label ?? found.description ?? found.name;
   return {
     what: what.length > 200 ? `${what.slice(0, 197)}...` : what,
+    method: found.method,
     url: f?.url ?? found.url,
     priceUsd: f?.priceUsd ?? found.priceUsd,
     seller: found.name,
-    params: found.params.map((p) => ({ name: p.name, required: p.required, example: p.example, description: p.description })),
+    listedBy: LISTED_BY[found.source] ?? found.source,
+    params: found.params.map((p) => ({ name: p.name, in: p.in ?? "query", required: p.required, example: p.example, description: p.description })),
+    ...(found.body ? { body: found.body } : {}),
     ...(f ? { payable: f.payable, ...(f.payable ? {} : { whyNot: `${f.rule}: ${f.reason}` }) } : {}),
   };
 }

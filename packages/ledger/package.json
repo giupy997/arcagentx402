@@ -1,6 +1,6 @@
 {
   "name": "@cra-agent/ledger",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "Append-only payment ledger for agent payments: every quote, rejection, signature, settlement and failure. In-memory or Postgres.",
   "keywords": [
     "agent-payments",
@@ -28,7 +28,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@cra-agent/accounting": "0.0.10",
+    "@cra-agent/accounting": "0.0.11",
     "pg": "^8.16.0"
   },
   "files": [

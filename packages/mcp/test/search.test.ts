@@ -32,8 +32,15 @@ describe("what the agent is told about a search result", () => {
   it("sends an agent with no Gateway balance to the direct address, at its own price", () => {
     const f = fit(found(), parsePolicyString("daily=1,per_payment=0.01"), ARC, NOTHING_SPENT, "0");
     expect(f).toMatchObject({ url: found().direct!.url, priceUsd: "0.003", payable: true });
-    // And one with no direct address stays where it is: the payment will tell it to deposit.
-    expect(fit(found({ direct: null }), parsePolicyString(""), ARC, NOTHING_SPENT, "0").url).toBe(found().url);
+  });
+
+  it("says a seller paid only through Gateway needs a deposit first, when the balance is known to be short", () => {
+    const gatewayOnly = found({ direct: null, url: "https://api.exa.ai/search", method: "POST", priceUsd: "0.007", source: "circle" });
+    expect(fit(gatewayOnly, parsePolicyString(""), ARC, NOTHING_SPENT, "0.001")).toMatchObject({ url: "https://api.exa.ai/search", payable: false, rule: "gateway" });
+    expect(fit(gatewayOnly, parsePolicyString(""), ARC, NOTHING_SPENT, "0.007")).toMatchObject({ payable: true });
+    // Not read: the payment itself will find out.
+    expect(fit(gatewayOnly, parsePolicyString(""), ARC, NOTHING_SPENT, null)).toMatchObject({ payable: true });
+    expect(fit(found({ rail: "direct", direct: null }), parsePolicyString(""), ARC, NOTHING_SPENT, "0")).toMatchObject({ payable: true });
   });
 
   it("names the rule that would stop the payment, the way paying would", () => {
@@ -49,6 +56,23 @@ describe("what the agent is told about a search result", () => {
     expect(forAgent(long, null).what).toHaveLength(200);
     expect(forAgent(long, null)).not.toHaveProperty("payable");
     expect(forAgent(found(), { url: "u", priceUsd: "0.002", payable: false, rule: "daily", reason: "cap" })).toMatchObject({ payable: false, whyNot: "daily: cap" });
+  });
+
+  it("tells the agent how to make the call: method, where each value goes, the example body, who listed it", () => {
+    const post = found({
+      url: "https://api.exa.ai/contents",
+      method: "POST",
+      source: "circle",
+      name: "Exa",
+      params: [{ name: "urls", in: "body", type: "array of string", description: "URLs to read", required: true, example: ["https://arxiv.org/abs/1"] }],
+      body: { urls: ["https://arxiv.org/abs/1"] },
+    });
+    expect(forAgent(post, null)).toMatchObject({ method: "POST", seller: "Exa", listedBy: "Circle's x402 catalogue", params: [{ name: "urls", in: "body", required: true }], body: { urls: ["https://arxiv.org/abs/1"] } });
+    // An answer from before parameters said where they go: the query string, as it always was.
+    const old = forAgent(found({ params: [{ name: "symbol", type: "string", description: "", required: false, example: "EURC" }] }), null);
+    expect(old.params[0]!.in).toBe("query");
+    expect(old).not.toHaveProperty("body");
+    expect(old.listedBy).toBe("CRA AGENT");
   });
 
   it("asks the market with the query, the ceiling and the limit", async () => {

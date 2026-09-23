@@ -321,6 +321,10 @@ footer.site a { word-break: break-all; }
 .try .field span { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
 .try .field input { font: inherit; font-family: var(--mono); font-size: 14px; padding: 9px 12px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); width: 100%; max-width: 640px; box-sizing: border-box; }
 .try .field small { color: var(--ink-3, var(--ink-2)); font-size: 12.5px; }
+.market .examples button.tag { cursor: pointer; margin: 2px 2px 2px 0; }
+.market .examples button.tag:hover { border-color: var(--line-strong); color: var(--ink); }
+.market td.call { font-family: var(--mono); font-size: 12px; word-break: break-all; min-width: 240px; }
+.market td.call .sub { font-family: var(--sans, inherit); word-break: normal; }
 .try .btn[disabled] { opacity: .45; cursor: not-allowed; }
 .try .steps { margin: 14px 0 0; padding-left: 20px; font-family: var(--mono); font-size: 13px; color: var(--ink-2); }
 .try .steps li { margin: 5px 0; }

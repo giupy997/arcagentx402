@@ -1,6 +1,7 @@
 /**
- * Search over what an agent can buy on Arc: our own routes, with their parameters, and every
- * listing on the market, each of which answered 402 on Arc when it was last checked.
+ * Search over what an agent can buy on Arc: our own routes, with their parameters, every listing
+ * on the market, each of which answered 402 on Arc when it was last checked, and the endpoints
+ * Circle's x402 catalogue lists as payable on Arc.
  *
  * Plain word matching, weighted by where the word appears, with a handful of synonyms for the
  * words agents actually use ("btc" for cirBTC, "fee" for gas). No embeddings and no external
@@ -9,12 +10,17 @@
  */
 import type { PaidRoute } from "./routes.js";
 
+/** An example value as the seller gave it: a word or a number, or for a body field a small list or object. */
+export type ParamExample = string | number | boolean | null | unknown[] | { [key: string]: unknown };
+
 export interface SearchParam {
   name: string;
+  /** Where the value goes: the query string, a {placeholder} in the path, or the JSON body. */
+  in: "query" | "path" | "body";
   type: string;
   description: string;
   required: boolean;
-  example: string | number | null;
+  example: ParamExample;
 }
 
 export interface SearchItem {
@@ -35,7 +41,10 @@ export interface SearchItem {
   rail: "gateway" | "direct";
   /** The same route settled directly, for a buyer without a Gateway deposit. */
   direct: { url: string; priceUsd: string } | null;
-  source: "cra-agent" | "market";
+  /** For a POST, a JSON body of the required fields the seller gave examples for, when it gave any. */
+  body: { [key: string]: unknown } | null;
+  /** cra-agent: our routes. market: cra-agent.tech/market. circle: Circle's x402 catalogue. */
+  source: "cra-agent" | "market" | "circle";
   online: boolean;
   /** Words that do not show to the agent but count for matching: the route's group and path. */
   keywords: string;
@@ -99,6 +108,18 @@ const SYNONYMS: Record<string, readonly string[]> = {
   build: ["deploy", "deploys", "deployed", "contracts"],
   building: ["deploy", "deploys", "deployed", "contracts"],
   launched: ["deploy", "deploys", "deployed", "contracts"],
+  twitter: ["tweet", "tweets"],
+  tweet: ["twitter", "tweets"],
+  tweets: ["twitter", "tweet"],
+  email: ["mail", "inbox", "inboxes"],
+  mail: ["email", "inbox"],
+  inbox: ["email", "mail", "inboxes"],
+  image: ["images", "picture", "photo"],
+  picture: ["image", "images", "photo"],
+  stock: ["stocks", "equities", "usstock", "shares"],
+  stocks: ["stock", "equities", "usstock", "shares"],
+  gpt: ["chat", "completions", "llm", "openai"],
+  llm: ["chat", "completions", "model", "models"],
 };
 
 export function tokens(text: string): string[] {
@@ -121,7 +142,9 @@ export function scoreItem(item: SearchItem, queryTokens: readonly string[]): num
   let score = 0;
   let matched = 0;
   for (const t of queryTokens) {
-    const terms = [t, ...(SYNONYMS[t] ?? [])];
+    // A synonym that is itself a word of the question already counts as that word: "email inbox" asks for
+    // an inbox, and a field that only says "email" should not score for both words.
+    const terms = [t, ...(SYNONYMS[t] ?? []).filter((syn) => !queryTokens.includes(syn))];
     let best = 0;
     for (const [words, weight] of fields) {
       // A synonym counts a little less than the word itself.
@@ -138,10 +161,13 @@ export function scoreItem(item: SearchItem, queryTokens: readonly string[]): num
 /** Words that name a pair we price, and the symbol the routes take for it. */
 const SYMBOL_OF: Record<string, string> = { bitcoin: "cirBTC", btc: "cirBTC", cirbtc: "cirBTC", ether: "WETH", eth: "WETH", ethereum: "WETH", weth: "WETH", euro: "EURC", eur: "EURC", eurc: "EURC", cra: "CRA" };
 
-/** When the question names a pair and the route takes a symbol, the example URL asks for that pair. */
+/**
+ * When the question names a pair and one of our routes takes a symbol, the example URL asks for
+ * that pair. Only ours: another seller's "symbol" is its own, and cirBTC means nothing to it.
+ */
 function withAskedSymbol(item: SearchItem, queryTokens: readonly string[]): SearchItem {
   const asked = queryTokens.map((t) => SYMBOL_OF[t]).find(Boolean);
-  if (!asked || !item.params.some((p) => p.name === "symbol")) return item;
+  if (!asked || item.source !== "cra-agent" || !item.params.some((p) => p.name === "symbol")) return item;
   const swap = (url: string): string => {
     const u = new URL(url);
     u.searchParams.set("symbol", asked);
@@ -156,14 +182,23 @@ export interface SearchOptions {
   readonly onlineOnly?: boolean;
 }
 
+/** On an equal score and price: ours, then what we checked ourselves, then what Circle lists. */
+const TIE_ORDER: Record<SearchItem["source"], number> = { "cra-agent": 0, market: 1, circle: 2 };
+/** A {placeholder} left in the address: the agent needs an id it may not have before it can call. */
+const unfilled = (item: SearchItem): number => (/\{[^}]+\}/.test(item.url) ? 1 : 0);
+/** A result far below the best one answers a different question, and trying it costs the agent a quote. */
+const RELATIVE_FLOOR = 0.3;
+
 export function search(items: readonly SearchItem[], query: string, opts: SearchOptions = {}): SearchResult[] {
   const q = tokens(query);
   const limit = Math.min(50, Math.max(1, opts.limit ?? 10));
-  const scored = items
+  const matching = items
     .filter((i) => (opts.maxPriceUsd === undefined || Number(i.priceUsd) <= opts.maxPriceUsd) && (opts.onlineOnly === false || i.online))
     .map((i) => ({ item: i, score: scoreItem(i, q) }))
     .filter((r) => q.length === 0 || r.score > 0);
-  scored.sort((a, b) => b.score - a.score || Number(a.item.priceUsd) - Number(b.item.priceUsd) || (a.item.source === b.item.source ? 0 : a.item.source === "cra-agent" ? -1 : 1));
+  const best = Math.max(0, ...matching.map((r) => r.score));
+  const scored = matching.filter((r) => r.score >= best * RELATIVE_FLOOR);
+  scored.sort((a, b) => b.score - a.score || unfilled(a.item) - unfilled(b.item) || Number(a.item.priceUsd) - Number(b.item.priceUsd) || TIE_ORDER[a.item.source] - TIE_ORDER[b.item.source]);
   return scored.slice(0, limit).map(({ item, score }) => {
     const { keywords: _unused, ...rest } = withAskedSymbol(item, q);
     return { ...rest, score };
@@ -185,7 +220,7 @@ export function ownItems(routes: readonly PaidRoute[], opts: { origin: string; p
   return routes
     .filter((r) => !r.alwaysFails)
     .map((r) => {
-      const params: SearchParam[] = (r.params ?? []).map((p) => ({ name: p.name, type: p.type, description: p.description, required: p.required === true, example: p.example ?? null }));
+      const params: SearchParam[] = (r.params ?? []).map((p) => ({ name: p.name, in: "query" as const, type: p.type, description: p.description, required: p.required === true, example: p.example ?? null }));
       const directPath = r.path.replace("/v1/paid", "/v1/direct");
       return {
         url: exampleUrl(opts.origin, r.path, params),
@@ -200,6 +235,7 @@ export function ownItems(routes: readonly PaidRoute[], opts: { origin: string; p
         network: opts.network,
         rail: "gateway" as const,
         direct: opts.directPrice ? { url: exampleUrl(opts.origin, directPath, params), priceUsd: opts.directPrice(r.price) } : null,
+        body: null,
         source: "cra-agent" as const,
         online: true,
         keywords: `${r.group} ${r.path.replace(/[/_-]+/g, " ")} ${r.summary} ${r.plain.explain}`,

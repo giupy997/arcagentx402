@@ -63,7 +63,7 @@ async function main(): Promise<void> {
 
   server.registerTool("arc_search", {
     title: "Find paid APIs on Arc",
-    description: "Search what can be bought on Arc, in a few words: 'bitcoin price', 'euro to dollar', 'vulnerabilities in an npm package'. Covers CRA AGENT's own data and every endpoint on the CRA market, each verified to answer 402 on Arc. Each result gives the URL to call with example parameters (change them to what you need, following params), the price, the seller, and whether your spending policy allows paying it right now, counting what you already spent today. Next: arc_quote the URL, then arc_pay it.",
+    description: "Search what can be bought on Arc, in a few words: 'bitcoin price', 'web search', 'vulnerabilities in an npm package'. Covers CRA AGENT's own data, every endpoint on the CRA market (each checked to answer 402 on Arc) and the endpoints Circle's x402 catalogue lists as payable on Arc: web search, blockchain RPC, AI models, email, company and market data. Each result gives the method and the URL to call with example parameters (change them to what you need, following params: 'in' says whether a value goes in the query, in a {placeholder} of the path, or in the JSON body), the price, the seller, who listed it, and whether your spending policy allows paying it right now, counting what you already spent today. Next: arc_quote the URL, then arc_pay it.",
     inputSchema: {
       query: z.string().min(2).max(200).describe("What you need, in a few words"),
       maxUsdc: z.string().regex(/^\d{1,6}(\.\d{1,6})?$/).optional().describe("Only results at or under this price per call, in USDC"),
@@ -86,7 +86,7 @@ async function main(): Promise<void> {
       return text({
         query: answer.query,
         results,
-        next: results.length ? "Change the example values in the url to what you need, following params, then arc_pay it with maxUsdc set to the result's priceUsd: if the seller asks more than it listed, the payment is refused before anything is signed." : "Nothing on Arc sells that yet. Try other words, or look at https://cra-agent.tech/market.",
+        next: results.length ? "Change the example values to what you need, following params: replace any {placeholder} in the url, and for method POST send the body fields as JSON in arc_pay's body. Then arc_pay it with maxUsdc set to the result's priceUsd: if the seller asks more than it listed, the payment is refused before anything is signed." : "Nothing on Arc sells that yet. Try other words, or look at https://cra-agent.tech/market.",
       });
     } catch (err) {
       return fail(`search failed: ${(err as Error).message}`);
