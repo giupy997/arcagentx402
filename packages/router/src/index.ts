@@ -8,7 +8,7 @@
  * settled in batches. Sellers that do not batch fall back to the standard x402 "exact" on-chain scheme.
  * The escrow rail (ERC-8183) is routed but not executed yet.
  */
-import { addUsdc6, formatUsdc6, headroomUsdc6, usdc6, type Usdc6 } from "@cra-agent/accounting";
+import { addUsdc6, compareUsdc6, formatUsdc6, headroomUsdc6, parseUsdc6, usdc6, type Usdc6 } from "@cra-agent/accounting";
 import { CAIP2, type ArcNetwork, type IdentityResolver, type RailSigner } from "@cra-agent/identity";
 import type { Ledger, PaymentRecord } from "@cra-agent/ledger";
 import { describePolicy, evaluatePolicy, type PolicyContext, type PolicyDecision, type SpendPolicy } from "@cra-agent/policy";
@@ -129,7 +129,12 @@ export interface SettlementProof {
 
 export interface Rail {
   quote(url: string, init?: RequestInit): Promise<Quote | null>;
-  fetch(url: string, init?: RequestInit): Promise<RailResponse>;
+  /**
+   * `maxUsdc` is a ceiling for this one call, checked like the policy: on the price the 402 asks at
+   * pay time, before anything is signed. An agent that found a URL in a listing passes the listed
+   * price, so a seller who raised it since is refused even when the new price is inside the limits.
+   */
+  fetch(url: string, init?: RequestInit, opts?: { maxUsdc?: string }): Promise<RailResponse>;
   balances(): Promise<{ address: Address; wallet: string; gatewayAvailable: string; gatewayTotal: string }>;
   /**
    * Batched settlement means the money reaches the seller on chain later than the response.
@@ -165,7 +170,7 @@ export function createRail(cfg: RailConfig): Rail {
   const httpClient = new x402HTTPClient(client);
 
   // Per-request state handed from the hooks to the fetch wrapper (hooks do not know the request).
-  interface InFlight { url: string; method: string; startedAt: number; quote: Quote | null; record: PaymentRecord | null; rejected: PolicyRejected | null; spent: { today: Usdc6; withSeller: Usdc6 } | null }
+  interface InFlight { url: string; method: string; startedAt: number; quote: Quote | null; record: PaymentRecord | null; rejected: PolicyRejected | null; spent: { today: Usdc6; withSeller: Usdc6 } | null; ceiling: Usdc6 | null }
   let current: InFlight | null = null;
 
   async function policyContext(req: PaymentRequirements, url: string): Promise<{ ctx: PolicyContext; identity: Quote["identity"] }> {
@@ -249,6 +254,15 @@ export function createRail(cfg: RailConfig): Rail {
       await cfg.ledger.record({ agentId: cfg.agentId, rail: "escrow", url, host: quote.host, method: inflight?.method ?? "GET", network: req.network, scheme: req.scheme, asset: req.asset, payTo: req.payTo, amount: quote.price, status: "rejected", reason: `escrow rail not executable yet: ${quote.route.reason}` });
       return { abort: true, reason: "escrow" };
     }
+    // The caller's own ceiling for this call, on the live price, like the policy and at the same moment.
+    const ceiling = inflight?.ceiling ?? null;
+    if (quote.policy.allow && ceiling !== null && compareUsdc6(quote.price, ceiling) > 0) {
+      const decision = { allow: false as const, rule: "max_price" as const, reason: `the seller asks ${quote.priceUsdc} USDC, above the ${formatUsdc6(ceiling)} USDC ceiling set for this call` };
+      await cfg.ledger.record({ agentId: cfg.agentId, rail: "nanopayment", url, host: quote.host, method: inflight?.method ?? "GET", network: req.network, scheme: req.scheme, asset: req.asset, payTo: req.payTo, amount: quote.price, status: "rejected", reason: `${decision.rule}: ${decision.reason}` });
+      if (inflight) inflight.rejected = new PolicyRejected(decision, quote);
+      log("policy.rejected", { url, rule: decision.rule, reason: decision.reason });
+      return { abort: true, reason: decision.reason };
+    }
     if (!quote.policy.allow) {
       await cfg.ledger.record({ agentId: cfg.agentId, rail: "nanopayment", url, host: quote.host, method: inflight?.method ?? "GET", network: req.network, scheme: req.scheme, asset: req.asset, payTo: req.payTo, amount: quote.price, status: "rejected", reason: `${quote.policy.rule}: ${quote.policy.reason}` });
       if (inflight) inflight.rejected = new PolicyRejected(quote.policy, quote);
@@ -313,9 +327,9 @@ export function createRail(cfg: RailConfig): Rail {
       return buildQuote(url, pr, req);
     },
 
-    async fetch(url, init) {
+    async fetch(url, init, opts = {}) {
       const method = (init?.method ?? "GET").toUpperCase();
-      current = { url, method, startedAt: Date.now(), quote: null, record: null, rejected: null, spent: null };
+      current = { url, method, startedAt: Date.now(), quote: null, record: null, rejected: null, spent: null, ceiling: opts.maxUsdc === undefined ? null : parseUsdc6(opts.maxUsdc) };
       const mine = current;
       try {
         const response = await payingFetch(url, init);

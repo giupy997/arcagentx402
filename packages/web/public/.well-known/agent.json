@@ -34,7 +34,7 @@
     {
       "name": "MCP",
       "endpoint": "https://www.npmjs.com/package/@cra-agent/mcp",
-      "version": "0.0.9"
+      "version": "0.0.10"
     },
     {
       "name": "status",

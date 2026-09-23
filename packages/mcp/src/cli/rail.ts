@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Tiny CLI over the same rail the MCP server uses. For humans and for smoke tests.
- *   cra-agent quote <url>        cra-agent pay <url>        cra-agent balance
+ *   cra-agent quote <url>        cra-agent pay <url> [max usdc]        cra-agent balance
  *   cra-agent deposit <usdc>     cra-agent ledger [n]       cra-agent policy
  *   cra-agent withdraw <usdc> [max fee]    Gateway balance back to the wallet: how a seller collects
  *   cra-agent verify <receipt.json> [agent]    checks a signed receipt; needs no key and no network
@@ -67,9 +67,11 @@ async function main(): Promise<void> {
       break;
     }
     case "pay": {
-      if (!arg) throw new Error("usage: pay <url>");
+      if (!arg) throw new Error("usage: pay <url> [max usdc: refuse if the seller asks more at pay time]");
+      const max = process.argv[4];
+      if (max !== undefined && !/^\d{1,6}(\.\d{1,6})?$/.test(max)) throw new Error("the ceiling is an amount in USDC, like 0.002");
       try {
-        const { response, receipt } = await rail.fetch(arg, { headers: { accept: "application/json" } });
+        const { response, receipt } = await rail.fetch(arg, { headers: { accept: "application/json" } }, max === undefined ? {} : { maxUsdc: max });
         const body = await response.text();
         out({ status: response.status, receipt, body: body.slice(0, 600) });
       } catch (err) {

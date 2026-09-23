@@ -39,16 +39,17 @@ async function main(): Promise<void> {
   server.registerTool("arc_pay", {
     title: "Fetch a resource, paying with USDC on Arc if it asks",
     description: "Fetches the URL. If the server answers 402, CRA AGENT checks the spending policy, verifies the seller, signs a gas-free nanopayment through Circle Gateway (or a standard x402 payment), retries the request and records the outcome in the ledger. Returns the response body plus a receipt. Policy rejections are returned as errors with the rule that fired.",
-    inputSchema: { url: z.string().url(), method: z.enum(["GET", "POST"]).optional(), body: z.string().optional(), maxUsdc: z.string().optional().describe("Refuse if the quoted price is above this (decimal USDC)") },
+    inputSchema: {
+      url: z.string().url(),
+      method: z.enum(["GET", "POST"]).optional(),
+      body: z.string().optional(),
+      maxUsdc: z.string().regex(/^\d{1,6}(\.\d{1,6})?$/).optional().describe("Refuse if the seller asks more than this (decimal USDC) at pay time. Checked on the live 402, before anything is signed. From arc_search, pass the listed priceUsd."),
+    },
   }, async ({ url, method, body, maxUsdc }) => {
     try {
-      if (maxUsdc !== undefined) {
-        const q = await rail.quote(url, method ? { method } : undefined);
-        if (q && Number(q.priceUsdc) > Number(maxUsdc)) return fail(`price ${q.priceUsdc} USDC is above maxUsdc ${maxUsdc}; not paid`);
-      }
       const init: RequestInit = { method: method ?? "GET", headers: { accept: "application/json" } };
       if (body !== undefined) { init.body = body; (init.headers as Record<string, string>)["content-type"] = "application/json"; }
-      const { response, receipt } = await rail.fetch(url, init);
+      const { response, receipt } = await rail.fetch(url, init, maxUsdc === undefined ? {} : { maxUsdc });
       const raw = await response.text();
       let data: unknown = raw;
       try { data = JSON.parse(raw); } catch { /* keep text */ }
@@ -85,7 +86,7 @@ async function main(): Promise<void> {
       return text({
         query: answer.query,
         results,
-        next: results.length ? "arc_quote the url to confirm the price, then arc_pay it. Change the example values in the url to what you need, following params." : "Nothing on Arc sells that yet. Try other words, or look at https://cra-agent.tech/market.",
+        next: results.length ? "Change the example values in the url to what you need, following params, then arc_pay it with maxUsdc set to the result's priceUsd: if the seller asks more than it listed, the payment is refused before anything is signed." : "Nothing on Arc sells that yet. Try other words, or look at https://cra-agent.tech/market.",
       });
     } catch (err) {
       return fail(`search failed: ${(err as Error).message}`);

@@ -41,7 +41,7 @@ export interface PolicyContext {
   readonly sellerBond: Usdc6 | null;
 }
 
-export type PolicyRule = "network" | "denylist" | "allowlist" | "per_payment" | "rate" | "daily" | "per_counterparty" | "identity" | "bond";
+export type PolicyRule = "network" | "denylist" | "allowlist" | "per_payment" | "rate" | "daily" | "per_counterparty" | "identity" | "bond" | "max_price";
 
 export type PolicyDecision = { readonly allow: true } | { readonly allow: false; readonly rule: PolicyRule; readonly reason: string };
 

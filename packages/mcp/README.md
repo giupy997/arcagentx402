@@ -39,7 +39,7 @@ Creates the agent's key in `~/.cra-agent/agent.key` (readable only by you, never
 |---|---|
 | `arc_search` | Finds what can be bought on Arc from a few words ("bitcoin price"). Each result: the URL with example parameters, the price, the seller, and whether your policy allows paying it now. Free. |
 | `arc_quote` | Reads the price of a URL and says whether the policy would allow it. Pays nothing. |
-| `arc_pay` | Pays for the URL and returns the response with a receipt. |
+| `arc_pay` | Pays for the URL and returns the response with a receipt. Limits are checked on what the 402 asks at pay time, before anything is signed. `maxUsdc` adds a ceiling for that one call: pass the price `arc_search` listed, and a seller who raised it since is refused even inside your limits. |
 | `arc_balance` | Wallet and Circle Gateway balances. |
 | `arc_deposit` | Moves wallet USDC into the Gateway balance. Needed once before the first payment. |
 | `arc_ledger` | Every attempt: quoted, rejected, signed, settled, failed. |
