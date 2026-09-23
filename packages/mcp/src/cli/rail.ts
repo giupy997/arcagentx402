@@ -6,13 +6,15 @@
  *   cra-agent withdraw <usdc> [max fee]    Gateway balance back to the wallet: how a seller collects
  *   cra-agent verify <receipt.json> [agent]    checks a signed receipt; needs no key and no network
  *   cra-agent init [--client …] [--policy …]   makes the key, writes the AI client config; see init.ts
+ *   cra-agent find <what you need> [--max <usdc>] [--limit <n>]   what can be bought on Arc; needs no key
  */
 import { formatUsdc6 } from "@cra-agent/accounting";
-import { describePolicy } from "@cra-agent/policy";
+import { describePolicy, parsePolicyString } from "@cra-agent/policy";
 import { readFileSync } from "node:fs";
 import type { Address } from "viem";
 import { EscrowNotImplemented, PolicyRejected, verifySpendReceipt, type SignedSpendReceipt } from "@cra-agent/router";
-import { registerIdentity } from "@cra-agent/identity";
+import { CAIP2, registerIdentity, type ArcNetwork } from "@cra-agent/identity";
+import { fit, forAgent, NOTHING_SPENT, searchMarket } from "../search.js";
 import { railFromEnv } from "../rail-from-env.js";
 import { runInit } from "./init.js";
 
@@ -22,6 +24,29 @@ async function main(): Promise<void> {
   const [cmd, arg] = process.argv.slice(2);
   // Setting up comes before there is a key or an environment to read.
   if (cmd === "init") return runInit(process.argv.slice(3));
+  // Looking for something to buy needs no key either. With CRA_POLICY or CRA_NETWORK set, each result is
+  // checked against those limits; what was already spent today is only known to the running agent.
+  if (cmd === "find") {
+    const args = process.argv.slice(3);
+    const flag = (name: string): string | undefined => {
+      const i = args.indexOf(name);
+      return i >= 0 ? args[i + 1] : undefined;
+    };
+    const words = args.filter((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1]!.startsWith("--"))).join(" ");
+    if (!words) throw new Error("usage: find <what you need> [--max <usdc>] [--limit <n>]");
+    const max = flag("--max");
+    const answer = await searchMarket(words, { ...(max === undefined ? {} : { maxUsdc: max }), limit: Number(flag("--limit") ?? 5) });
+    const configured = process.env.CRA_POLICY !== undefined || process.env.CRA_NETWORK !== undefined;
+    const net = (process.env.CRA_NETWORK ?? "arcTestnet") as ArcNetwork;
+    if (net !== "arc" && net !== "arcTestnet") throw new Error(`CRA_NETWORK must be arc or arcTestnet, got ${net}`);
+    const policy = parsePolicyString(process.env.CRA_POLICY ?? "");
+    out({
+      query: answer.query,
+      results: answer.results.map((r) => forAgent(r, configured ? fit(r, policy, CAIP2[net], NOTHING_SPENT, null) : null)),
+      ...(configured ? { checked: "against your limits; what you already spent today is not counted here" } : {}),
+    });
+    return;
+  }
   // Checking someone else's receipt needs no key, no network and no ledger, so it runs before any of that.
   if (cmd === "verify") {
     if (!arg) throw new Error("usage: verify <receipt.json | - for stdin> [expected agent address]");
@@ -131,7 +156,7 @@ async function main(): Promise<void> {
       break;
     }
     default:
-      console.error("usage: cra-agent <init|quote|pay|balance|deposit|withdraw|ledger|policy|proof|verify|selftest> [arg]");
+      console.error("usage: cra-agent <init|find|quote|pay|balance|deposit|withdraw|ledger|policy|proof|verify|selftest> [arg]");
       process.exit(2);
   }
   await ledger.close();

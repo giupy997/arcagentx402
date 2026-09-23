@@ -10,7 +10,10 @@
 import type { Context, Hono } from "hono";
 import type { Logger } from "pino";
 import type { Db } from "./db.js";
+import { directPriceOf } from "./paid.js";
+import { PAID_ROUTES } from "./routes.js";
 import { checkUrl, safeFetch, UnsafeUrl } from "./safe-fetch.js";
+import { ownItems, pathKey, search, type SearchItem } from "./search.js";
 
 export interface Probe {
   url: string;
@@ -191,6 +194,61 @@ export function mountMarket(app: Hono, db: Db, network: string, log: Logger): vo
       network: caip2,
       note: "Everything shown about a listing was read from the endpoint itself, called without paying. We do not vouch for what it sells: check the price your wallet or your agent shows before paying.",
       listings: rows.rows.map((r) => ({ url: r.url, host: r.host, name: r.name, description: r.description, priceUsd: usd(r.amount_usdc6), payTo: r.pay_to, rail: r.rail, networks: r.networks ?? [r.network ?? caip2], routes: r.routes, online: r.ok, addedAt: Number(r.added_at), checkedAt: Number(r.checked_at) })),
+    });
+  });
+
+  /** The market listings as search items, refreshed at most every half minute. */
+  let listed: { at: number; items: SearchItem[] } = { at: 0, items: [] };
+  const listedItems = async (): Promise<SearchItem[]> => {
+    if (Date.now() - listed.at < 30_000) return listed.items;
+    const exists = await db.query<{ t: string | null }>("SELECT to_regclass('public.market_listings')::text AS t");
+    if (!exists.rows[0]?.t) return [];
+    const rows = await db.query<Row>(`SELECT url, host, name, description, pay_to, amount_usdc6, rail, routes, networks, ok FROM market_listings WHERE NOT hidden AND fails < 48 LIMIT 2000`);
+    const items: SearchItem[] = rows.rows.map((r) => ({
+      url: r.url,
+      method: "GET",
+      priceUsd: usd(r.amount_usdc6),
+      name: r.name ?? r.host,
+      label: null,
+      description: r.description,
+      params: [],
+      payTo: r.pay_to,
+      host: r.host,
+      network: caip2,
+      rail: r.rail === "gateway" ? "gateway" : "direct",
+      direct: null,
+      source: "market",
+      online: r.ok,
+      keywords: `${new URL(r.url).pathname.replace(/[/_-]+/g, " ")} ${(r.routes ?? []).map((x) => `${x.pattern} ${x.description ?? ""}`).join(" ")}`,
+    }));
+    listed = { at: Date.now(), items };
+    return items;
+  };
+
+  /**
+   * What an agent can buy on Arc, for a few words of what it needs. Free: finding something to buy
+   * should not cost anything. Our own routes come with their parameters; market listings with what
+   * their 402 and /.well-known/x402 said. Everything here is payable on Arc by any x402 client.
+   */
+  app.get("/v1/market/search", async (c) => {
+    const q = (c.req.query("q") ?? "").slice(0, 200);
+    const maxRaw = c.req.query("maxPriceUsd");
+    if (maxRaw !== undefined && !/^\d{1,6}(\.\d{1,6})?$/.test(maxRaw)) return c.json({ error: "maxPriceUsd must be an amount in dollars, like 0.01" }, 400);
+    const limit = Number(c.req.query("limit") ?? 10);
+    const origin = new URL(c.req.url).origin;
+    const seller = process.env.SELLER_ADDRESS;
+    const own = seller ? ownItems(PAID_ROUTES, { origin, payTo: seller, network: caip2, directPrice: process.env.DIRECT_FACILITATOR_URL ? directPriceOf : null }) : [];
+    // A market listing of one of our routes adds nothing to the route itself, which carries its parameters.
+    const ownKeys = new Set(own.flatMap((i) => [pathKey(i.url), ...(i.direct ? [pathKey(i.direct.url)] : [])]));
+    const market = (await listedItems()).filter((i) => !ownKeys.has(pathKey(i.url)));
+    const results = search([...own, ...market], q, { ...(maxRaw === undefined ? {} : { maxPriceUsd: Number(maxRaw) }), limit: Number.isFinite(limit) ? limit : 10 });
+    return c.json({
+      query: q,
+      network: caip2,
+      count: results.length,
+      searched: { ownRoutes: own.length, marketListings: market.length },
+      results,
+      note: "Every result answers 402 on Arc. Prices are what the seller asked when last checked: quote the URL before paying. The example values in each URL are examples; change them to what you need, following params.",
     });
   });
 }

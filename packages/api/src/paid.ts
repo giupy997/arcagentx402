@@ -9,7 +9,7 @@ import { PAID_ROUTES, type QueryParam } from "./routes.js";
 import { mountToolHandlers } from "./tools.js";
 
 /** What a route costs on the direct rail: its own price, but never below the floor that covers our gas. */
-function directPriceOf(price: string): string {
+export function directPriceOf(price: string): string {
   const floor = parseUsdc6(process.env.DIRECT_MIN_PRICE_USDC ?? "0.003");
   const asked = parseUsdc6(price.replace("$", ""));
   return formatUsdc6(compareUsdc6(asked, floor) < 0 ? floor : asked);

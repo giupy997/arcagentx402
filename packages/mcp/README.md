@@ -37,6 +37,7 @@ Creates the agent's key in `~/.cra-agent/agent.key` (readable only by you, never
 
 | Tool | What it does |
 |---|---|
+| `arc_search` | Finds what can be bought on Arc from a few words ("bitcoin price"). Each result: the URL with example parameters, the price, the seller, and whether your policy allows paying it now. Free. |
 | `arc_quote` | Reads the price of a URL and says whether the policy would allow it. Pays nothing. |
 | `arc_pay` | Pays for the URL and returns the response with a receipt. |
 | `arc_balance` | Wallet and Circle Gateway balances. |
@@ -50,6 +51,7 @@ Creates the agent's key in `~/.cra-agent/agent.key` (readable only by you, never
 ## The same thing from a terminal
 
 ```bash
+cra-agent find bitcoin price    # what is for sale on Arc; needs no key
 cra-agent balance
 cra-agent quote https://api.cra-agent.tech/v1/paid/rpc/health
 cra-agent deposit 1

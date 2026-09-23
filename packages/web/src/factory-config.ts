@@ -116,7 +116,7 @@ export function oneCommand(i: FactoryInput, defaultKeyFile: string): Step {
 
 export function steps(i: FactoryInput): Step[] {
   const dir = i.keyFile.replace(/[/\\][^/\\]*$/, "");
-  const firstUrl = "https://api.cra-agent.tech/v1/paid/fx/execution?symbol=EURC";
+  const firstUrl = "https://api.cra-agent.tech/v1/paid/market/prices";
   return [
     { title: "Install the agent", explain: "Needs Node 20 or newer. This installs two commands: cra-agent-mcp, which your AI client talks to, and cra-agent, for you.", code: "npm i -g @cra-agent/mcp" },
     {
@@ -131,8 +131,8 @@ export function steps(i: FactoryInput): Step[] {
       code: `${shellEnv(i)} cra-agent balance\n${shellEnv(i)} cra-agent deposit 1`,
     },
     i.client === "terminal"
-      ? { title: "Make the first payment", explain: "The first line reads the price and says whether your limits allow it, without paying. The second pays and prints the data with its receipt.", code: `cra-agent quote '${firstUrl}'\ncra-agent pay '${firstUrl}'` }
-      : { title: "Give it a first job", explain: "Paste this to your AI. It checks the price first, pays only if your limits allow it, and shows you the receipt.", code: `Use the cra-agent tools. First show me the spending policy in force. Then get a quote for ${firstUrl} and tell me the price and whether the policy allows it. If it does, pay for it, tell me the euro to dollar rate on Arc it returns, and show me the receipt.` },
+      ? { title: "Make the first payment", explain: "The first line searches what is for sale on Arc and says which results your limits allow. The second reads the price without paying. The third pays and prints the data with its receipt.", code: `cra-agent find bitcoin price\ncra-agent quote '${firstUrl}'\ncra-agent pay '${firstUrl}'` }
+      : { title: "Give it a first job", explain: "Paste this to your AI. It searches what is for sale on Arc, picks what your limits allow, checks the price, pays, and shows you the receipt. Nobody tells it the address: it finds it.", code: "Use the cra-agent tools. Find the price of Bitcoin on Arc: search for it, pick the cheapest result my spending policy allows, quote it, pay for it, then tell me the price and show me the receipt." },
   ];
 }
 

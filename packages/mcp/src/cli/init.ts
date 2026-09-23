@@ -148,7 +148,7 @@ export function runInit(argv: readonly string[], print: (line: string) => void =
   say("Next:");
   say(`  1. Send a few dollars of USDC on ${o.network === "arc" ? "Arc mainnet" : "Arc testnet"} to ${key.address}`);
   say(`  2. ${envArgs.join(" ")} cra-agent deposit 1`);
-  say(o.client === "terminal" ? "  3. cra-agent pay 'https://api.cra-agent.tech/v1/paid/fx/execution?symbol=EURC'" : "  3. Ask your AI: \"Use the cra-agent tools: show me the policy, quote https://api.cra-agent.tech/v1/paid/fx/execution?symbol=EURC and pay for it if the policy allows.\"");
+  say(o.client === "terminal" ? "  3. cra-agent find bitcoin price    then    cra-agent pay '<a url it prints>'" : "  3. Ask your AI: \"Use the cra-agent tools: find the price of Bitcoin on Arc, pay for the cheapest result my policy allows, and show me the price and the receipt.\"");
   say();
   say("The agent can never spend more than what you send it, or more than the limits above. Never paste the key anywhere.");
 }

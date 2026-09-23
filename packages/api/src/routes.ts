@@ -285,5 +285,15 @@ export const FREE_ROUTES: readonly FreeRoute[] = [
   { path: "/v1/fx", summary: "Headline executed rate for a pair", description: "Last executed rate and the window summary for a pair against USDC. The size curve and the venues are the paid route.", params: [WINDOW, { name: "symbol", type: "string", description: "Base token symbol, quoted in USDC.", example: "EURC" }] },
   { path: "/v1/token", summary: "Token burns, payouts and price", description: "Buyback burns, USDC payouts and the executed price of the project token, read from the chain." },
   { path: "/v1/selftest", summary: "Hourly self-test of the rail", description: "Our own wallet buying our own endpoint every hour, plus the endpoint that must fail without charging. Not customer activity." },
+  {
+    path: "/v1/market/search",
+    summary: "Find paid APIs on Arc",
+    description: "Search our routes and every endpoint on the CRA market, each verified to answer 402 on Arc. Returns the URL to call with example parameters, the price, what it sells and who is paid.",
+    params: [
+      { name: "q", type: "string", description: "What you need, in a few words.", example: "bitcoin price" },
+      { name: "maxPriceUsd", type: "string", description: "Only results at or under this price per call." },
+      { name: "limit", type: "integer", description: "1 to 50, default 10.", example: 10 },
+    ],
+  },
   { path: "/v1/health", summary: "Service health", description: "503 when the collector is stalled or lagging behind the chain head." },
 ];

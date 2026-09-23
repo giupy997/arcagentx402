@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * CRA AGENT MCP server: the agent-facing interface of the rail (brief §6: primary, not an add-on).
- * Tools: arc_quote, arc_pay, arc_balance, arc_deposit, arc_ledger, arc_policy.
+ * Tools: arc_search, arc_quote, arc_pay, arc_balance, arc_deposit, arc_ledger, arc_policy and more.
  * Transport: stdio. All diagnostics go to stderr; stdout is the MCP channel.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -14,6 +14,7 @@ import { evaluatePolicy } from "@cra-agent/policy";
 import { usdc6 } from "@cra-agent/accounting";
 import type { Address, Hex } from "viem";
 import { railFromEnv } from "./rail-from-env.js";
+import { fit, forAgent, searchMarket } from "./search.js";
 
 const text = (v: unknown) => ({ content: [{ type: "text" as const, text: typeof v === "string" ? v : JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x), 2) }] });
 const fail = (msg: string) => ({ content: [{ type: "text" as const, text: msg }], isError: true });
@@ -56,6 +57,38 @@ async function main(): Promise<void> {
       if (err instanceof PolicyRejected) return fail(`rejected by policy (${err.decision.rule}): ${err.decision.reason}. Quote: ${err.quote.priceUsdc} USDC to ${err.quote.payTo}`);
       if (err instanceof EscrowNotImplemented) return fail(err.message);
       return fail(`payment failed: ${(err as Error).message}`);
+    }
+  });
+
+  server.registerTool("arc_search", {
+    title: "Find paid APIs on Arc",
+    description: "Search what can be bought on Arc, in a few words: 'bitcoin price', 'euro to dollar', 'vulnerabilities in an npm package'. Covers CRA AGENT's own data and every endpoint on the CRA market, each verified to answer 402 on Arc. Each result gives the URL to call with example parameters (change them to what you need, following params), the price, the seller, and whether your spending policy allows paying it right now, counting what you already spent today. Next: arc_quote the URL, then arc_pay it.",
+    inputSchema: {
+      query: z.string().min(2).max(200).describe("What you need, in a few words"),
+      maxUsdc: z.string().regex(/^\d{1,6}(\.\d{1,6})?$/).optional().describe("Only results at or under this price per call, in USDC"),
+      limit: z.number().int().min(1).max(20).optional(),
+    },
+  }, async ({ query, maxUsdc, limit }) => {
+    try {
+      const answer = await searchMarket(query, { ...(maxUsdc === undefined ? {} : { maxUsdc }), limit: limit ?? 5 });
+      const since = new Date(Date.now() - 86_400_000);
+      const sellers = [...new Set(answer.results.map((r) => r.payTo))];
+      const [day, count, perSeller, balances] = await Promise.all([
+        ledger.spentSince(agentId, since),
+        ledger.countSince(agentId, new Date(Date.now() - policy.rateLimit.windowMs)),
+        Promise.all(sellers.map(async (p) => [p, await ledger.spentSince(agentId, since, p)] as const)),
+        rail.balances().catch(() => null),
+      ]);
+      const bySeller = new Map(perSeller);
+      const spent = { day, inRateWindow: count, withSeller: (p: string) => bySeller.get(p) ?? usdc6(0n) };
+      const results = answer.results.map((r) => forAgent(r, fit(r, policy, rail.network, spent, balances?.gatewayAvailable ?? null)));
+      return text({
+        query: answer.query,
+        results,
+        next: results.length ? "arc_quote the url to confirm the price, then arc_pay it. Change the example values in the url to what you need, following params." : "Nothing on Arc sells that yet. Try other words, or look at https://cra-agent.tech/market.",
+      });
+    } catch (err) {
+      return fail(`search failed: ${(err as Error).message}`);
     }
   });
 
