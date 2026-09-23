@@ -6,7 +6,7 @@
  *
  * Counterparty identity: ERC-8004 IdentityRegistry lookup. Fail closed: any error = not verified.
  */
-import { createPublicClient, createWalletClient, http, parseEventLogs, type Address, type Chain, type Hex } from "viem";
+import { createPublicClient, createWalletClient, http, parseEventLogs, type Address, type Chain, type Hex, type PublicClient } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { arc, arcTestnet } from "viem/chains";
 
@@ -45,12 +45,22 @@ export function createSigner(opts: CreateSignerOptions): RailSigner {
 
 export type ArcNetwork = "arc" | "arcTestnet";
 
-/** From docs.arc.io/arc/tutorials/register-your-first-ai-agent (2026-09-14). Mainnet: the testnet addresses have
- * no bytecode on chain 5042 (checked 2026-09-16, launch day) and the docs publish none, so identity stays testnet-only. */
+/**
+ * Testnet: docs.arc.io/arc/tutorials/register-your-first-ai-agent. Mainnet: the ERC-8004 team's canonical mainnet
+ * addresses (github.com/erc-8004/erc-8004-contracts, scripts/addresses.ts), the same on every chain. Found live on Arc
+ * on 2026-09-23 behind the same verified implementation as testnet (0x7274e874…); Arc's docs still list only the
+ * testnet ones, which is why this said "testnet only" from launch day until then.
+ */
 export const ERC8004_IDENTITY_REGISTRY: Record<ArcNetwork, Address | null> = {
   arcTestnet: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
-  arc: null,
+  arc: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
 };
+export const ERC8004_REPUTATION_REGISTRY: Record<ArcNetwork, Address | null> = {
+  arcTestnet: "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+  arc: "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63",
+};
+/** Multicall3 at its usual address: a genesis predeploy on both Arc networks, though viem only declares it for testnet. */
+export const MULTICALL3: Address = "0xcA11bde05977b3631167028862bE2a173976CA11";
 
 export const CHAINS: Record<ArcNetwork, Chain> = { arc, arcTestnet };
 export const CAIP2: Record<ArcNetwork, string> = { arc: `eip155:${arc.id}`, arcTestnet: `eip155:${arcTestnet.id}` };
@@ -87,45 +97,123 @@ export interface Erc8004ResolverOptions {
   readonly rpcUrl?: string;
   readonly registry?: Address;
   readonly cacheTtlMs?: number;
+  /** Stop reading the registry past this many agents. Default 5000. */
+  readonly maxAgents?: number;
+  /** For tests: what the resolver reads the registry through. */
+  readonly reader?: RegistryReader;
+}
+
+/** One agent as the registry holds it: who owns it, and the wallet it declared for receiving payments. */
+export interface RegistryAgent {
+  readonly agentId: bigint;
+  readonly owner: Address;
+  readonly wallet: Address | null;
+}
+
+/** The three reads the resolver needs. A viem client fits; so does a fake in a test. */
+export interface RegistryReader {
+  balanceOf(owner: Address): Promise<bigint>;
+  /** Owner and declared wallet of each id, or null where the id does not exist. */
+  agents(ids: readonly bigint[]): Promise<Array<{ owner: Address; wallet: Address | null } | null>>;
+  tokenURI(agentId: bigint): Promise<string | null>;
+}
+
+const ZERO = "0x0000000000000000000000000000000000000000";
+
+export function viemRegistryReader(client: PublicClient, registry: Address): RegistryReader {
+  return {
+    balanceOf: (owner) => client.readContract({ address: registry, abi: REGISTRY_ABI, functionName: "balanceOf", args: [owner] }),
+    async agents(ids) {
+      const contracts = ids.flatMap((id) => [
+        { address: registry, abi: REGISTRY_ABI, functionName: "ownerOf" as const, args: [id] as const },
+        { address: registry, abi: REGISTRY_ABI, functionName: "getAgentWallet" as const, args: [id] as const },
+      ]);
+      // One request per few hundred agents instead of one per call.
+      const res = await client.multicall({ contracts, allowFailure: true, multicallAddress: MULTICALL3, batchSize: 131_072 });
+      return ids.map((_, i) => {
+        const owner = res[2 * i];
+        const wallet = res[2 * i + 1];
+        if (!owner || owner.status !== "success") return null;
+        const w = wallet && wallet.status === "success" ? (wallet.result as Address) : null;
+        return { owner: owner.result as Address, wallet: w && w !== ZERO ? w : null };
+      });
+    },
+    tokenURI: (agentId) => client.readContract({ address: registry, abi: REGISTRY_ABI, functionName: "tokenURI", args: [agentId] }).catch(() => null),
+  };
 }
 
 /**
- * "Verified" = the address owns at least one agent identity NFT in the registry.
- * The tokenURI is fetched when the registry is enumerable; otherwise agentIds stays empty but verified is still true.
+ * Every agent in the registry. Ids are handed out in order from 0 and the registry is not enumerable, so pages
+ * of ids are read until one comes back empty.
+ */
+export async function scanRegistry(reader: RegistryReader, maxAgents = 5000, page = 250): Promise<{ agents: RegistryAgent[]; complete: boolean }> {
+  const agents: RegistryAgent[] = [];
+  for (let from = 0; from < maxAgents; from += page) {
+    const ids = Array.from({ length: Math.min(page, maxAgents - from) }, (_, i) => BigInt(from + i));
+    const found = await reader.agents(ids);
+    let any = false;
+    found.forEach((a, i) => {
+      if (!a) return;
+      any = true;
+      agents.push({ agentId: ids[i]!, owner: a.owner, wallet: a.wallet });
+    });
+    if (!any || found[found.length - 1] === null) return { agents, complete: true };
+  }
+  return { agents, complete: false };
+}
+
+/**
+ * "Verified" means the address is an ERC-8004 agent's owner, or the wallet an agent declared for receiving payments
+ * (declaring one takes a signature from that wallet, so it cannot be claimed for someone else's address). It says the
+ * address has an identity on chain, not that it is honest: registering costs only gas.
  */
 export function createErc8004Resolver(opts: Erc8004ResolverOptions): IdentityResolver {
   const registry = opts.registry ?? ERC8004_IDENTITY_REGISTRY[opts.network];
-  const chain = CHAINS[opts.network];
-  const client = createPublicClient({ chain, transport: http(opts.rpcUrl) });
+  const reader = opts.reader ?? (registry ? viemRegistryReader(createPublicClient({ chain: CHAINS[opts.network], transport: http(opts.rpcUrl) }) as PublicClient, registry) : null);
   const ttl = opts.cacheTtlMs ?? 10 * 60_000;
   const cache = new Map<string, IdentityResult>();
+  // The registry read is shared by every address resolved in the next ten minutes.
+  let scan: { at: number; result: Promise<{ agents: RegistryAgent[]; complete: boolean }> } | null = null;
+  const agents = (): Promise<{ agents: RegistryAgent[]; complete: boolean }> => {
+    if (!scan || Date.now() - scan.at > ttl) {
+      const result = scanRegistry(reader!, opts.maxAgents ?? 5000);
+      scan = { at: Date.now(), result };
+      result.catch(() => {
+        scan = null;
+      });
+    }
+    return scan.result;
+  };
   return {
     async resolve(address: Address): Promise<IdentityResult> {
       const key = address.toLowerCase();
       const hit = cache.get(key);
       if (hit && Date.now() - hit.checkedAt.getTime() < ttl) return hit;
       const base = { address, agentIds: [] as bigint[], metadataURI: null as string | null, registry, checkedAt: new Date() };
-      if (!registry) {
+      if (!registry || !reader) {
         const r = { ...base, verified: false, error: `no ERC-8004 registry known for ${opts.network}` };
         cache.set(key, r);
         return r;
       }
+      let owned: bigint;
       try {
-        const balance = await client.readContract({ address: registry, abi: REGISTRY_ABI, functionName: "balanceOf", args: [address] });
-        if (balance === 0n) {
-          const r = { ...base, verified: false, error: null };
-          cache.set(key, r);
-          return r;
-        }
-        // Not enumerable: without an indexer we cannot list the ids cheaply. Verified by ownership.
-        const agentIds: bigint[] = [];
-        const metadataURI: string | null = null;
-        const r = { ...base, verified: true, agentIds, metadataURI, error: null };
-        cache.set(key, r);
-        return r;
+        owned = await reader.balanceOf(address);
       } catch (err) {
         // fail closed, but do not cache failures for long
         return { ...base, verified: false, error: (err as Error).message.slice(0, 200) };
+      }
+      try {
+        const { agents: all, complete } = await agents();
+        const ids = all.filter((a) => a.owner.toLowerCase() === key || a.wallet?.toLowerCase() === key).map((a) => a.agentId);
+        const verified = owned > 0n || ids.length > 0;
+        const r = { ...base, verified, agentIds: ids, metadataURI: ids[0] === undefined ? null : await reader.tokenURI(ids[0]), error: complete ? null : `registry read up to ${all.length} agents only` };
+        cache.set(key, r);
+        return r;
+      } catch (err) {
+        // Without the list, ownership alone still decides; a declared wallet cannot be recognised.
+        const r = { ...base, verified: owned > 0n, error: `registry list unavailable: ${(err as Error).message.slice(0, 160)}` };
+        cache.set(key, r);
+        return r;
       }
     },
   };

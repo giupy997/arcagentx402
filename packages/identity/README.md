@@ -8,7 +8,7 @@ npm i @cra-agent/identity
 
 **A signer with an explicit scheme.** `createSigner({ scheme: "secp256k1", privateKey })`. The scheme is a parameter on purpose: post-quantum signing is reserved and throws today rather than pretending.
 
-**ERC-8004 identity, failing closed.** `createErc8004Resolver({ network, rpcUrl })` answers whether an address holds an agent identity. Any error means "not verified". The registry is live on Arc testnet and has no bytecode on mainnet yet.
+**ERC-8004 identity, failing closed.** `createErc8004Resolver({ network, rpcUrl })` answers whether an address is an agent's owner or the wallet an agent declared for payments, and which agent ids. The registry is live on Arc mainnet (`0x8004A169…a432`, the ERC-8004 canonical address) and testnet. An error on the ownership check means "not verified"; if only the registry list is unreachable, ownership alone decides.
 
 **An RPC endpoint that is answering.**
 

@@ -74,7 +74,7 @@ Every receipt carries the limits the payment passed under and is signed with the
 | `CRA_RPC_STRICT` | `1` to never fall back to a public endpoint. |
 | `DATABASE_URL` | Optional Postgres for the ledger. Without it the ledger lives in memory. |
 
-Two things worth knowing. A payment is settled only after the seller's handler succeeds, so a failing endpoint costs nothing: `https://api.cra-agent.tech/v1/paid/selftest/fail` always answers 500 so you can check. And `identity=required` rejects every seller on Arc mainnet today, because the ERC-8004 registry is not deployed there yet.
+Two things worth knowing. A payment is settled only after the seller's handler succeeds, so a failing endpoint costs nothing: `https://api.cra-agent.tech/v1/paid/selftest/fail` always answers 500 so you can check. And `identity=required` pays only sellers with an ERC-8004 identity on Arc: the address that gets paid must own an agent in the registry, or be the wallet an agent declared for payments. It proves an identity exists, not that the seller is honest; registering costs only gas.
 
 ## Part of CRA AGENT
 

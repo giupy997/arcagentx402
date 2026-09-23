@@ -1,16 +1,20 @@
 {
   "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
   "name": "CRA AGENT",
-  "description": "A payment rail for AI agents on Arc, Circle's USDC-native L1. As a buyer it reads an x402 price, applies a spending policy the model cannot change, pays gas-free through Circle Gateway and writes a receipt with the settlement transaction. As a seller it prices its own Arc chain data per call: base fee forecasts, contract deploys, RPC health, and executed prices for a token pair against USDC. A payment is settled only after the handler succeeds, so a failing endpoint costs the buyer nothing.",
+  "description": "Payments for AI agents on Arc, Circle's USDC-native L1, over x402. A buyer agent searches what is for sale on Arc, checks each price against a spending policy it cannot change, pays in USDC (through Circle Gateway or a direct EIP-3009 authorization) and keeps a signed receipt. Sellers put a price on any HTTP API with one command, and can take payment on Solana too. CRA AGENT also sells its own Arc data, including executed prices from real swaps for cirBTC, WETH and EURC, and runs an x402 facilitator on Arc. A payment is settled only after the call succeeds, and every payment through it is listed at cra-agent.tech/status.",
   "image": "https://cra-agent.tech/brand/logo.webp",
   "active": true,
   "x402Support": true,
+  "supportedTrust": ["reputation"],
   "services": [
-    { "name": "website", "endpoint": "https://cra-agent.tech", "version": "0.1.0" },
-    { "name": "api", "endpoint": "https://api.cra-agent.tech", "version": "0.1.0" },
-    { "name": "openapi", "endpoint": "https://api.cra-agent.tech/openapi.json", "version": "3.1.0" },
-    { "name": "x402-catalogue", "endpoint": "https://api.cra-agent.tech/v1/paid", "version": "0.1.0" },
-    { "name": "mcp", "endpoint": "https://www.npmjs.com/package/@cra-agent/mcp", "version": "0.0.1" },
-    { "name": "source", "endpoint": "https://github.com/giupy997/arcagentx402", "version": "0.1.0" }
-  ]
+    { "name": "web", "endpoint": "https://cra-agent.tech" },
+    { "name": "x402", "endpoint": "https://api.cra-agent.tech/.well-known/x402", "version": "2" },
+    { "name": "x402-search", "endpoint": "https://api.cra-agent.tech/v1/market/search" },
+    { "name": "x402-facilitator", "endpoint": "https://api.cra-agent.tech/facilitator/supported" },
+    { "name": "OpenAPI", "endpoint": "https://api.cra-agent.tech/openapi.json", "version": "3.1.0" },
+    { "name": "MCP", "endpoint": "https://www.npmjs.com/package/@cra-agent/mcp", "version": "0.0.9" },
+    { "name": "status", "endpoint": "https://cra-agent.tech/status" },
+    { "name": "source", "endpoint": "https://github.com/giupy997/arcagentx402" }
+  ],
+  "registrations": []
 }
