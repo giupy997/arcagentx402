@@ -23,6 +23,10 @@
       "endpoint": "https://api.cra-agent.tech/v1/market/search"
     },
     {
+      "name": "bazaar",
+      "endpoint": "https://cra-agent.tech/bazaar"
+    },
+    {
       "name": "x402-facilitator",
       "endpoint": "https://api.cra-agent.tech/facilitator/supported"
     },

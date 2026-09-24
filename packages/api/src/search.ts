@@ -45,6 +45,10 @@ export interface SearchItem {
   body: { [key: string]: unknown } | null;
   /** cra-agent: our routes. market: cra-agent.tech/market. circle: Circle's x402 catalogue. */
   source: "cra-agent" | "market" | "circle";
+  /** What kind of thing it sells, in a few words, when known. */
+  category: string | null;
+  /** The seller's own website: for a link, and for its logo. */
+  site: string | null;
   online: boolean;
   /** Words that do not show to the agent but count for matching: the route's group and path. */
   keywords: string;
@@ -180,6 +184,10 @@ export interface SearchOptions {
   readonly maxPriceUsd?: number;
   readonly limit?: number;
   readonly onlineOnly?: boolean;
+  /** Only this seller's endpoints, by name, any case. */
+  readonly seller?: string;
+  /** Only this category. */
+  readonly category?: string;
 }
 
 /** On an equal score and price: ours, then what we checked ourselves, then what Circle lists. */
@@ -192,8 +200,10 @@ const RELATIVE_FLOOR = 0.3;
 export function search(items: readonly SearchItem[], query: string, opts: SearchOptions = {}): SearchResult[] {
   const q = tokens(query);
   const limit = Math.min(50, Math.max(1, opts.limit ?? 10));
+  const seller = opts.seller?.toLowerCase();
   const matching = items
     .filter((i) => (opts.maxPriceUsd === undefined || Number(i.priceUsd) <= opts.maxPriceUsd) && (opts.onlineOnly === false || i.online))
+    .filter((i) => (seller === undefined || i.name.toLowerCase() === seller) && (opts.category === undefined || i.category === opts.category))
     .map((i) => ({ item: i, score: scoreItem(i, q) }))
     .filter((r) => q.length === 0 || r.score > 0);
   const best = Math.max(0, ...matching.map((r) => r.score));
@@ -213,6 +223,18 @@ export function exampleUrl(origin: string, path: string, params: readonly Search
     .join("&");
   return `${origin}${path}${query ? `?${query}` : ""}`;
 }
+
+/** Our route groups in the words the rest of the catalogue uses, so a category holds everyone's. */
+const OUR_CATEGORY: Record<PaidRoute["group"], string> = {
+  "Arc network": "Blockchain data",
+  "Arc, read live": "Blockchain data",
+  Proof: "Blockchain data",
+  Currencies: "Financial data",
+  "The web": "Web search & research",
+  Wikipedia: "Web search & research",
+  Packages: "Developer tools",
+  Domains: "Developer tools",
+};
 
 /** Our own catalogue as search items. The route that fails on purpose is proof, not merchandise, and stays out. */
 export function ownItems(routes: readonly PaidRoute[], opts: { origin: string; payTo: string; network: string; directPrice: ((price: string) => string) | null }): SearchItem[] {
@@ -237,6 +259,8 @@ export function ownItems(routes: readonly PaidRoute[], opts: { origin: string; p
         direct: opts.directPrice ? { url: exampleUrl(opts.origin, directPath, params), priceUsd: opts.directPrice(r.price) } : null,
         body: null,
         source: "cra-agent" as const,
+        category: OUR_CATEGORY[r.group] ?? null,
+        site: "https://cra-agent.tech",
         online: true,
         keywords: `${r.group} ${r.path.replace(/[/_-]+/g, " ")} ${r.summary} ${r.plain.explain}`,
       };

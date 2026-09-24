@@ -51,7 +51,7 @@ Creates the agent's key in `~/.cra-agent/agent.key` (readable only by you, never
 ## The same thing from a terminal
 
 ```bash
-cra-agent find bitcoin price    # what is for sale on Arc; needs no key
+cra-agent find bitcoin price    # what is for sale on Arc; needs no key (in a browser: cra-agent.tech/bazaar)
 cra-agent balance
 cra-agent quote https://api.cra-agent.tech/v1/paid/rpc/health
 cra-agent deposit 1

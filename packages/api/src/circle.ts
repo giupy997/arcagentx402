@@ -49,7 +49,7 @@ export interface CircleEntry {
   lastUpdated?: unknown;
   accepts?: unknown;
   metadata?: {
-    provider?: { name?: unknown; description?: unknown; category?: unknown; tags?: unknown } | null;
+    provider?: { name?: unknown; description?: unknown; category?: unknown; tags?: unknown; website?: unknown } | null;
     method?: unknown;
     description?: unknown;
     input?: { queryParams?: unknown; pathParams?: unknown; body?: unknown } | null;
@@ -154,6 +154,28 @@ const readable = (pathname: string): string => {
   }
 };
 
+/** Circle's category codes, in plain words. */
+const CATEGORY: Record<string, string> = {
+  DATA_ENRICHMENT: "Data enrichment",
+  WEB_SEARCH_RESEARCH: "Web search & research",
+  INFRASTRUCTURE: "Infrastructure",
+  FINANCIAL_ANALYSIS: "Financial data",
+  SOCIAL_INTELLIGENCE: "Social data",
+  PREDICTION_MARKETS: "Prediction markets",
+  CREATIVE: "Creative AI",
+};
+
+/** A website as an origin, when it is one: https only, no credentials. */
+function siteOf(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  try {
+    const u = new URL(v);
+    return u.protocol === "https:" && !u.username && !u.password ? u.origin : null;
+  } catch {
+    return null;
+  }
+}
+
 const usd = (units: string): string => (Number(units) / 1e6).toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
 
 /** One entry as a search item, or null when an agent on this network could not buy it as listed. */
@@ -189,6 +211,7 @@ export function circleItem(entry: unknown, network: string, now: number): Search
   const bodyParams = params.filter((p) => p.in === "body" && p.required && p.example !== null);
   const tags = (Array.isArray(provider.tags) ? provider.tags : []).filter((t): t is string => typeof t === "string").map((t) => t.toLowerCase()).filter((t) => !NOISE_TAGS.has(t)).slice(0, 20);
   const category = typeof provider.category === "string" ? provider.category.toLowerCase().replace(/_/g, " ") : "";
+  const readableCategory = typeof provider.category === "string" ? (CATEGORY[provider.category] ?? clean(provider.category.toLowerCase().replace(/_/g, " "), 40)) : null;
   const seen = typeof e.lastUpdated === "string" ? Date.parse(e.lastUpdated) : Number.NaN;
   return {
     url: callUrl(e.resource, params),
@@ -205,6 +228,8 @@ export function circleItem(entry: unknown, network: string, now: number): Search
     direct: null,
     body: method === "POST" && bodyParams.length ? Object.fromEntries(bodyParams.map((p) => [p.name, p.example])) : null,
     source: "circle",
+    category: readableCategory,
+    site: siteOf(provider.website) ?? url.origin,
     online: Number.isFinite(seen) && now - seen < STALE_MS,
     keywords: clean(`${tags.join(" ")} ${category} ${readable(url.pathname).replace(/[/_{}:.-]+/g, " ")}`, 600) ?? "",
   };

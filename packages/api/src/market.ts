@@ -130,7 +130,15 @@ function defaultCircle(network: string, caip2: string, log: Logger): CircleCatal
   return circle;
 }
 
-export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opts: { circle?: CircleCatalogue | null } = {}): { circle: CircleCatalogue | null } {
+/** Everything payable on Arc that search covers, each source once: ours, the market, Circle's catalogue. */
+export interface Catalogue {
+  own: SearchItem[];
+  market: SearchItem[];
+  circle: SearchItem[];
+  circleReadAt: number | null;
+}
+
+export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opts: { circle?: CircleCatalogue | null } = {}): { circle: CircleCatalogue | null; catalogue: (origin: string) => Promise<Catalogue> } {
   const caip2 = network === "mainnet" ? "eip155:5042" : "eip155:5042002";
   const circle = opts.circle === undefined ? defaultCircle(network, caip2, log) : opts.circle;
   const upsert = (p: Probe): Promise<unknown> =>
@@ -228,6 +236,8 @@ export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opt
       direct: null,
       body: null,
       source: "market",
+      category: null,
+      site: new URL(r.url).origin,
       online: r.ok,
       keywords: `${new URL(r.url).pathname.replace(/[/_-]+/g, " ")} ${(r.routes ?? []).map((x) => `${x.pattern} ${x.description ?? ""}`).join(" ")}`,
     }));
@@ -241,12 +251,7 @@ export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opt
    * their 402 and /.well-known/x402 said; Circle's catalogue with what Circle lists. Everything here
    * is payable on Arc by an x402 client.
    */
-  app.get("/v1/market/search", async (c) => {
-    const q = (c.req.query("q") ?? "").slice(0, 200);
-    const maxRaw = c.req.query("maxPriceUsd");
-    if (maxRaw !== undefined && !/^\d{1,6}(\.\d{1,6})?$/.test(maxRaw)) return c.json({ error: "maxPriceUsd must be an amount in dollars, like 0.01" }, 400);
-    const limit = Number(c.req.query("limit") ?? 10);
-    const origin = new URL(c.req.url).origin;
+  const catalogue = async (origin: string): Promise<Catalogue> => {
     const seller = process.env.SELLER_ADDRESS;
     const own = seller ? ownItems(PAID_ROUTES, { origin, payTo: seller, network: caip2, directPrice: process.env.DIRECT_FACILITATOR_URL ? directPriceOf : null }) : [];
     // A market listing of one of our routes adds nothing to the route itself, which carries its parameters.
@@ -255,8 +260,23 @@ export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opt
     // Nor does a market listing of an endpoint Circle lists: Circle's entry says how to call it.
     const circleKeys = new Set(listedByCircle.map((i) => `${i.method} ${pathKey(i.url)}`));
     const market = (await listedItems()).filter((i) => !ownKeys.has(pathKey(i.url)) && !circleKeys.has(`${i.method} ${pathKey(i.url)}`));
-    const results = search([...own, ...market, ...listedByCircle], q, { ...(maxRaw === undefined ? {} : { maxPriceUsd: Number(maxRaw) }), limit: Number.isFinite(limit) ? limit : 10 });
-    const circleRead = circle?.status().readAt ?? null;
+    return { own, market, circle: listedByCircle, circleReadAt: circle?.status().readAt ?? null };
+  };
+
+  app.get("/v1/market/search", async (c) => {
+    const q = (c.req.query("q") ?? "").slice(0, 200);
+    const maxRaw = c.req.query("maxPriceUsd");
+    if (maxRaw !== undefined && !/^\d{1,6}(\.\d{1,6})?$/.test(maxRaw)) return c.json({ error: "maxPriceUsd must be an amount in dollars, like 0.01" }, 400);
+    const limit = Number(c.req.query("limit") ?? 10);
+    const sellerName = c.req.query("seller")?.slice(0, 80);
+    const category = c.req.query("category")?.slice(0, 60);
+    const { own, market, circle: listedByCircle, circleReadAt: circleRead } = await catalogue(new URL(c.req.url).origin);
+    const results = search([...own, ...market, ...listedByCircle], q, {
+      ...(maxRaw === undefined ? {} : { maxPriceUsd: Number(maxRaw) }),
+      ...(sellerName ? { seller: sellerName } : {}),
+      ...(category ? { category } : {}),
+      limit: Number.isFinite(limit) ? limit : 10,
+    });
     return c.json({
       query: q,
       network: caip2,
@@ -272,5 +292,5 @@ export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opt
       note: "Prices are what each seller asked when last seen: pay with a ceiling at the listed price (arc_pay maxUsdc), and a seller that asks more is refused before anything is signed. Example values in a URL or body are examples: change them to what you need, following params. A {placeholder} in a URL must be replaced. method POST means the params marked body go in a JSON body.",
     });
   });
-  return { circle };
+  return { circle, catalogue };
 }

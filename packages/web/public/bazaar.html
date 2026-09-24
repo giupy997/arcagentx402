@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRA Bazaar — everything an agent can buy on Arc</title>
+<meta name="description" content="Paid APIs on Arc in one place: web search, data, blockchain RPC, AI models, email and more, from every seller we can find. Search them, browse them by seller, and let your agent pay per call in USDC.">
+<meta name="theme-color" content="#061a42">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CRA AGENT">
+<meta property="og:title" content="CRA Bazaar — everything an agent can buy on Arc">
+<meta property="og:description" content="Paid APIs on Arc in one place, from every seller we can find. Search them, browse them by seller, and let your agent pay per call in USDC.">
+<meta property="og:url" content="https://cra-agent.tech/bazaar">
+<meta property="og:image" content="https://cra-agent.tech/brand/og-bazaar.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="CRA Bazaar — everything an agent can buy on Arc">
+<meta name="twitter:description" content="Paid APIs on Arc in one place, from every seller we can find. Search them, browse them by seller, and let your agent pay per call in USDC.">
+<meta name="twitter:image" content="https://cra-agent.tech/brand/og-bazaar.jpg">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="nav" id="nav">
+  <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+  <div class="nav-right">
+    <span class="net-pill" id="netpill"><span class="dot" id="netdot"></span><span id="netlabel">Arc mainnet</span></span>
+    <button class="menu-btn" type="button" data-menu-open aria-label="Open menu" aria-controls="menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+</header>
+<div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="Menu">
+  <div class="menu-top">
+    <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+    <button class="menu-btn" type="button" data-menu-close aria-label="Close menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3.5 3.5l11 11M14.5 3.5l-11 11" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+  <ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="/#how">How it works</a></li>
+    <li><a href="/#install">Install the agent</a></li>
+    <li><a href="/#sell">Sell an endpoint</a></li>
+    <li><a href="/network">Network</a></li>
+    <li><a href="/bazaar">Bazaar</a></li>
+    <li><a href="/market">Market</a></li>
+    <li><a href="/lane">Solana Lane</a></li>
+    <li><a href="/factory">Factory</a></li>
+    <li><a href="/register">Register a seller</a></li>
+    <li><a href="/try">Try it</a></li>
+    <li><a href="/status">Status</a></li>
+    <li><a href="/token">Token</a></li>
+    <li><a href="https://x.com/Craagentarc" rel="noopener">X</a></li>
+    <li><a href="https://github.com/giupy997/arcagentx402" rel="noopener">GitHub</a></li>
+  </ul>
+  <div class="menu-foot">x402 · Circle Gateway · USDC on Arc</div>
+</div>
+
+<section class="page-head bazaar-head">
+  <div class="marks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div class="wrap">
+    <p class="kicker" style="color:rgba(255,255,255,.8)">Bazaar</p>
+    <h1>Everything an agent can buy on Arc</h1>
+    <div class="meta" id="b-meta">Paid APIs on Arc, from every seller we can find · paid per call in USDC</div>
+    <div class="b-logos" id="b-logos" aria-hidden="true"></div>
+  </div>
+</section>
+
+<main class="wrap dash bazaar">
+  <div class="offline hidden" id="offline">
+    <h2>The bazaar is coming online</h2>
+    <p>This page reads the catalogue from the API, which is still starting up.</p>
+    <p><a class="btn" href="/">← Back to CRA AGENT</a></p>
+  </div>
+
+  <div class="charts">
+    <section class="chart-card wide b-search">
+      <form id="s-form" role="search">
+        <label class="b-field"><span class="sr-only">What do you need?</span>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M13 13l4.5 4.5" stroke="currentColor" stroke-width="1.6"/></svg>
+          <input id="s-q" type="search" enterkeyhint="search" spellcheck="false" autocomplete="off" maxlength="200" placeholder="What does your agent need? Web search, bitcoin price, an inbox…">
+        </label>
+        <button class="btn primary" type="submit">Search</button>
+      </form>
+      <div class="b-chips" id="s-examples">
+        <span class="b-chips-label">Try</span>
+        <button type="button" class="chip">web search</button>
+        <button type="button" class="chip">bitcoin price</button>
+        <button type="button" class="chip">ethereum rpc</button>
+        <button type="button" class="chip">polymarket</button>
+        <button type="button" class="chip">generate an image</button>
+        <button type="button" class="chip">email inbox</button>
+        <button type="button" class="chip">company data</button>
+      </div>
+      <div class="b-chips b-cats" id="b-cats"></div>
+      <div class="b-status" id="s-status" aria-live="polite"></div>
+      <ol class="hits" id="s-results"></ol>
+    </section>
+
+    <section class="chart-card wide">
+      <div class="head"><div><h2>Sellers</h2><div class="sub" id="b-sellers-sub">Everyone selling on Arc that we know of.</div></div></div>
+      <div class="sellers" id="b-sellers"></div>
+    </section>
+
+    <section class="chart-card wide b-agents">
+      <div class="head"><div><h2>For agents</h2><div class="sub">The same search, where your agent works. It needs no key and costs nothing.</div></div></div>
+      <div class="b-ways">
+        <div class="b-way">
+          <div class="b-way-name">MCP tool</div>
+          <p>An agent with CRA AGENT installed asks <span class="mono">arc_search</span> in its own words. Each result comes back with the price, what to send, and whether its spending limits allow it.</p>
+          <pre><code>arc_search { "query": "web search" }</code></pre>
+        </div>
+        <div class="b-way">
+          <div class="b-way-name">Terminal</div>
+          <p>The same search from a shell. <span class="mono">cra-agent pay</span> then buys a result, refused above the listed price.</p>
+          <pre><code>npx -p @cra-agent/mcp cra-agent find web search</code></pre>
+        </div>
+        <div class="b-way">
+          <div class="b-way-name">HTTP</div>
+          <p>Plain JSON for anything else: the URL to call, the method, the parameters and the price.</p>
+          <pre><code>curl "https://api.cra-agent.tech/v1/market/search?q=web+search"</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="chart-card wide b-about">
+      <p class="sub"><b>Where this comes from.</b> CRA AGENT's own routes; the <a href="/market">CRA market</a>, where we call every listing each hour to check it answers 402 on Arc; and Circle's x402 catalogue, read every hour, listed by Circle and not checked by us. What a seller says it sells is its own description, and a seller's logo is read from its own site.</p>
+      <p class="sub"><b>Selling something?</b> One command puts a price on your API, and it shows up here once it is listed. <a href="/factory#sell">The Factory writes the command for you</a>, and <a href="/market">the market</a> takes the URL.</p>
+      <p class="sub"><b>Coming next.</b> Sellers ranked by what agents actually pay for, counted from the chain.</p>
+    </section>
+  </div>
+</main>
+
+<footer class="site light">
+  <span>Read from our routes, the CRA market and Circle's x402 catalogue · <span id="b-count"></span></span>
+  <span><a href="/">Home</a> · <a href="/market">Market</a> · <a href="/factory">Factory</a> · <a href="/v1/bazaar">/v1/bazaar</a></span>
+</footer>
+<script src="/config.js"></script>
+<script type="module" src="/js/bazaar.js"></script>
+</body>
+</html>

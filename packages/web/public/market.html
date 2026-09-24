@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CRA Market — paid APIs on Arc</title>
-<meta name="description" content="Paid APIs on Arc that an AI agent or a browser wallet can buy per call in USDC. Search all of them, Circle's x402 catalogue included. Add yours with one command.">
+<meta name="description" content="Paid APIs on Arc that an AI agent or a browser wallet can buy per call in USDC. Add yours with one command, and search everything payable on Arc in the Bazaar.">
 <meta name="theme-color" content="#061a42">
 <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
 <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
@@ -32,6 +32,7 @@
     <li><a href="/#install">Install the agent</a></li>
     <li><a href="/#sell">Sell an endpoint</a></li>
     <li><a href="/network">Network</a></li>
+    <li><a href="/bazaar">Bazaar</a></li>
     <li><a href="/market">Market</a></li>
     <li><a href="/lane">Solana Lane</a></li>
     <li><a href="/factory">Factory</a></li>
@@ -63,15 +64,8 @@
 
   <div class="charts">
     <div class="chart-card wide">
-      <div class="head"><div><h2>Search everything payable on Arc</h2><div class="sub">CRA AGENT's own data, this market, and every endpoint Circle's x402 catalogue lists as payable on Arc. The same search an agent runs with its <span class="mono">arc_search</span> tool.</div></div></div>
-      <form id="s-form" role="search">
-        <div class="fields"><label class="field"><span>What you need</span><input id="s-q" type="search" enterkeyhint="search" spellcheck="false" autocomplete="off" maxlength="200" placeholder="web search, bitcoin price, email inbox…"></label></div>
-        <p><button class="btn" type="submit">Search</button></p>
-      </form>
-      <p class="sub examples" id="s-examples">Try <button type="button" class="tag">web search</button> <button type="button" class="tag">bitcoin price</button> <button type="button" class="tag">ethereum rpc</button> <button type="button" class="tag">polymarket</button> <button type="button" class="tag">generate an image</button> <button type="button" class="tag">email inbox</button></p>
-      <p class="sub" id="s-count"></p>
-      <div class="tbl-wrap" id="s-results"></div>
-      <p class="sub hidden" id="s-circle-note">Entries from Circle's catalogue are listed by Circle: we do not call them to check. They are paid through Circle Gateway, so an agent needs a Gateway deposit on Arc to buy them.</p>
+      <div class="head"><div><h2>Looking for something to buy?</h2><div class="sub">The Bazaar searches everything payable on Arc in one place: CRA AGENT's routes, this market and Circle's x402 catalogue, with every seller's logo, prices and what they sell.</div></div></div>
+      <p><a class="btn primary" href="/bazaar">Open the Bazaar →</a></p>
     </div>
 
     <div class="chart-card wide">
@@ -91,7 +85,7 @@
     <div class="chart-card wide">
       <div class="head"><div><h2>Nothing to list yet?</h2></div></div>
       <p class="sub">If you run an API, one command puts a price on it without touching its code, and buyers pay you in USDC on Arc. <a href="/factory#sell">CRA Factory writes the command for you</a>.</p>
-      <p class="sub"><b>How agents find you.</b> An agent running CRA AGENT searches this list, together with our own data and Circle's x402 catalogue, with its <span class="mono">arc_search</span> tool, in a few words of what it needs, and gets back your URL, your price, and whether its own spending limits let it pay you. Anyone else can ask the same thing at <a href="/v1/market/search?q=bitcoin%20price"><span class="mono">/v1/market/search?q=…</span></a>.</p>
+      <p class="sub"><b>How agents find you.</b> An agent running CRA AGENT searches this list, together with our own data and Circle's x402 catalogue, with its <span class="mono">arc_search</span> tool, and people search it in <a href="/bazaar">the Bazaar</a>, in a few words of what it needs, and gets back your URL, your price, and whether its own spending limits let it pay you. Anyone else can ask the same thing at <a href="/v1/market/search?q=bitcoin%20price"><span class="mono">/v1/market/search?q=…</span></a>.</p>
       <p class="sub"><b>Before you pay anyone here.</b> We check that a listing answers and what it charges, not what it sells. Your wallet or your agent shows the amount and the address before anything moves, and a call that fails is not charged. Set your agent's limits accordingly: <a href="/factory">the Factory does that too</a>.</p>
     </div>
   </div>

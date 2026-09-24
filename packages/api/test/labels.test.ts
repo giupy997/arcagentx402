@@ -7,7 +7,7 @@ const EXA = "0xB98eF29eb2be19Ae646A8FC0248255B90A332dbC";
 const APEX_PAYEE = "0xd334ab5151c624cada654854e2879903dc4217ed";
 const APEX_WALLET = "0x024b82335c29fa5606a8ea5c1d24fc9ead50700c";
 
-const item = (over: Partial<SearchItem>): SearchItem => ({ url: "https://api.exa.ai/search", method: "POST", priceUsd: "0.007", name: "Exa", label: "Search the web", description: "AI web search", params: [], payTo: EXA, host: "api.exa.ai", network: "eip155:5042", rail: "gateway", direct: null, body: null, source: "circle", online: true, keywords: "", ...over });
+const item = (over: Partial<SearchItem>): SearchItem => ({ url: "https://api.exa.ai/search", method: "POST", priceUsd: "0.007", name: "Exa", label: "Search the web", description: "AI web search", params: [], payTo: EXA, host: "api.exa.ai", network: "eip155:5042", rail: "gateway", direct: null, body: null, source: "circle", category: "Web search & research", site: "https://exa.ai", online: true, keywords: "", ...over });
 
 describe("labels that public sources give an address", () => {
   it("names the payee of a Circle catalogue entry as its seller, once per seller", () => {
