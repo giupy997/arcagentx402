@@ -8,6 +8,7 @@
  *   cra-agent verify <receipt.json> [agent]    checks a signed receipt; needs no key and no network
  *   cra-agent init [--client …] [--policy …]   makes the key, writes the AI client config; see init.ts
  *   cra-agent find <what you need> [--max <usdc>] [--limit <n>]   what can be bought on Arc; needs no key
+ *   cra-agent think "<task>" [--budget 0.10] [--model …] [--steps 8]   an agent that pays for its own thinking, and its tools
  */
 import { formatUsdc6 } from "@cra-agent/accounting";
 import { describePolicy, parsePolicyString } from "@cra-agent/policy";
@@ -18,6 +19,7 @@ import { CAIP2, registerIdentity, type ArcNetwork } from "@cra-agent/identity";
 import { fit, forAgent, NOTHING_SPENT, searchMarket } from "../search.js";
 import { railFromEnv } from "../rail-from-env.js";
 import { runInit } from "./init.js";
+import { BLOCKRUN_CHAT, DEFAULT_MODEL, think, type Paid } from "../think.js";
 
 /** The url and the amount in order, and --method / --body wherever they are. A body means POST. */
 function callOptions(args: readonly string[]): { positional: string[]; method: "GET" | "POST"; body: string | undefined } {
@@ -128,6 +130,65 @@ async function main(): Promise<void> {
       break;
     }
     case "policy": out({ agentId, network, address: rail.address, policy: describePolicy(policy) }); break;
+    case "think": {
+      // An agent that pays for its own thinking: every thought a paid LLM call on Arc, every tool bought
+      // from the bazaar, the session budget and the spending policy over both. See think.ts.
+      const args = process.argv.slice(3);
+      const flag = (name: string): string | undefined => {
+        const i = args.indexOf(name);
+        return i >= 0 ? args[i + 1] : undefined;
+      };
+      const task = args.filter((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1]!.startsWith("--"))).join(" ").trim();
+      if (!task) throw new Error('usage: think "<task>" [--budget 0.10] [--ceiling 0.01] [--model anthropic/claude-haiku-4.5] [--steps 8] [--tokens 350] [--brain <url>] [--json]');
+      const amount = /^\d{1,6}(\.\d{1,6})?$/;
+      const budgetUsdc = flag("--budget") ?? "0.10";
+      const thoughtCeilingUsdc = flag("--ceiling") ?? "0.01";
+      if (!amount.test(budgetUsdc) || !amount.test(thoughtCeilingUsdc)) throw new Error("--budget and --ceiling are amounts in USDC, like 0.10");
+      const model = flag("--model") ?? DEFAULT_MODEL;
+      const maxSteps = Math.min(30, Math.max(1, Number(flag("--steps") ?? 8)));
+      const maxTokens = Math.min(4000, Math.max(100, Number(flag("--tokens") ?? 350)));
+      const json = args.includes("--json");
+      const say = (line: string) => {
+        if (!json) console.log(line);
+      };
+      const caip2 = CAIP2[network];
+      // The brain is bought like anything else: from the bazaar, unless one is named.
+      let brainUrl = flag("--brain");
+      let brainFrom = "given";
+      if (!brainUrl) {
+        const found = await searchMarket("chat completions llm", { limit: 10 }).catch(() => null);
+        const hit = found?.results.find((r) => r.network === caip2 && /\/chat\/completions$/.test(new URL(r.url).pathname) && r.method === "POST");
+        brainUrl = hit?.url ?? BLOCKRUN_CHAT;
+        brainFrom = hit ? `${hit.name}, found in the bazaar, from $${hit.priceUsd} a thought` : "BlockRun (the bazaar did not answer)";
+      }
+      const pay = async (url: string, init: { method: "GET" | "POST"; body?: string }, maxUsdc: string): Promise<Paid> => {
+        try {
+          const { response, receipt } = await rail.fetch(url, { method: init.method, headers: { accept: "application/json", ...(init.body === undefined ? {} : { "content-type": "application/json" }) }, ...(init.body === undefined ? {} : { body: init.body }) }, { maxUsdc });
+          const body = await response.text();
+          return { status: response.status, body, paidUsdc: receipt?.status === "settled" ? receipt.amountUsdc : "0", ledgerId: receipt ? String(receipt.ledgerId) : null, refused: null };
+        } catch (err) {
+          if (err instanceof PolicyRejected) return { status: 0, body: "", paidUsdc: "0", ledgerId: null, refused: `${err.decision.rule}: ${err.decision.reason}` };
+          return { status: 0, body: `the call failed: ${(err as Error).message.slice(0, 140)}`, paidUsdc: "0", ledgerId: null, refused: null };
+        }
+      };
+      const limits = describePolicy(policy);
+      say(`Task: ${task}`);
+      say(`Brain: ${model} at ${brainUrl} (${brainFrom})`);
+      say(`Budget: $${budgetUsdc} for thinking and tools · at most $${thoughtCeilingUsdc} a thought · policy: $${limits.perPaymentCapUsdc} a payment, $${limits.dailyCapUsdc} a day`);
+      say("");
+      const r = await think(
+        { task, brainUrl, model, budgetUsdc, thoughtCeilingUsdc, maxTokens, maxSteps },
+        { pay, say, search: async (q) => (await searchMarket(q, { limit: 6 })).results.filter((x) => x.network === caip2) },
+      );
+      if (json) {
+        out(r);
+        break;
+      }
+      say("");
+      say(r.answer !== null ? `Answer: ${r.answer}` : `No answer: ${r.stoppedBecause === "budget" ? "the budget ran out" : r.stoppedBecause === "steps" ? `no answer within ${maxSteps} steps` : "the brain stopped making sense"}.`);
+      say(`Spent $${r.spent.totalUsdc}: thinking $${r.spent.thinkingUsdc} (${r.spent.thoughts} ${r.spent.thoughts === 1 ? "thought" : "thoughts"}), tools $${r.spent.toolsUsdc} (${r.spent.purchases} ${r.spent.purchases === 1 ? "purchase" : "purchases"}). Each payment signed a receipt, in USDC on Arc.`);
+      break;
+    }
     case "selftest": {
       // The rail buying from itself, on purpose and in the open: one route that must work, one that
       // must fail without charging. Run it on a timer and a broken rail shows within the hour.
@@ -186,7 +247,7 @@ async function main(): Promise<void> {
       break;
     }
     default:
-      console.error("usage: cra-agent <init|find|quote|pay|balance|deposit|withdraw|ledger|policy|proof|verify|selftest> [arg]");
+      console.error("usage: cra-agent <init|find|think|quote|pay|balance|deposit|withdraw|ledger|policy|proof|verify|selftest> [arg]");
       process.exit(2);
   }
   await ledger.close();

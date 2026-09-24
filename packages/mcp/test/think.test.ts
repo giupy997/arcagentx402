@@ -1,0 +1,141 @@
+import { describe, expect, it } from "vitest";
+import type { Found } from "../src/search.js";
+import { allowedResult, completionText, parseAction, think, type Paid, type ThinkDeps, type ThinkOptions } from "../src/think.js";
+
+const BRAIN = "https://nano.blockrun.ai/api/v1/chat/completions";
+const EXA = "https://api.exa.ai/search";
+const found = (over: Partial<Found> = {}): Found => ({
+  url: EXA,
+  method: "POST",
+  priceUsd: "0.007",
+  name: "Exa",
+  label: "Search the web",
+  description: null,
+  params: [{ name: "query", in: "body", type: "string", description: "", required: true, example: null }],
+  payTo: "0xb98ef29eb2be19ae646a8fc0248255b90a332dbc",
+  host: "api.exa.ai",
+  network: "eip155:5042",
+  rail: "gateway",
+  direct: null,
+  source: "circle",
+  online: true,
+  score: 6,
+  ...over,
+});
+const completion = (content: unknown) => JSON.stringify({ choices: [{ message: { content: typeof content === "string" ? content : JSON.stringify(content) } }] });
+const opts = (over: Partial<ThinkOptions> = {}): ThinkOptions => ({ task: "What is x402?", brainUrl: BRAIN, model: "anthropic/claude-haiku-4.5", budgetUsdc: "0.1", thoughtCeilingUsdc: "0.01", maxTokens: 350, maxSteps: 8, ...over });
+
+/** A brain that says the scripted replies in order, and sellers that answer as asked. Records every payment. */
+function world(replies: unknown[], tool: (url: string, body?: string) => Paid = () => ({ status: 200, body: '{"results":["x402 is HTTP 402 payments"]}', paidUsdc: "0.007", ledgerId: "L-tool", refused: null })) {
+  const paid: Array<{ url: string; maxUsdc: string; body?: string }> = [];
+  const lines: string[] = [];
+  let i = 0;
+  const deps: ThinkDeps = {
+    pay: async (url, init, maxUsdc) => {
+      paid.push({ url, maxUsdc, ...(init.body === undefined ? {} : { body: init.body }) });
+      if (url === BRAIN) {
+        const r = replies[i++];
+        if (r && typeof r === "object" && "refused" in (r as object)) return r as Paid;
+        return { status: 200, body: completion(r ?? { action: "answer", text: "out of script" }), paidUsdc: "0.003", ledgerId: `L-${i}`, refused: null };
+      }
+      return tool(url, init.body);
+    },
+    search: async () => [found()],
+    say: (l) => lines.push(l),
+  };
+  return { deps, paid, lines };
+}
+
+describe("an agent that pays for its own thinking", () => {
+  it("thinks, searches for free, buys what it found at the listed price, and answers, with the bill split", async () => {
+    const w = world([
+      { thought: "I need a web search.", action: "search", query: "web search" },
+      { thought: "Exa at $0.007 will do.", action: "buy", url: EXA, body: { query: "what is x402" } },
+      { thought: "I know enough.", action: "answer", text: "x402 puts payments in HTTP 402." },
+    ]);
+    const r = await think(opts(), w.deps);
+    expect(r.answer).toBe("x402 puts payments in HTTP 402.");
+    expect(r.stoppedBecause).toBe("answered");
+    expect(r.spent).toEqual({ thinkingUsdc: "0.009", toolsUsdc: "0.007", totalUsdc: "0.016", thoughts: 3, purchases: 1 });
+    // Every thought is paid at the thought ceiling at most; the tool at exactly its listed price.
+    expect(w.paid.map((p) => [p.url, p.maxUsdc])).toEqual([
+      [BRAIN, "0.01"],
+      [BRAIN, "0.01"],
+      [EXA, "0.007"],
+      [BRAIN, "0.01"],
+    ]);
+    expect(JSON.parse(w.paid[2]!.body!)).toEqual({ query: "what is x402" });
+    // The brain is told what it is spending, and pays for knowing it.
+    expect(JSON.parse(w.paid[0]!.body!).messages.at(-1).content).toMatch(/Budget left: \$0\.1/);
+    expect(w.lines.join("\n")).toMatch(/buy {4}\$0\.007 {2}POST https:\/\/api\.exa\.ai\/search -> 200/);
+  });
+
+  it("will not buy a url no search returned, and pays nothing for asking", async () => {
+    const w = world([
+      { thought: "Let me call something I know.", action: "buy", url: "https://evil.example/drain" },
+      { thought: "Fine.", action: "answer", text: "done" },
+    ]);
+    const r = await think(opts(), w.deps);
+    expect(w.paid.some((p) => p.url.includes("evil.example"))).toBe(false);
+    expect(r.steps.find((s) => s.kind === "refused")?.detail).toMatch(/not in a search result/);
+    expect(r.spent.toolsUsdc).toBe("0");
+  });
+
+  it("stops when the budget cannot pay for another thought, and never buys past it", async () => {
+    const tooDear = { thought: "Buy.", action: "buy", url: EXA, body: { query: "x" } };
+    const w = world([{ thought: "Search.", action: "search", query: "web search" }, tooDear, tooDear, tooDear, tooDear]);
+    // $0.012 pays for four thoughts at $0.003; the $0.007 search never fits in what is left after the first two.
+    const r = await think(opts({ budgetUsdc: "0.012", thoughtCeilingUsdc: "0.003" }), w.deps);
+    expect(w.paid.filter((p) => p.url === EXA)).toEqual([]);
+    expect(r.steps.filter((s) => s.kind === "refused").map((s) => s.detail)).toEqual([
+      "not bought: $0.007 is more than the $0.006 left",
+      "not bought: $0.007 is more than the $0.003 left",
+      "not bought: $0.007 is more than the $0 left",
+    ]);
+    expect(r).toMatchObject({ answer: null, stoppedBecause: "budget", spent: { thinkingUsdc: "0.012", toolsUsdc: "0", thoughts: 4 } });
+  });
+
+  it("ends when the rail refuses a thought before paying: the policy covers thinking too", async () => {
+    const w = world([{ status: 0, body: "", paidUsdc: "0", ledgerId: "L-r", refused: "max_price: the seller asks 0.0147 USDC, above the 0.01 USDC ceiling" }]);
+    const r = await think(opts(), w.deps);
+    expect(r).toMatchObject({ answer: null, stoppedBecause: "budget", spent: { totalUsdc: "0", thoughts: 0 } });
+    expect(w.lines[0]).toMatch(/refused before paying: max_price/);
+  });
+
+  it("sends the brain only its latest tool results whole: it pays for every character it rereads", async () => {
+    const search = { thought: "Search.", action: "search", query: "web search" };
+    const w = world([search, search, search, { thought: "Done.", action: "answer", text: "ok" }]);
+    await think(opts(), w.deps);
+    const last = JSON.parse(w.paid.at(-1)!.body!).messages as Array<{ content: string }>;
+    const results = last.filter((m) => m.content.startsWith("Search results") || m.content.startsWith("(an earlier tool result"));
+    expect(results.map((m) => m.content.startsWith("Search results"))).toEqual([false, true, true]);
+  });
+
+  it("gives an unreadable brain one more chance, then stops", async () => {
+    const w = world(["Sure! Let me think about that.", "Still not JSON."]);
+    const r = await think(opts(), w.deps);
+    expect(r.stoppedBecause).toBe("brain");
+    expect(r.spent.thoughts).toBe(2);
+  });
+});
+
+describe("reading the brain", () => {
+  it("finds the JSON in a reply that wraps it in prose or a code fence", () => {
+    expect(parseAction('Here you go:\n```json\n{"action":"answer","text":"hi"}\n```')).toEqual({ action: "answer", text: "hi" });
+    expect(parseAction("no json here")).toBeNull();
+    expect(parseAction("[1,2]")).toBeNull();
+  });
+
+  it("reads an OpenAI-shaped completion", () => {
+    expect(completionText(completion("hello"))).toBe("hello");
+    expect(completionText("<html>")).toBeNull();
+  });
+
+  it("lets the brain fill a placeholder or a parameter of a url it found, and nothing else", () => {
+    const list = [found({ url: "https://np.orthogonal.com/agentmail/v0/inboxes/{inbox_id}/messages", method: "GET" }), found()];
+    expect(allowedResult("https://np.orthogonal.com/agentmail/v0/inboxes/abc123/messages", list)?.url).toBe(list[0]!.url);
+    expect(allowedResult("https://api.exa.ai/search?q=more", list)?.url).toBe(EXA);
+    expect(allowedResult("https://np.orthogonal.com/agentmail/v0/other", list)).toBeNull();
+    expect(allowedResult("https://api.exa.ai.evil.example/search", list)).toBeNull();
+  });
+});

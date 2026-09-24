@@ -3,7 +3,7 @@
   "name": "io.github.giupy997/cra-agent",
   "title": "CRA AGENT",
   "description": "Lets an agent pay for x402 APIs in USDC on Arc, under a spending policy it cannot change.",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "websiteUrl": "https://cra-agent.tech",
   "repository": {
     "url": "https://github.com/giupy997/arcagentx402",
@@ -14,7 +14,7 @@
     {
       "registryType": "npm",
       "identifier": "@cra-agent/mcp",
-      "version": "0.0.11",
+      "version": "0.0.12",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
