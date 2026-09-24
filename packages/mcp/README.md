@@ -38,7 +38,7 @@ Creates the agent's key in `~/.cra-agent/agent.key` (readable only by you, never
 | Tool | What it does |
 |---|---|
 | `arc_search` | Finds what can be bought on Arc from a few words ("bitcoin price", "web search"): CRA AGENT's own data, the CRA market, and the endpoints Circle's x402 catalogue lists as payable on Arc (Exa, Goldsky, BlockRun and others). Each result: the method and the URL with example parameters, where each parameter goes (query, path or JSON body), the price, the seller, who listed it, and whether your policy allows paying it now. Free. |
-| `arc_quote` | Reads the price of a URL and says whether the policy would allow it. Pays nothing. |
+| `arc_quote` | Reads the price of a URL and says whether the policy would allow it. Pays nothing. For a POST, pass the body the payment will carry: some sellers check it before they name a price. |
 | `arc_pay` | Pays for the URL and returns the response with a receipt. Limits are checked on what the 402 asks at pay time, before anything is signed. `maxUsdc` adds a ceiling for that one call: pass the price `arc_search` listed, and a seller who raised it since is refused even inside your limits. |
 | `arc_balance` | Wallet and Circle Gateway balances. |
 | `arc_deposit` | Moves wallet USDC into the Gateway balance. Needed once before the first payment. |
@@ -58,6 +58,7 @@ Creates the agent's key in `~/.cra-agent/agent.key` (readable only by you, never
 cra-agent find bitcoin price    # what is for sale on Arc; needs no key (in a browser: cra-agent.tech/bazaar)
 cra-agent balance
 cra-agent quote https://api.cra-agent.tech/v1/paid/rpc/health
+cra-agent quote https://api.exa.ai/search --body '{"query":"x402 on Arc"}'           # the price of a POST, with its body
 cra-agent deposit 1
 cra-agent withdraw 1            # Gateway balance back to the wallet; how a seller collects
 cra-agent pay   https://api.cra-agent.tech/v1/paid/rpc/health

@@ -25,11 +25,18 @@ async function main(): Promise<void> {
 
   server.registerTool("arc_quote", {
     title: "Quote an x402 resource",
-    description: "Ask what a URL costs without paying. Returns price in USDC, seller address, network, whether the seller batches via Circle Gateway, the rail that would be used, the policy decision and the seller's ERC-8004 identity. Returns null if the resource is free.",
-    inputSchema: { url: z.string().url(), method: z.enum(["GET", "POST"]).optional() },
-  }, async ({ url, method }) => {
+    description: "Ask what a URL costs without paying. Returns price in USDC, seller address, network, whether the seller batches via Circle Gateway, the rail that would be used, the policy decision and the seller's ERC-8004 identity. Send the call as you would pay for it: a POST endpoint often checks its JSON body before it names a price, so pass the same body arc_pay would send. Returns { free: true } only when the seller answers with success and asks nothing; any other answer is an error with the seller's status and what it said.",
+    inputSchema: {
+      url: z.string().url(),
+      method: z.enum(["GET", "POST"]).optional().describe("POST when a body is given."),
+      body: z.string().optional().describe("The JSON body the paid call will send."),
+    },
+  }, async ({ url, method, body }) => {
+    const m = method ?? (body === undefined ? "GET" : "POST");
+    if (body !== undefined && m === "GET") return fail("a body goes with POST: drop method GET");
     try {
-      const q = await rail.quote(url, method ? { method } : undefined);
+      const init: RequestInit = { method: m, headers: body === undefined ? {} : { "content-type": "application/json" }, ...(body === undefined ? {} : { body }) };
+      const q = await rail.quote(url, init);
       return text(q ?? { free: true, url });
     } catch (err) {
       return fail(`quote failed: ${(err as Error).message}`);

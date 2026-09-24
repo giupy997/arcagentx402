@@ -3,6 +3,7 @@
  * Tiny CLI over the same rail the MCP server uses. For humans and for smoke tests.
  *   cra-agent quote <url>        cra-agent pay <url> [max usdc]        cra-agent balance
  *   cra-agent pay <url> [max usdc] --body '{"query":"x402"}'    a POST with a JSON body (--method POST without one)
+ *   cra-agent quote <url> --body '{"query":"x402"}'    the price of that POST: some sellers want the body before they name one
  *   cra-agent deposit <usdc>     cra-agent ledger [n]       cra-agent policy
  *   cra-agent withdraw <usdc> [max fee]    Gateway balance back to the wallet: how a seller collects
  *   cra-agent verify <receipt.json> [agent]    checks a signed receipt; needs no key and no network
@@ -88,10 +89,11 @@ async function main(): Promise<void> {
   const { rail, ledger, policy, network, agentId, signer, escrow, rpcUrl } = await railFromEnv();
   switch (cmd) {
     case "quote": {
-      const { positional, method } = callOptions(process.argv.slice(3));
+      const { positional, method, body } = callOptions(process.argv.slice(3));
       const url = positional[0];
-      if (!url) throw new Error("usage: quote <url> [--method POST]");
-      out((await rail.quote(url, method === "GET" ? undefined : { method })) ?? { free: true, url });
+      if (!url) throw new Error("usage: quote <url> [--body '<json>'] [--method POST]");
+      const init: RequestInit = { method, headers: body === undefined ? {} : { "content-type": "application/json" }, ...(body === undefined ? {} : { body }) };
+      out((await rail.quote(url, init)) ?? { free: true, url });
       break;
     }
     case "pay": {

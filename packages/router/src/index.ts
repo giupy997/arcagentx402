@@ -113,6 +113,17 @@ export class EscrowNotImplemented extends Error {
   }
 }
 
+/**
+ * The seller answered neither with a price (402) nor with success, so the call has no known cost.
+ * Some sellers check the request before they ask for money: a POST without its body gets a 400.
+ */
+export class QuoteFailed extends Error {
+  override readonly name = "QuoteFailed";
+  constructor(readonly status: number, readonly detail: string) {
+    super(`the seller answered ${status} instead of a price${detail ? `: ${detail}` : ""}`);
+  }
+}
+
 /** USDC predeploy on Arc: same address on testnet and mainnet (docs.arc.io contract addresses, both tabs, 2026-09-16). */
 export const ARC_USDC = "0x3600000000000000000000000000000000000000";
 const DAY_MS = 24 * 3600 * 1000;
@@ -128,6 +139,10 @@ export interface SettlementProof {
 }
 
 export interface Rail {
+  /**
+   * null only when the seller answers the call with success and asks nothing. Any other answer
+   * throws QuoteFailed. Send the request as it will be paid: a POST with its body.
+   */
   quote(url: string, init?: RequestInit): Promise<Quote | null>;
   /**
    * `maxUsdc` is a ceiling for this one call, checked like the policy: on the price the 402 asks at
@@ -317,7 +332,14 @@ export function createRail(cfg: RailConfig): Rail {
 
     async quote(url, init) {
       const res = await baseFetch(url, { ...init, headers: { accept: "application/json", ...(init?.headers as Record<string, string> | undefined) } });
-      if (res.status !== 402) return null;
+      if (res.ok) {
+        await res.body?.cancel().catch(() => undefined);
+        return null;
+      }
+      if (res.status !== 402) {
+        const said = await res.text().catch(() => "");
+        throw new QuoteFailed(res.status, said.replace(/\s+/g, " ").trim().slice(0, 200));
+      }
       const body = await res.json().catch(() => undefined);
       const pr = httpClient.getPaymentRequiredResponse((n) => res.headers.get(n), body);
       const req = pickRequirements(pr.accepts);
