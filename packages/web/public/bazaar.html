@@ -95,6 +95,7 @@
         <button type="button" class="chip">company data</button>
       </div>
       <div class="b-chips b-cats" id="b-cats"></div>
+      <div class="b-chips b-cats" id="b-nets"></div>
       <div class="b-status" id="s-status" aria-live="polite"></div>
       <ol class="hits" id="s-results"></ol>
     </section>
@@ -123,6 +124,7 @@
           <pre><code>curl "https://api.cra-agent.tech/v1/market/search?q=web+search"</code></pre>
         </div>
       </div>
+      <p class="sub b-base"><b>Your agent is on Base?</b> Pick Base under “Pays on”, or add <span class="mono">&amp;network=base</span> to the search: every result then takes USDC on Base, and says how. <i>Any x402 client</i> means a plain payment your agent can sign as it is; <i>Circle Gateway</i> means USDC deposited in Gateway first and a client that speaks it. CRA AGENT's own routes take any x402 client on Base.</p>
     </section>
 
     <section class="chart-card wide b-about">

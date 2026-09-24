@@ -31,18 +31,41 @@ export interface BazaarSeller {
   familyCount: number;
   /** gateway: paid through Circle Gateway. direct: a signed transfer a facilitator settles. both: some of each. */
   rail: "gateway" | "direct" | "both";
+  /** Every network at least one of its endpoints takes payment on, Arc first, then by how many. */
+  networks: string[];
+  /** The networks where at least one of its endpoints takes a plain x402 payment from any client. */
+  plainNetworks: string[];
 }
 
 export interface BazaarOverview {
   network: string;
   counts: { endpoints: number; sellers: number; categories: number };
   categories: Array<{ name: string; endpoints: number; sellers: number }>;
+  /** How much of the bazaar each network can pay for: an agent on Base, say, sees what it can buy. */
+  networks: Array<{ id: string; name: string; endpoints: number; sellers: number; plain: number }>;
   sellers: BazaarSeller[];
   circleReadAt: number | null;
   note: string;
 }
 
 const OURS_DESCRIPTION = "Live Arc network data, executed prices from real swaps, and web and package tools.";
+
+/** Network names for the ones a person would recognise; anything else keeps its CAIP-2 id. */
+export const NETWORK_NAMES: Record<string, string> = {
+  "eip155:5042": "Arc",
+  "eip155:5042002": "Arc testnet",
+  "eip155:8453": "Base",
+  "eip155:1": "Ethereum",
+  "eip155:137": "Polygon",
+  "eip155:42161": "Arbitrum",
+  "eip155:10": "Optimism",
+  "eip155:43114": "Avalanche",
+  "eip155:130": "Unichain",
+  "eip155:59144": "Linea",
+  "eip155:480": "World Chain",
+  "eip155:1329": "Sei",
+  "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "Solana",
+};
 /** Path segments that say how an API is served, not what it sells. */
 const PLUMBING = new Set(["api", "apis", "v0", "v1", "v2", "v3", "paid", "direct", "standard", "evm", "x402", "public", "rest"]);
 
@@ -82,6 +105,8 @@ export function bazaarOverview(cat: Catalogue, network: string): BazaarOverview 
     const families = tally(list, (i) => familyOf(i.url));
     const byPrice = [...list].sort((a, b) => Number(a.priceUsd) - Number(b.priceUsd));
     const rails = new Set(list.map((i) => i.rail));
+    const networks = new Map<string, number>();
+    for (const i of list) for (const n of new Set(i.networks)) networks.set(n, (networks.get(n) ?? 0) + 1);
     const site = topKeys(tally(list, (i) => i.site), 1)[0] ?? null;
     const ours = first.source === "cra-agent";
     // A sentence about one of a proxy's APIs is not about the proxy: across several families it must span more than one.
@@ -101,16 +126,32 @@ export function bazaarOverview(cat: Catalogue, network: string): BazaarOverview 
       families: families.size > 1 ? topKeys(families, 10) : [],
       familyCount: families.size > 1 ? families.size : 0,
       rail: rails.size > 1 ? "both" : first.rail,
+      networks: [...networks].sort((a, b) => Number(b[0] === network) - Number(a[0] === network) || b[1] - a[1]).map(([n]) => n),
+      plainNetworks: [...new Set(list.flatMap((i) => i.plainNetworks))].sort((a, b) => Number(b === network) - Number(a === network)),
     };
   });
   // Ours first, it is our bazaar and says so; then by how much each sells.
   sellers.sort((a, b) => Number(b.source === "cra-agent") - Number(a.source === "cra-agent") || b.endpoints - a.endpoints || a.name.localeCompare(b.name));
   const categories = [...tally(items, (i) => i.category)].map(([name, endpoints]) => ({ name, endpoints, sellers: new Set(items.filter((i) => i.category === name).map((i) => `${i.source}|${i.name}`)).size }));
   categories.sort((a, b) => b.endpoints - a.endpoints);
+  const perNetwork = new Map<string, { endpoints: number; sellers: Set<string>; plain: number }>();
+  for (const i of items) {
+    for (const n of new Set(i.networks)) {
+      const row = perNetwork.get(n) ?? { endpoints: 0, sellers: new Set<string>(), plain: 0 };
+      row.endpoints++;
+      if (i.plainNetworks.includes(n)) row.plain++;
+      row.sellers.add(`${i.source}|${i.name}`);
+      perNetwork.set(n, row);
+    }
+  }
+  const networks = [...perNetwork]
+    .map(([id, r]) => ({ id, name: NETWORK_NAMES[id] ?? id, endpoints: r.endpoints, sellers: r.sellers.size, plain: r.plain }))
+    .sort((a, b) => Number(b.id === network) - Number(a.id === network) || b.endpoints - a.endpoints);
   return {
     network,
     counts: { endpoints: items.length, sellers: sellers.length, categories: categories.length },
     categories,
+    networks,
     sellers,
     circleReadAt: cat.circleReadAt,
     note: "Our routes, the CRA market (each listing called every hour to check it answers 402 on Arc) and Circle's x402 catalogue (read every hour, listed by Circle, not checked by us). What a seller says it sells is its own description.",
@@ -194,12 +235,17 @@ export function logoFetcher(opts: { fetch?: (url: string, o: SafeFetchOptions) =
 
 export function mountBazaar(app: Hono, deps: { catalogue: (origin: string) => Promise<Catalogue>; network: string; log: Logger }): void {
   const caip2 = deps.network === "mainnet" ? "eip155:5042" : "eip155:5042002";
-  let latest: { at: number; body: BazaarOverview; sites: Set<string> } | null = null;
+  // Kept per origin: our own routes carry the address they were asked on, and a check from the server
+  // itself (localhost) must not stand in for what the public address shows.
+  const latest = new Map<string, { at: number; body: BazaarOverview; sites: Set<string> }>();
   const overview = async (origin: string): Promise<{ body: BazaarOverview; sites: Set<string> }> => {
-    if (latest && Date.now() - latest.at < 60_000) return latest;
+    const hit = latest.get(origin);
+    if (hit && Date.now() - hit.at < 60_000) return hit;
     const body = bazaarOverview(await deps.catalogue(origin), caip2);
-    latest = { at: Date.now(), body, sites: new Set(body.sellers.flatMap((s) => (s.site ? [s.site] : []))) };
-    return latest;
+    const fresh = { at: Date.now(), body, sites: new Set(body.sellers.flatMap((s) => (s.site ? [s.site] : []))) };
+    if (latest.size > 8) latest.clear();
+    latest.set(origin, fresh);
+    return fresh;
   };
 
   /** The whole bazaar in one answer: sellers, categories, counts. Free, like search. */

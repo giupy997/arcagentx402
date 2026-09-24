@@ -49,6 +49,13 @@ export interface SearchItem {
   category: string | null;
   /** The seller's own website: for a link, and for its logo. */
   site: string | null;
+  /** Every network the endpoint takes payment on, as CAIP-2, Arc first. */
+  networks: string[];
+  /**
+   * The networks where any x402 client can pay it, with a plain signed transfer. On the others it takes
+   * payment only through Circle Gateway, which needs USDC deposited in Gateway and a client that speaks it.
+   */
+  plainNetworks: string[];
   online: boolean;
   /** Words that do not show to the agent but count for matching: the route's group and path. */
   keywords: string;
@@ -188,6 +195,8 @@ export interface SearchOptions {
   readonly seller?: string;
   /** Only this category. */
   readonly category?: string;
+  /** Only endpoints that take payment on this network (CAIP-2). */
+  readonly network?: string;
 }
 
 /** On an equal score and price: ours, then what we checked ourselves, then what Circle lists. */
@@ -203,7 +212,7 @@ export function search(items: readonly SearchItem[], query: string, opts: Search
   const seller = opts.seller?.toLowerCase();
   const matching = items
     .filter((i) => (opts.maxPriceUsd === undefined || Number(i.priceUsd) <= opts.maxPriceUsd) && (opts.onlineOnly === false || i.online))
-    .filter((i) => (seller === undefined || i.name.toLowerCase() === seller) && (opts.category === undefined || i.category === opts.category))
+    .filter((i) => (seller === undefined || i.name.toLowerCase() === seller) && (opts.category === undefined || i.category === opts.category) && (opts.network === undefined || i.networks.includes(opts.network)))
     .map((i) => ({ item: i, score: scoreItem(i, q) }))
     .filter((r) => q.length === 0 || r.score > 0);
   const best = Math.max(0, ...matching.map((r) => r.score));
@@ -237,7 +246,7 @@ const OUR_CATEGORY: Record<PaidRoute["group"], string> = {
 };
 
 /** Our own catalogue as search items. The route that fails on purpose is proof, not merchandise, and stays out. */
-export function ownItems(routes: readonly PaidRoute[], opts: { origin: string; payTo: string; network: string; directPrice: ((price: string) => string) | null }): SearchItem[] {
+export function ownItems(routes: readonly PaidRoute[], opts: { origin: string; payTo: string; network: string; directPrice: ((price: string) => string) | null; networks?: readonly string[]; plainNetworks?: readonly string[] }): SearchItem[] {
   const host = new URL(opts.origin).host;
   return routes
     .filter((r) => !r.alwaysFails)
@@ -261,6 +270,8 @@ export function ownItems(routes: readonly PaidRoute[], opts: { origin: string; p
         source: "cra-agent" as const,
         category: OUR_CATEGORY[r.group] ?? null,
         site: "https://cra-agent.tech",
+        networks: [...(opts.networks?.length ? opts.networks : [opts.network])],
+        plainNetworks: [...(opts.plainNetworks ?? [])],
         online: true,
         keywords: `${r.group} ${r.path.replace(/[/_-]+/g, " ")} ${r.summary} ${r.plain.explain}`,
       };

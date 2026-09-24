@@ -55,6 +55,13 @@ describe("what an agent finds for a few words", () => {
     expect(search([tie, base], "convert currency")[0]!.source).toBe("cra-agent");
   });
 
+  it("keeps to one network when asked: what an agent on Base can pay for", () => {
+    const onBase: SearchItem = { ...own[0]!, url: "https://base-too.example/x", name: "Both", networks: ["eip155:5042", "eip155:8453"], plainNetworks: ["eip155:8453"] };
+    const arcOnly: SearchItem = { ...own[0]!, url: "https://arc-only.example/x", name: "ArcOnly", networks: ["eip155:5042"] };
+    expect(search([onBase, arcOnly], "", { network: "eip155:8453", limit: 5 }).map((r) => r.name)).toEqual(["Both"]);
+    expect(search([onBase, arcOnly], "", { network: "eip155:5042", limit: 5 })).toHaveLength(2);
+  });
+
   it("reads words the way agents write them", () => {
     expect(tokens("What's the BTC/USD price?")).toEqual(["what", "btc", "usd", "price"].filter((t) => t !== "what"));
     expect(pathKey("https://API.cra-agent.tech/v1/paid/x?a=1")).toBe("api.cra-agent.tech/v1/paid/x");

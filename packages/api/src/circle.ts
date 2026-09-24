@@ -230,6 +230,9 @@ export function circleItem(entry: unknown, network: string, now: number): Search
     source: "circle",
     category: readableCategory,
     site: siteOf(provider.website) ?? url.origin,
+    networks: [network, ...new Set((e.accepts as unknown[]).flatMap((a) => (isObject(a) && typeof a.network === "string" && a.network !== network && a.network.length <= 64 ? [a.network] : [])))].slice(0, 12),
+    // An exact accept that is not Gateway's batched one is a plain transfer any x402 client can sign.
+    plainNetworks: [...new Set((e.accepts as unknown[]).flatMap((a) => (isObject(a) && a.scheme === "exact" && typeof a.network === "string" && a.network.length <= 64 && !(isObject(a.extra) && a.extra.name === "GatewayWalletBatched") ? [a.network] : [])))].slice(0, 12),
     online: Number.isFinite(seen) && now - seen < STALE_MS,
     keywords: clean(`${tags.join(" ")} ${category} ${readable(url.pathname).replace(/[/_{}:.-]+/g, " ")}`, 600) ?? "",
   };

@@ -172,8 +172,8 @@ app.get("/v1/health", async (c) => {
     return c.json({ ok: false, error: (err as Error).message }, 503);
   }
 });
-mountPaidRoutes(app, db, NETWORK, log);
-const market = mountMarket(app, db, NETWORK, log);
+const paid = mountPaidRoutes(app, db, NETWORK, log);
+const market = mountMarket(app, db, NETWORK, log, paid ? { ourNetworks: paid.networks, ourPlainNetworks: paid.plainNetworks } : {});
 mountBazaar(app, { catalogue: market.catalogue, network: NETWORK, log });
 // Who is behind the addresses in the direct payments: mainnet only, since the sources describe mainnet.
 if (NETWORK === "mainnet" && process.env.LABELS !== "off") {

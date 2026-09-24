@@ -138,7 +138,10 @@ export interface Catalogue {
   circleReadAt: number | null;
 }
 
-export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opts: { circle?: CircleCatalogue | null } = {}): { circle: CircleCatalogue | null; catalogue: (origin: string) => Promise<Catalogue> } {
+/** Networks by the names people use, for the search's network filter. */
+const NETWORK_ALIASES: Record<string, string> = { arc: "eip155:5042", base: "eip155:8453", solana: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", ethereum: "eip155:1", polygon: "eip155:137", arbitrum: "eip155:42161", optimism: "eip155:10", avalanche: "eip155:43114" };
+
+export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opts: { circle?: CircleCatalogue | null; ourNetworks?: readonly string[]; ourPlainNetworks?: readonly string[] } = {}): { circle: CircleCatalogue | null; catalogue: (origin: string) => Promise<Catalogue> } {
   const caip2 = network === "mainnet" ? "eip155:5042" : "eip155:5042002";
   const circle = opts.circle === undefined ? defaultCircle(network, caip2, log) : opts.circle;
   const upsert = (p: Probe): Promise<unknown> =>
@@ -238,6 +241,9 @@ export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opt
       source: "market",
       category: null,
       site: new URL(r.url).origin,
+      networks: r.networks?.length ? r.networks : [caip2],
+      // The probe knows how a listing takes payment on Arc; on its other networks it is not asked.
+      plainNetworks: r.rail === "direct" ? [caip2] : [],
       online: r.ok,
       keywords: `${new URL(r.url).pathname.replace(/[/_-]+/g, " ")} ${(r.routes ?? []).map((x) => `${x.pattern} ${x.description ?? ""}`).join(" ")}`,
     }));
@@ -253,7 +259,7 @@ export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opt
    */
   const catalogue = async (origin: string): Promise<Catalogue> => {
     const seller = process.env.SELLER_ADDRESS;
-    const own = seller ? ownItems(PAID_ROUTES, { origin, payTo: seller, network: caip2, directPrice: process.env.DIRECT_FACILITATOR_URL ? directPriceOf : null }) : [];
+    const own = seller ? ownItems(PAID_ROUTES, { origin, payTo: seller, network: caip2, directPrice: process.env.DIRECT_FACILITATOR_URL ? directPriceOf : null, ...(opts.ourNetworks ? { networks: opts.ourNetworks } : {}), ...(opts.ourPlainNetworks ? { plainNetworks: opts.ourPlainNetworks } : {}) }) : [];
     // A market listing of one of our routes adds nothing to the route itself, which carries its parameters.
     const ownKeys = new Set(own.flatMap((i) => [pathKey(i.url), ...(i.direct ? [pathKey(i.direct.url)] : [])]));
     const listedByCircle = (circle?.items() ?? []).filter((i) => !ownKeys.has(pathKey(i.url)));
@@ -270,11 +276,14 @@ export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opt
     const limit = Number(c.req.query("limit") ?? 10);
     const sellerName = c.req.query("seller")?.slice(0, 80);
     const category = c.req.query("category")?.slice(0, 60);
+    const askedNetwork = c.req.query("network")?.slice(0, 64);
+    const onNetwork = askedNetwork ? (NETWORK_ALIASES[askedNetwork.toLowerCase()] ?? askedNetwork) : undefined;
     const { own, market, circle: listedByCircle, circleReadAt: circleRead } = await catalogue(new URL(c.req.url).origin);
     const results = search([...own, ...market, ...listedByCircle], q, {
       ...(maxRaw === undefined ? {} : { maxPriceUsd: Number(maxRaw) }),
       ...(sellerName ? { seller: sellerName } : {}),
       ...(category ? { category } : {}),
+      ...(onNetwork ? { network: onNetwork } : {}),
       limit: Number.isFinite(limit) ? limit : 10,
     });
     return c.json({

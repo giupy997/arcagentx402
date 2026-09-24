@@ -76,6 +76,11 @@ describe("Circle's catalogue, read as things an agent can buy on Arc", () => {
     expect(item).toMatchObject({ url: "https://api.exa.ai/contents", method: "POST", priceUsd: "0.001", name: "Exa", label: "Retrieve clean content from URLs", payTo: PAY_TO.toLowerCase(), host: "api.exa.ai", network: ARC, source: "circle", online: true, direct: null });
     // Our router takes the batched option when both are offered, so that is the rail the agent will use.
     expect(item.rail).toBe("gateway");
+    expect(item.networks).toEqual([ARC]);
+    // One of its two Arc accepts is a plain USDC transfer: any x402 client can pay it there.
+    expect(item.plainNetworks).toEqual([ARC]);
+    expect(circleItem(webSearch, ARC, NOW)!.networks).toEqual([ARC, "eip155:8453"]);
+    expect(circleItem(webSearch, ARC, NOW)!.plainNetworks).toEqual([]);
     expect(item.params.map((p) => p.name)).toEqual(["urls", "text", "livecrawl"]);
     expect(item.params[0]).toMatchObject({ in: "body", required: true, type: "array of string", example: ["https://arxiv.org/pdf/2307.06435"] });
     expect(item.params[1]!.type).toBe("boolean or object");

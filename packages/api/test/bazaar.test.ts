@@ -21,10 +21,13 @@ const item = (over: Partial<SearchItem>): SearchItem => ({
   source: "circle",
   category: "Web search & research",
   site: "https://exa.ai",
+  networks: ["eip155:5042", "eip155:8453"],
+  plainNetworks: [],
   online: true,
   keywords: "",
   ...over,
 });
+const SOLANA = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 
 describe("the bazaar, by seller", () => {
   it("reads what an endpoint sells from its path, past the plumbing", () => {
@@ -38,14 +41,14 @@ describe("the bazaar, by seller", () => {
   it("groups endpoints by seller, ours first, with prices, families and what most of them say", () => {
     const cat: Catalogue = {
       own: [
-        item({ url: "https://api.cra-agent.tech/v1/paid/fx/execution", name: "CRA AGENT data", source: "cra-agent", priceUsd: "0.001", category: "Financial data", site: "https://cra-agent.tech", description: "Executed price" }),
-        item({ url: "https://api.cra-agent.tech/v1/paid/arc/tx", name: "CRA AGENT data", source: "cra-agent", priceUsd: "0.003", category: "Blockchain data", site: "https://cra-agent.tech", description: "A transaction", rail: "direct" }),
+        item({ url: "https://api.cra-agent.tech/v1/paid/fx/execution", name: "CRA AGENT data", source: "cra-agent", priceUsd: "0.001", category: "Financial data", site: "https://cra-agent.tech", description: "Executed price", networks: ["eip155:5042", "eip155:8453", SOLANA], plainNetworks: ["eip155:8453", SOLANA] }),
+        item({ url: "https://api.cra-agent.tech/v1/paid/arc/tx", name: "CRA AGENT data", source: "cra-agent", priceUsd: "0.003", category: "Blockchain data", site: "https://cra-agent.tech", description: "A transaction", rail: "direct", networks: ["eip155:5042", "eip155:8453", SOLANA], plainNetworks: ["eip155:5042", "eip155:8453", SOLANA] }),
       ],
       market: [],
       circle: [
         item({}),
         item({ url: "https://api.exa.ai/contents", priceUsd: "0.001" }),
-        item({ url: "https://np.orthogonal.com/agentmail/v0/inboxes", name: "Orthogonal", priceUsd: "2", category: "Infrastructure", site: "https://www.orthogonal.com", description: "Email infrastructure for AI agents" }),
+        item({ url: "https://np.orthogonal.com/agentmail/v0/inboxes", name: "Orthogonal", priceUsd: "2", category: "Infrastructure", site: "https://www.orthogonal.com", description: "Email infrastructure for AI agents", networks: ["eip155:5042"] }),
         item({ url: "https://np.orthogonal.com/apollo/api/v1/people/match", name: "Orthogonal", priceUsd: "0.01", category: "Data enrichment", site: "https://www.orthogonal.com", description: "Contact and company data" }),
         item({ url: "https://np.orthogonal.com/apollo/api/v1/organizations/search", name: "Orthogonal", priceUsd: "0.02", category: "Data enrichment", site: "https://www.orthogonal.com", description: "Contact and company data" }),
       ],
@@ -61,6 +64,17 @@ describe("the bazaar, by seller", () => {
     expect(orthogonal).toMatchObject({ description: null, families: ["apollo", "agentmail"], familyCount: 2, priceFrom: "0.01", priceTo: "2", categories: ["Data enrichment", "Infrastructure"], logo: "/v1/bazaar/logo?site=https%3A%2F%2Fwww.orthogonal.com" });
     expect(exa).toMatchObject({ description: "AI web search and content extraction for agent retrieval", families: ["search", "contents"], endpoints: 2 });
     expect(b.categories[0]).toEqual({ name: "Web search & research", endpoints: 2, sellers: 1 });
+    // What an agent on each network can buy here: Arc everything, Base all but one, Solana only ours.
+    // "plain": how many take a payment from any x402 client there, rather than through Circle Gateway only.
+    expect(b.networks).toEqual([
+      { id: "eip155:5042", name: "Arc", endpoints: 7, sellers: 3, plain: 1 },
+      { id: "eip155:8453", name: "Base", endpoints: 6, sellers: 3, plain: 2 },
+      { id: SOLANA, name: "Solana", endpoints: 2, sellers: 1, plain: 2 },
+    ]);
+    expect(ours!.networks).toEqual(["eip155:5042", "eip155:8453", SOLANA]);
+    expect(ours!.plainNetworks).toEqual(["eip155:5042", "eip155:8453", SOLANA]);
+    expect(orthogonal!.plainNetworks).toEqual([]);
+    expect(orthogonal!.networks).toEqual(["eip155:5042", "eip155:8453"]);
   });
 });
 
