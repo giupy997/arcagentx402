@@ -176,17 +176,33 @@ async function readRegistry(client: PublicClient, log: Logger): Promise<Registry
   const reader = viemRegistryReader(client, ERC8004_IDENTITY_REGISTRY.arc!);
   const { agents } = await scanRegistry(reader, 5000, 250);
   const entries: RegistryEntry[] = new Array(agents.length);
+  const failed: Array<{ agentId: number; uri: string; error: string }> = [];
+  // A card that fails once may be a slow gateway or a blip: one more try before the agent goes by its number.
+  const readCard = async (agentId: number, uri: string): Promise<unknown> => {
+    try {
+      return await fetchStrangerJson(uri);
+    } catch {
+      await new Promise((r) => setTimeout(r, 1000));
+      try {
+        return await fetchStrangerJson(uri);
+      } catch (err) {
+        failed.push({ agentId, uri: uri.slice(0, 120), error: (err as Error).message.slice(0, 120) });
+        return null;
+      }
+    }
+  };
   let next = 0;
   const worker = async (): Promise<void> => {
     for (let i = next++; i < agents.length; i = next++) {
       const a = agents[i]!;
       const uri = await reader.tokenURI(a.agentId).catch(() => null);
-      const card = uri ? await fetchStrangerJson(uri).catch(() => null) : null;
+      const card = uri ? await readCard(Number(a.agentId), uri) : null;
       entries[i] = { id: Number(a.agentId), owner: a.owner, wallet: a.wallet, card, cardUrl: uri && /^https:\/\//.test(uri) ? uri.slice(0, 300) : null };
     }
   };
   await Promise.all(Array.from({ length: 8 }, worker));
-  log.info({ agents: entries.length, cards: entries.filter((e) => e.card).length }, "erc-8004 registry read for labels");
+  // The first few failures, with why: enough to tell a dead card from a network problem on our side.
+  log.info({ agents: entries.length, cards: entries.filter((e) => e.card).length, unreadable: failed.length, examples: failed.sort((a, b) => b.agentId - a.agentId).slice(0, 4) }, "erc-8004 registry read for labels");
   return entries;
 }
 
@@ -293,4 +309,13 @@ export async function labelsFor(db: Db, addresses: readonly Buffer[]): Promise<M
     out.set(address, list);
   }
   return out;
+}
+
+/** How the labels stand: per source and role, how many and when they were last written. */
+export async function labelsSummary(db: Db): Promise<{ note: string; sources: Array<{ source: LabelSource; role: LabelRole; labels: number; refreshedAt: number }> }> {
+  const note = "Labels come only from sources that state them: Circle's x402 catalogue, the CRA market, our own addresses, the ERC-8004 registry and public facilitators' /supported. Each source is rewritten whole when it is read again.";
+  const exists = await db.query<{ t: string | null }>("SELECT to_regclass('public.address_labels')::text AS t");
+  if (!exists.rows[0]?.t) return { note, sources: [] };
+  const rows = await db.query<{ source: LabelSource; role: LabelRole; n: string; at: string }>("SELECT source, role, count(*) AS n, extract(epoch FROM max(seen_at))::bigint AS at FROM address_labels GROUP BY 1, 2 ORDER BY 1, 2");
+  return { note, sources: rows.rows.map((r) => ({ source: r.source, role: r.role, labels: Number(r.n), refreshedAt: Number(r.at) })) };
 }

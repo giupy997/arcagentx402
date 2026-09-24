@@ -14,7 +14,7 @@ import { activity, deployStats, feeEstimate, feeSummary, fxSummary, networkSumma
 import { mountFacilitator } from "./facilitator.js";
 import { mountLane } from "./lane.js";
 import { directPaymentsSummary, directServices } from "./direct-payments.js";
-import { startLabeler } from "./labels.js";
+import { labelsFor, labelsSummary, startLabeler } from "./labels.js";
 import { mountMarket } from "./market.js";
 import { mountPaidRoutes } from "./paid.js";
 
@@ -115,6 +115,14 @@ app.get("/v1/payments/direct", async (c) =>
     }),
   ),
 );
+/** Who is behind an address on Arc, as public sources say it. Free: it is what those sources already publish. */
+app.get("/v1/labels", async (c) => c.json(await cached("labels", 60_000, () => labelsSummary(db))));
+app.get("/v1/labels/:address", async (c) => {
+  const address = c.req.param("address").toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(address)) return c.json({ error: "give a 0x address" }, 400);
+  const labels = (await labelsFor(db, [Buffer.from(address.slice(2), "hex")])).get(address) ?? [];
+  return c.json({ address, labels: labels.map(({ name, role, source, url, detail }) => ({ name, role, source, url, detail })) });
+});
 /** The known sellers that direct payments reach, by how many payers each has. The base of the usage ranking. */
 app.get("/v1/payments/direct/services", async (c) => c.json(await cached("direct-services", 60_000, () => directServices(db, { network: NETWORK === "mainnet" ? "eip155:5042" : "eip155:5042002" }))));
 /**
