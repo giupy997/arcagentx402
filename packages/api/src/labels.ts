@@ -161,14 +161,34 @@ export async function labelsFromRegistry(entries: readonly RegistryEntry[], deps
 
 /** A stranger's JSON, fetched through the guarded fetch: a card or manifest can point anywhere. */
 export async function fetchStrangerJson(url: string): Promise<unknown> {
-  const target = url.startsWith("ipfs://") ? `https://ipfs.io/ipfs/${url.slice(7)}` : url;
-  if (target.startsWith("data:")) {
-    const [meta, data] = target.split(",", 2);
+  if (url.startsWith("data:")) {
+    const [meta, data] = url.split(",", 2);
     return JSON.parse(meta!.includes("base64") ? Buffer.from(data ?? "", "base64").toString("utf8") : decodeURIComponent(data ?? ""));
   }
-  const res = await safeFetch(target, { maxBytes: 300_000, timeoutMs: 8000 });
-  if (res.status !== 200) throw new Error(`${url} answered ${res.status}`);
-  return JSON.parse(res.body.toString("utf8"));
+  let last: Error | null = null;
+  for (const target of ipfsCandidates(url)) {
+    try {
+      const res = await safeFetch(target, { maxBytes: 300_000, timeoutMs: 8000 });
+      if (res.status === 200) return JSON.parse(res.body.toString("utf8"));
+      last = new Error(`${url} answered ${res.status}`);
+    } catch (err) {
+      last = err as Error;
+    }
+  }
+  throw last ?? new Error(`${url} could not be read`);
+}
+
+/**
+ * Public IPFS gateways, in the order they are asked. ipfs.io and dweb.link answer 429 to servers since
+ * they moved to service-worker retrieval (checked 2026-09-24); Filebase still serves files, and the
+ * others are kept for when it does not.
+ */
+export const IPFS_GATEWAYS = ["https://ipfs.filebase.io/ipfs/", "https://ipfs.io/ipfs/", "https://dweb.link/ipfs/", "https://gateway.pinata.cloud/ipfs/"];
+
+/** Where to read a URL: an IPFS address, as ipfs:// or on any gateway, from each public gateway; anything else as it is. */
+export function ipfsCandidates(url: string): string[] {
+  const path = url.startsWith("ipfs://") ? url.slice(7).replace(/^ipfs\//, "") : /^https:\/\/[^/]+\/ipfs\/(.+)$/.exec(url)?.[1];
+  return path ? IPFS_GATEWAYS.map((g) => `${g}${path}`) : [url];
 }
 
 /** Every agent in the registry, with its card when it can be read. Eight at a time: many cards sit on slow gateways. */
@@ -180,17 +200,23 @@ export async function readRegistry(reader: RegistryReader, fetchJson: (url: stri
   let unreadUris = 0;
   const failed: Array<{ agentId: number; uri: string; error: string }> = [];
   // A card that fails once may be a slow gateway or a blip: one more try before the agent goes by its number.
-  const readCard = async (agentId: number, uri: string): Promise<unknown> => {
+  const fetchOnce = async (uri: string): Promise<unknown> => {
     try {
       return await fetchJson(uri);
     } catch {
       await new Promise((r) => setTimeout(r, 1000));
-      try {
-        return await fetchJson(uri);
-      } catch (err) {
-        failed.push({ agentId, uri: uri.slice(0, 120), error: (err as Error).message.slice(0, 120) });
-        return null;
-      }
+      return fetchJson(uri);
+    }
+  };
+  // Agents often share one card: each address is fetched once per read, however many agents point at it.
+  const byUri = new Map<string, Promise<unknown>>();
+  const readCard = async (agentId: number, uri: string): Promise<unknown> => {
+    if (!byUri.has(uri)) byUri.set(uri, fetchOnce(uri));
+    try {
+      return await byUri.get(uri);
+    } catch (err) {
+      failed.push({ agentId, uri: uri.slice(0, 120), error: (err as Error).message.slice(0, 120) });
+      return null;
     }
   };
   let next = 0;

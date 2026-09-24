@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RegistryReader } from "@cra-agent/identity";
-import { labelsFromCircle, labelsFromFacilitators, labelsFromMarket, labelsFromRegistry, readRegistry, readRegistryFrom, signersFromSupported, type RegistryEntry } from "../src/labels.js";
+import { ipfsCandidates, labelsFromCircle, labelsFromFacilitators, labelsFromMarket, labelsFromRegistry, readRegistry, readRegistryFrom, signersFromSupported, type RegistryEntry } from "../src/labels.js";
 import type { SearchItem } from "../src/search.js";
 
 const EXA = "0xB98eF29eb2be19Ae646A8FC0248255B90A332dbC";
@@ -119,5 +119,34 @@ describe("reading the registry from an endpoint that may refuse us", () => {
     const failing = readRegistryFrom(["https://node.example/v2/SECRETKEY", "https://busy.example/rpc"], () => reader(0), cards);
     await expect(failing).rejects.toThrow(/node\.example: the registry read found no agents; busy\.example/);
     await expect(failing).rejects.not.toThrow(/SECRETKEY/);
+  });
+});
+
+describe("cards on IPFS", () => {
+  const CID = "bafkreibdi6623n3xpf7ymk62ckb4bo75o3qemwkpfvp5i25j66itxvsoei";
+
+  it("asks every public gateway for an IPFS card, whichever way the address is written", () => {
+    const all = ipfsCandidates(`ipfs://${CID}`);
+    expect(all[0]).toBe(`https://ipfs.filebase.io/ipfs/${CID}`);
+    expect(all).toHaveLength(4);
+    expect(ipfsCandidates(`ipfs://ipfs/${CID}/card.json`)[1]).toBe(`https://ipfs.io/ipfs/${CID}/card.json`);
+    expect(ipfsCandidates(`https://some-gateway.example/ipfs/${CID}`)).toEqual(all);
+    expect(ipfsCandidates("https://cra-agent.tech/.well-known/agent.json")).toEqual(["https://cra-agent.tech/.well-known/agent.json"]);
+  });
+
+  it("fetches a card that several agents share once per read", async () => {
+    const shared: RegistryReader = {
+      balanceOf: async () => 0n,
+      agents: async (ids) => ids.map((id) => (Number(id) < 6 ? { owner: "0x0000000000000000000000000000000000000006", wallet: null } : null)),
+      tokenURI: async () => `ipfs://${CID}`,
+    };
+    let fetched = 0;
+    const entries = await readRegistry(shared, async () => {
+      fetched++;
+      return { name: "Shared card" };
+    });
+    expect(entries).toHaveLength(6);
+    expect(entries.every((e) => (e.card as { name: string }).name === "Shared card")).toBe(true);
+    expect(fetched).toBe(1);
   });
 });
