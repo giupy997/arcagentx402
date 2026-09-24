@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { labelsFromCircle, labelsFromFacilitators, labelsFromMarket, labelsFromRegistry, signersFromSupported, type RegistryEntry } from "../src/labels.js";
+import type { RegistryReader } from "@cra-agent/identity";
+import { labelsFromCircle, labelsFromFacilitators, labelsFromMarket, labelsFromRegistry, readRegistry, readRegistryFrom, signersFromSupported, type RegistryEntry } from "../src/labels.js";
 import type { SearchItem } from "../src/search.js";
 
 const EXA = "0xB98eF29eb2be19Ae646A8FC0248255B90A332dbC";
@@ -79,5 +80,44 @@ describe("labels from the ERC-8004 registry", () => {
     const asked: string[] = [];
     await labelsFromRegistry([apex, fuci], { ...deps(asked), maxFetches: 1 });
     expect(asked).toEqual(["https://apexfaucet.xyz/.well-known/x402"]);
+  });
+});
+
+describe("reading the registry from an endpoint that may refuse us", () => {
+  const OWNER = "0x33b37c6d7a98b58da3ccb3f36a4b578053d0ea74" as const;
+  /** A registry with `count` agents, whose token URIs fail for the ids in `badUris`. */
+  const reader = (count: number, badUris: ReadonlySet<number> = new Set()): RegistryReader => ({
+    balanceOf: async () => 0n,
+    agents: async (ids) => ids.map((id) => (Number(id) < count ? { owner: OWNER, wallet: null } : null)),
+    tokenURI: async (id) => {
+      if (badUris.has(Number(id))) throw new Error("429 Too Many Requests");
+      return `https://cards.example/${id}.json`;
+    },
+  });
+  const cards = async (url: string) => ({ name: `Card ${url.split("/").pop()}` });
+
+  it("reads every agent and names it from its card", async () => {
+    const entries = await readRegistry(reader(3), cards);
+    expect(entries.map((e) => [e.id, (e.card as { name: string }).name])).toEqual([
+      [0, "Card 0.json"],
+      [1, "Card 1.json"],
+      [2, "Card 2.json"],
+    ]);
+  });
+
+  it("calls an empty registry a failed read, and so one where most cards cannot even be located", async () => {
+    await expect(readRegistry(reader(0), cards)).rejects.toThrow(/no agents/);
+    await expect(readRegistry(reader(4, new Set([0, 1, 2])), cards)).rejects.toThrow(/3 of 4 card addresses/);
+    // One missing card among several is the agent's problem, not the endpoint's.
+    expect(await readRegistry(reader(4, new Set([3])), cards)).toHaveLength(4);
+  });
+
+  it("moves on to the next endpoint, and names only hosts when every one fails", async () => {
+    const byUrl: Record<string, RegistryReader> = { "https://busy.example/rpc": reader(0), "https://ok.example": reader(2) };
+    const entries = await readRegistryFrom(["https://busy.example/rpc", "https://ok.example"], (u) => byUrl[u]!, cards);
+    expect(entries).toHaveLength(2);
+    const failing = readRegistryFrom(["https://node.example/v2/SECRETKEY", "https://busy.example/rpc"], () => reader(0), cards);
+    await expect(failing).rejects.toThrow(/node\.example: the registry read found no agents; busy\.example/);
+    await expect(failing).rejects.not.toThrow(/SECRETKEY/);
   });
 });

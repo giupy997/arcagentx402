@@ -7,7 +7,7 @@
  * addresses it settles from. Nothing is guessed from behaviour. A source is replaced whole when it is
  * read again, and only when the read worked, so a label lasts as long as its source still says it.
  */
-import { ERC8004_IDENTITY_REGISTRY, scanRegistry, viemRegistryReader } from "@cra-agent/identity";
+import { ERC8004_IDENTITY_REGISTRY, scanRegistry, viemRegistryReader, type RegistryReader } from "@cra-agent/identity";
 import type { Logger } from "pino";
 import { createPublicClient, http, type PublicClient } from "viem";
 import { arc } from "viem/chains";
@@ -172,19 +172,21 @@ export async function fetchStrangerJson(url: string): Promise<unknown> {
 }
 
 /** Every agent in the registry, with its card when it can be read. Eight at a time: many cards sit on slow gateways. */
-async function readRegistry(client: PublicClient, log: Logger): Promise<RegistryEntry[]> {
-  const reader = viemRegistryReader(client, ERC8004_IDENTITY_REGISTRY.arc!);
+export async function readRegistry(reader: RegistryReader, fetchJson: (url: string) => Promise<unknown>, log?: Logger): Promise<RegistryEntry[]> {
   const { agents } = await scanRegistry(reader, 5000, 250);
+  // The registry is never empty: an endpoint that fails every call looks like one, and must not wipe the labels.
+  if (agents.length === 0) throw new Error("the registry read found no agents");
   const entries: RegistryEntry[] = new Array(agents.length);
+  let unreadUris = 0;
   const failed: Array<{ agentId: number; uri: string; error: string }> = [];
   // A card that fails once may be a slow gateway or a blip: one more try before the agent goes by its number.
   const readCard = async (agentId: number, uri: string): Promise<unknown> => {
     try {
-      return await fetchStrangerJson(uri);
+      return await fetchJson(uri);
     } catch {
       await new Promise((r) => setTimeout(r, 1000));
       try {
-        return await fetchStrangerJson(uri);
+        return await fetchJson(uri);
       } catch (err) {
         failed.push({ agentId, uri: uri.slice(0, 120), error: (err as Error).message.slice(0, 120) });
         return null;
@@ -195,15 +197,46 @@ async function readRegistry(client: PublicClient, log: Logger): Promise<Registry
   const worker = async (): Promise<void> => {
     for (let i = next++; i < agents.length; i = next++) {
       const a = agents[i]!;
-      const uri = await reader.tokenURI(a.agentId).catch(() => null);
+      const uri = await reader.tokenURI(a.agentId).catch(() => {
+        unreadUris++;
+        return null;
+      });
       const card = uri ? await readCard(Number(a.agentId), uri) : null;
       entries[i] = { id: Number(a.agentId), owner: a.owner, wallet: a.wallet, card, cardUrl: uri && /^https:\/\//.test(uri) ? uri.slice(0, 300) : null };
     }
   };
   await Promise.all(Array.from({ length: 8 }, worker));
+  // An endpoint that answers the scan but not most token URIs would leave every agent nameless.
+  if (unreadUris > agents.length / 2) throw new Error(`${unreadUris} of ${agents.length} card addresses could not be read`);
   // The first few failures, with why: enough to tell a dead card from a network problem on our side.
-  log.info({ agents: entries.length, cards: entries.filter((e) => e.card).length, unreadable: failed.length, examples: failed.sort((a, b) => b.agentId - a.agentId).slice(0, 4) }, "erc-8004 registry read for labels");
+  log?.info({ agents: entries.length, cards: entries.filter((e) => e.card).length, unreadUris, unreadable: failed.length, examples: failed.sort((a, b) => b.agentId - a.agentId).slice(0, 4) }, "erc-8004 registry read for labels");
   return entries;
+}
+
+/** Public endpoints tried after the configured ones: the registry is worth a second opinion. */
+export const PUBLIC_ARC_RPCS = ["https://rpc.mainnet.arc.io", "https://rpc.quicknode.mainnet.arc.io"];
+
+/**
+ * The registry from the first endpoint that reads it fully. Endpoints the collector keeps busy from the
+ * same address can refuse us, and a refusal looks like an empty registry. Only hosts are logged: an
+ * endpoint's path can hold a key.
+ */
+export async function readRegistryFrom(urls: readonly string[], readerFor: (url: string) => RegistryReader, fetchJson: (url: string) => Promise<unknown>, log?: Logger): Promise<RegistryEntry[]> {
+  const errors: string[] = [];
+  for (const url of [...new Set(urls)]) {
+    try {
+      return await readRegistry(readerFor(url), fetchJson, log);
+    } catch (err) {
+      let host = "endpoint";
+      try {
+        host = new URL(url).host;
+      } catch {
+        /* keep the placeholder */
+      }
+      errors.push(`${host}: ${(err as Error).message.slice(0, 100)}`);
+    }
+  }
+  throw new Error(`could not read the ERC-8004 registry (${errors.join("; ") || "no endpoint"})`);
 }
 
 /** Replace one source's labels, in one transaction, so a reader never sees the source half written. */
@@ -275,14 +308,11 @@ export function startLabeler(opts: LabelerOptions): void {
     });
     if (!slow) return;
     await each("facilitator", () => labelsFromFacilitators(fetchStrangerJson));
-    const rpc = opts.rpcUrls[0];
-    if (rpc) {
-      await each("erc8004", async () => {
-        const client = createPublicClient({ chain: arc, transport: http(rpc, { timeout: 20_000 }) }) as PublicClient;
-        const entries = await readRegistry(client, log);
-        return labelsFromRegistry(entries, { fetchJson: fetchStrangerJson, payToOf: async (url) => (await probe(url, ARC)).payTo });
-      });
-    }
+    await each("erc8004", async () => {
+      const readerFor = (url: string) => viemRegistryReader(createPublicClient({ chain: arc, transport: http(url, { timeout: 20_000, retryCount: 2 }) }) as PublicClient, ERC8004_IDENTITY_REGISTRY.arc!);
+      const entries = await readRegistryFrom([...opts.rpcUrls, ...PUBLIC_ARC_RPCS], readerFor, fetchStrangerJson, log);
+      return labelsFromRegistry(entries, { fetchJson: fetchStrangerJson, payToOf: async (url) => (await probe(url, ARC)).payTo });
+    });
   };
   const loop = async (): Promise<void> => {
     await run().catch((err) => log.warn({ err: (err as Error).message }, "labeler run failed"));
