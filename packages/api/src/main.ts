@@ -13,6 +13,7 @@ import { PAID_ROUTES } from "./routes.js";
 import { activity, deployStats, feeEstimate, feeSummary, fxSummary, networkSummary, recentDeploys, rpcStatus, selftestSummary, settlementsSummary, tokenSummary } from "./queries.js";
 import { mountFacilitator } from "./facilitator.js";
 import { mountLane } from "./lane.js";
+import { directPaymentsSummary } from "./direct-payments.js";
 import { mountMarket } from "./market.js";
 import { mountPaidRoutes } from "./paid.js";
 
@@ -103,6 +104,16 @@ async function facilitatorHealth(): Promise<{ ok: boolean; signer: string | null
 }
 app.get("/v1/settlements", async (c) => c.json(await cached("settlements", 5000, async () => ({ ...(await settlementsSummary(db, OWN_PAYERS)), facilitator: await facilitatorHealth() }))));
 app.get("/v1/selftest", async (c) => c.json(await cached("selftest", 15_000, () => selftestSummary(db))));
+/** Payments by signed authorization on Arc, from the collector's index. Raw activity, not demand: the answer says why. */
+app.get("/v1/payments/direct", async (c) =>
+  c.json(
+    await cached("direct-payments", 60_000, async () => {
+      const f = await facilitatorHealth();
+      const labels = new Map<string, string>(f?.signer ? [[f.signer.toLowerCase(), "CRA AGENT facilitator"]] : []);
+      return directPaymentsSummary(db, { network: NETWORK === "mainnet" ? "eip155:5042" : "eip155:5042002", labels });
+    }),
+  ),
+);
 /**
  * One call for the landing page: what the collector has read, what the market did, what is on sale.
  * Cached, because it is the most requested thing on the site and none of it changes by the second.

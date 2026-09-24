@@ -87,6 +87,11 @@ const EnvSchema = z.object({
   COLLECTOR_RPC_TIMEOUT_MS: intEnv(15_000),
   COLLECTOR_ENDPOINT_LAG_TOLERANCE: intEnv(20),
   FX_ENABLED: boolEnv(false),
+  // Payments made by signed authorization (EIP-3009) are extracted from every block ingested, always: it
+  // costs no call. This switches the one-time fill, from the chain, of blocks read before that.
+  PAYMENTS_ENABLED: boolEnv(true),
+  // Where the one-time history fill starts. 0: the lowest block collected.
+  PAYMENTS_START_BLOCK: intEnv(0),
   TOKEN_ADDRESS: z.string().optional(),
   TOKEN_SYMBOL: z.string().optional(),
   TOKEN_DISTRIBUTOR: z.string().optional(),
@@ -138,6 +143,8 @@ export interface CollectorConfig {
   /** EURC/USDC swap watching. Mainnet addresses from docs.arc.io (2026-09-16). */
   /** Pairs priced in USDC. EURC is on by default on mainnet; the project token is added when TOKEN_ADDRESS is set. */
   readonly fx: { usdc: string; pairs: Array<{ symbol: string; token: string; decimals: number; minPrice: number; maxPrice: number; minBaseUnits: string; maxDeviation: number }> } | null;
+  /** One-time fill of direct (EIP-3009) payments for blocks read before extraction: on/off and where it starts. */
+  readonly payments: { enabled: boolean; startBlock: number };
   readonly telegram: { botToken: string; chatId: string } | null;
   readonly logLevel: string;
 }
@@ -211,6 +218,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): CollectorConfi
           ],
         }
       : null,
+    payments: { enabled: e.PAYMENTS_ENABLED, startBlock: e.PAYMENTS_START_BLOCK },
     telegram: clean(e.TELEGRAM_BOT_TOKEN) && clean(e.TELEGRAM_CHAT_ID) ? { botToken: clean(e.TELEGRAM_BOT_TOKEN)!, chatId: clean(e.TELEGRAM_CHAT_ID)! } : null,
     logLevel: e.LOG_LEVEL,
   };

@@ -14,6 +14,7 @@ import { ProbeWorker } from "./workers/probe.js";
 import { ScannerWorker } from "./workers/scanner.js";
 import { TokenWorker } from "./workers/token.js";
 import { FxWorker } from "./workers/fx.js";
+import { PaymentsWorker } from "./workers/payments.js";
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
@@ -49,6 +50,7 @@ async function main(): Promise<void> {
   const enrich = new EnrichWorker(cfg, db, pool, state, log);
   const token = new TokenWorker(cfg, db, pool, state, log);
   const fx = new FxWorker(cfg, db, pool, state, log);
+  const payments = new PaymentsWorker(cfg, db, pool, state, log);
 
   await head.init();
   await backfill.init();
@@ -62,6 +64,7 @@ async function main(): Promise<void> {
   enrich.start();
   token.start();
   fx.start();
+  payments.start();
   await alerts.info(`collector started: head cursor ${state.headCursor}, chain head ${state.chainHead}, ${pool.endpoints.filter((e) => !e.disabledReason).length} endpoints`);
 
   let shuttingDown = false;
@@ -73,7 +76,7 @@ async function main(): Promise<void> {
       log.error("shutdown timed out, exiting");
       process.exit(1);
     }, 30_000);
-    await Promise.all([head.stop(), backfill.stop(), scanner.stop(), probe.stop(), enrich.stop(), token.stop(), fx.stop()]);
+    await Promise.all([head.stop(), backfill.stop(), scanner.stop(), probe.stop(), enrich.stop(), token.stop(), fx.stop(), payments.stop()]);
     server.close();
     await db.end();
     clearTimeout(timer);

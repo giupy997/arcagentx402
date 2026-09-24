@@ -2,6 +2,7 @@ import { hexQuantityToBigInt, toSqlNumeric, txFee18 } from "@cra-agent/accountin
 import { keccak256 } from "viem";
 import { hexToBytes } from "../db/index.js";
 import type { Hex, RpcBlock, RpcReceipt, RpcTransaction } from "../rpc/types.js";
+import { directPaymentsInBlock, type DirectPaymentRow } from "./payments.js";
 
 export class ParseError extends Error {
   override readonly name = "ParseError";
@@ -152,6 +153,8 @@ export interface ParsedBlockBundle {
   logs: ParsedLog[];
   deploys: ParsedDeploy[];
   failedTxHashes: Buffer[];
+  /** Payments by signed authorization (EIP-3009) in this block. Written in light mode too. */
+  directPayments: DirectPaymentRow[];
 }
 
 export function parseBlockHeader(b: RpcBlock): ParsedBlock {
@@ -283,7 +286,8 @@ export function parseBundle(rawBlock: RpcBlock, rawReceipts: RpcReceipt[], rawMo
     }
     if (pr.status !== 1) failedTxHashes.push(pt.hash);
   }
-  return { block, stats: computeStats(block, txs, receipts), txs, receipts, logs, deploys, failedTxHashes };
+  const directPayments = directPaymentsInBlock(block.timestamp, txs, logs);
+  return { block, stats: computeStats(block, txs, receipts), txs, receipts, logs, deploys, failedTxHashes, directPayments };
 }
 
 /** Failed creations may have contractAddress=null; use the deterministic CREATE address for the row key. */

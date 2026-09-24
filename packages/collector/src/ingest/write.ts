@@ -32,6 +32,7 @@ export async function writeBundle(db: Db, bundle: ParsedBlockBundle, meta: Write
     if (ins.rowCount === 0) return { inserted: false };
     await writeStats(tx, bundle);
     await writeDeploys(tx, bundle);
+    await writeDirectPayments(tx, bundle);
     if (meta.mode === "light") return { inserted: true };
     await writeTxs(tx, bundle);
     await writeReceipts(tx, bundle);
@@ -45,6 +46,29 @@ export async function writeBundle(db: Db, bundle: ParsedBlockBundle, meta: Write
     }
     return { inserted: true };
   });
+}
+
+/** Shared with the history filler, which writes the payments of blocks read before extraction existed. */
+export async function writeDirectPayments(tx: Tx | Db, { directPayments: rows }: Pick<ParsedBlockBundle, "directPayments">): Promise<void> {
+  if (rows.length === 0) return;
+  await tx.query(
+    `INSERT INTO direct_payments (block_number, log_index, tx_hash, "timestamp", token, payer, payee, amount, nonce, relayer, called)
+     SELECT * FROM unnest($1::bigint[], $2::int[], $3::bytea[], $4::bigint[], $5::bytea[], $6::bytea[], $7::bytea[], $8::numeric[], $9::bytea[], $10::bytea[], $11::bytea[])
+     ON CONFLICT DO NOTHING`,
+    [
+      rows.map((r) => r.blockNumber),
+      rows.map((r) => r.logIndex),
+      rows.map((r) => r.txHash),
+      rows.map((r) => r.timestamp),
+      rows.map((r) => r.token),
+      rows.map((r) => r.payer),
+      rows.map((r) => r.payee),
+      rows.map((r) => r.amount.toString()),
+      rows.map((r) => r.nonce),
+      rows.map((r) => r.relayer),
+      rows.map((r) => r.called),
+    ],
+  );
 }
 
 async function writeStats(tx: Tx, { stats: s }: ParsedBlockBundle): Promise<void> {

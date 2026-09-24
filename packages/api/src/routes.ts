@@ -284,6 +284,7 @@ export const FREE_ROUTES: readonly FreeRoute[] = [
   { path: "/v1/rpc", summary: "Per-provider RPC observations", description: "Latency and head lag of each RPC endpoint the collector polls." },
   { path: "/v1/fx", summary: "Headline executed rate for a pair", description: "Last executed rate and the window summary for a pair against USDC. The size curve and the venues are the paid route.", params: [WINDOW, { name: "symbol", type: "string", description: "Base token symbol, quoted in USDC.", example: "EURC" }] },
   { path: "/v1/token", summary: "Token burns, payouts and price", description: "Buyback burns, USDC payouts and the executed price of the project token, read from the chain." },
+  { path: "/v1/payments/direct", summary: "Direct payments on Arc", description: "Payments made by signed authorization (EIP-3009) on Arc, as our collector indexes them: totals, the last 24 hours, per day, and the relayers that submit them. Raw activity from the chain, not demand: self-payment and one funder behind many payers are not told apart yet." },
   { path: "/v1/selftest", summary: "Hourly self-test of the rail", description: "Our own wallet buying our own endpoint every hour, plus the endpoint that must fail without charging. Not customer activity." },
   {
     path: "/v1/market/search",
