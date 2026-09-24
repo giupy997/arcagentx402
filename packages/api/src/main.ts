@@ -13,7 +13,8 @@ import { PAID_ROUTES } from "./routes.js";
 import { activity, deployStats, feeEstimate, feeSummary, fxSummary, networkSummary, recentDeploys, rpcStatus, selftestSummary, settlementsSummary, tokenSummary } from "./queries.js";
 import { mountFacilitator } from "./facilitator.js";
 import { mountLane } from "./lane.js";
-import { directPaymentsSummary } from "./direct-payments.js";
+import { directPaymentsSummary, directServices } from "./direct-payments.js";
+import { startLabeler } from "./labels.js";
 import { mountMarket } from "./market.js";
 import { mountPaidRoutes } from "./paid.js";
 
@@ -114,6 +115,8 @@ app.get("/v1/payments/direct", async (c) =>
     }),
   ),
 );
+/** The known sellers that direct payments reach, by how many payers each has. The base of the usage ranking. */
+app.get("/v1/payments/direct/services", async (c) => c.json(await cached("direct-services", 60_000, () => directServices(db, { network: NETWORK === "mainnet" ? "eip155:5042" : "eip155:5042002" }))));
 /**
  * One call for the landing page: what the collector has read, what the market did, what is on sale.
  * Cached, because it is the most requested thing on the site and none of it changes by the second.
@@ -161,7 +164,17 @@ app.get("/v1/health", async (c) => {
   }
 });
 mountPaidRoutes(app, db, NETWORK, log);
-mountMarket(app, db, NETWORK, log);
+const market = mountMarket(app, db, NETWORK, log);
+// Who is behind the addresses in the direct payments: mainnet only, since the sources describe mainnet.
+if (NETWORK === "mainnet" && process.env.LABELS !== "off") {
+  startLabeler({
+    db,
+    log,
+    circle: market.circle,
+    ours: async () => ({ seller: process.env.SELLER_ADDRESS ?? null, facilitator: (await facilitatorHealth())?.signer ?? null }),
+    rpcUrls: (process.env.ARC_RPC_URLS ?? "").split(",").map((u) => u.trim()).filter(Boolean),
+  });
+}
 mountLane(app, db, log);
 mountFacilitator(app, db, NETWORK, log);
 

@@ -130,7 +130,7 @@ function defaultCircle(network: string, caip2: string, log: Logger): CircleCatal
   return circle;
 }
 
-export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opts: { circle?: CircleCatalogue | null } = {}): void {
+export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opts: { circle?: CircleCatalogue | null } = {}): { circle: CircleCatalogue | null } {
   const caip2 = network === "mainnet" ? "eip155:5042" : "eip155:5042002";
   const circle = opts.circle === undefined ? defaultCircle(network, caip2, log) : opts.circle;
   const upsert = (p: Probe): Promise<unknown> =>
@@ -272,4 +272,5 @@ export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opt
       note: "Prices are what each seller asked when last seen: pay with a ceiling at the listed price (arc_pay maxUsdc), and a seller that asks more is refused before anything is signed. Example values in a URL or body are examples: change them to what you need, following params. A {placeholder} in a URL must be replaced. method POST means the params marked body go in a JSON body.",
     });
   });
+  return { circle };
 }

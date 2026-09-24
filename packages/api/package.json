@@ -15,6 +15,7 @@
     "pino": "^9.7.0",
     "viem": "^2.31.0",
     "zod": "^3.25.0",
-    "@cra-agent/seller": "0.0.11"
+    "@cra-agent/seller": "0.0.11",
+    "@cra-agent/identity": "0.0.11"
   }
 }
