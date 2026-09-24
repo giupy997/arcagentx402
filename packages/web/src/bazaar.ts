@@ -23,13 +23,13 @@ interface Seller {
   families: string[];
   familyCount: number;
   rail: "gateway" | "direct" | "both";
-  networks: string[];
-  plainNetworks: string[];
+  networks?: string[];
+  plainNetworks?: string[];
 }
 interface Overview {
   counts: { endpoints: number; sellers: number; categories: number };
   categories: Array<{ name: string; endpoints: number; sellers: number }>;
-  networks: Array<{ id: string; name: string; endpoints: number; sellers: number; plain: number }>;
+  networks?: Array<{ id: string; name: string; endpoints: number; sellers: number; plain: number; logo?: string | null }>;
   sellers: Seller[];
 }
 interface Found {
@@ -59,7 +59,15 @@ const ARC = "eip155:5042";
 /** Short names for the address bar and the badges; the rest show as the API names them. */
 const ALIAS: Record<string, string> = { "eip155:5042": "arc", "eip155:8453": "base", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "solana", "eip155:1": "ethereum", "eip155:137": "polygon", "eip155:42161": "arbitrum", "eip155:10": "optimism", "eip155:43114": "avalanche" };
 const FROM_ALIAS = Object.fromEntries(Object.entries(ALIAS).map(([id, a]) => [a, id]));
-const netName = (id: string) => overview?.networks.find((n) => n.id === id)?.name ?? id;
+const networkOf = (id: string) => overview?.networks?.find((n) => n.id === id);
+const netName = (id: string) => networkOf(id)?.name ?? id;
+/** A network's logo, read by our API from the network's own site; nothing when it has none. */
+const netIcon = (id: string) => {
+  const logo = networkOf(id)?.logo;
+  return logo ? `<img class="net-ico" src="${esc(API_BASE + logo)}" alt="" loading="lazy" decoding="async">` : "";
+};
+/** A network by logo and name, as it appears in a sentence. */
+const net = (id: string) => `<span class="net">${netIcon(id)}${esc(netName(id))}</span>`;
 const host = (site: string | null) => {
   try {
     return site ? new URL(site).host.replace(/^www\./, "") : "";
@@ -84,6 +92,14 @@ function logo(s: { name: string; source: Source; logo: string | null }, size: "s
   return `<span class="b-logo ${size}"><img src="${esc(API_BASE + s.logo)}" alt="" loading="lazy" decoding="async">${monogram(s.name)}</span>`;
 }
 
+/** A network icon that does not load simply goes: the name next to it says the same. */
+function hideBrokenIcons(root: HTMLElement): void {
+  for (const img of root.querySelectorAll<HTMLImageElement>("img.net-ico")) {
+    if (img.complete && img.naturalWidth === 0) img.remove();
+    else img.addEventListener("error", () => img.remove(), { once: true });
+  }
+}
+
 /** Broken logos show the monogram instead: images arrive after the markup, so this runs after each render. */
 function watchLogos(root: HTMLElement): void {
   for (const img of root.querySelectorAll<HTMLImageElement>(".b-logo img")) {
@@ -97,21 +113,23 @@ let overview: Overview | null = null;
 const logoOf = new Map<string, Seller>();
 const state: { q: string; seller: string | null; category: string | null; network: string | null } = { q: "", seller: null, category: null, network: null };
 
-/** "Arc, Base, +5 more": a list of networks by name, the first few. */
+/** "Arc, Base, +5 more": a list of networks with their logos, the first few. Returns HTML. */
 function names(list: readonly string[], max = 3): string {
-  return `${list.slice(0, max).map(netName).join(", ")}${list.length > max ? `, +${list.length - max} more` : ""}`;
+  const rest = list.length - max;
+  return `${list.slice(0, max).map(net).join(" ")}${rest > 0 ? ` <span class="net-more" title="${esc(list.slice(max).map(netName).join(", "))}">+${rest}</span>` : ""}`;
 }
 
 /**
  * How something takes payment, network by network: any x402 client where it takes a plain transfer,
  * Circle Gateway where it takes only Gateway's batched payment (USDC deposited in Gateway first).
+ * Returns HTML: networks come with their logos.
  */
 function howToPay(networks: readonly string[] | undefined, plain: readonly string[] | undefined): string {
   const all = networks?.length ? networks : [ARC];
   const open = new Set(plain ?? []);
   const any = all.filter((n) => open.has(n));
   const gateway = all.filter((n) => !open.has(n));
-  return [any.length ? `any x402 client on ${names(any)}` : "", gateway.length ? `Circle Gateway on ${names(gateway)}` : ""].filter(Boolean).join(" · ");
+  return [any.length ? `<span class="pay-way">any x402 client</span> ${names(any)}` : "", gateway.length ? `<span class="pay-way">Circle Gateway</span> ${names(gateway)}` : ""].filter(Boolean).join(` <span class="pay-sep">·</span> `);
 }
 
 function sellerCard(s: Seller): string {
@@ -124,7 +142,7 @@ function sellerCard(s: Seller): string {
     <header>${logo(s, "lg")}<div class="seller-name"><h3>${esc(s.name)}</h3><div class="sub">${s.site ? `<a href="${esc(s.site)}" rel="noopener noreferrer nofollow" target="_blank">${esc(host(s.site))}</a>` : ""}</div></div><span class="badge ${s.source}">${esc(LISTED_BY[s.source])}</span></header>
     ${about ? `<p>${esc(about)}</p>` : ""}
     ${families}${cats}
-    <div class="seller-nets"><span class="b-chips-label">Pays</span> ${esc(howToPay(s.networks, s.plainNetworks))}</div>
+    <div class="seller-nets">${howToPay(s.networks, s.plainNetworks)}</div>
     <footer><span class="seller-stats"><b>${s.endpoints}</b> ${s.endpoints === 1 ? "endpoint" : "endpoints"} · ${price} per call</span><button type="button" class="btn" data-seller="${esc(s.name)}">See them</button></footer>
   </article>`;
 }
@@ -133,7 +151,7 @@ function hit(r: Found): string {
   const seller = logoOf.get(`${r.source}|${r.name}`);
   const needs = r.params.filter((p) => p.required).map((p) => p.name);
   const what = r.label ?? r.description ?? r.name;
-  const how = esc(howToPay(r.networks, r.plainNetworks));
+  const how = howToPay(r.networks, r.plainNetworks);
   return `<li class="hit">
     ${logo({ name: r.name, source: r.source, logo: seller?.logo ?? null }, "sm")}
     <div class="hit-main">
@@ -159,11 +177,11 @@ function renderCategories(): void {
   if (!overview) return;
   const chip = (name: string | null, label: string, n: number) => `<button type="button" class="chip${state.category === name ? " on" : ""}" data-category="${esc(name ?? "")}">${esc(label)} <span>${n}</span></button>`;
   $("b-cats").innerHTML = `<span class="b-chips-label">Kinds</span>${chip(null, "All", overview.counts.endpoints)}${overview.categories.map((c) => chip(c.name, c.name, c.endpoints)).join("")}`;
-  const net = (id: string | null, label: string, n: number, title: string) => `<button type="button" class="chip${state.network === id ? " on" : ""}" data-network="${esc(id ?? "")}" title="${esc(title)}">${esc(label)} <span>${n}</span></button>`;
-  $("b-nets").innerHTML = `<span class="b-chips-label">Pays on</span>${net(null, "Any", overview.counts.endpoints, "every network")}${overview.networks
-    .slice(0, 6)
-    .map((n) => net(n.id, n.name, n.endpoints, `${n.endpoints} payable on ${n.name}: ${n.plain} from any x402 client, ${n.endpoints - n.plain} through Circle Gateway only`))
+  const chipNet = (id: string | null, label: string, n: number, title: string) => `<button type="button" class="chip${state.network === id ? " on" : ""}" data-network="${esc(id ?? "")}" title="${esc(title)}">${id ? netIcon(id) : ""}${esc(label)} <span>${n}</span></button>`;
+  $("b-nets").innerHTML = `<span class="b-chips-label">Pays on</span>${chipNet(null, "Any", overview.counts.endpoints, "every network")}${(overview.networks ?? [])
+    .map((n) => chipNet(n.id, n.name, n.endpoints, `${n.endpoints} payable on ${n.name}: ${n.plain} from any x402 client, ${n.endpoints - n.plain} through Circle Gateway only`))
     .join("")}`;
+  hideBrokenIcons($("b-nets"));
 }
 
 /** Runs the search for the current state: words, a seller, a kind, or any mix of them. */
@@ -191,6 +209,7 @@ async function run(): Promise<void> {
     status.innerHTML = `${d.count ? `${d.count} ${d.count === 1 ? "result" : "results"}` : "Nothing found"}${words ? ` for “${esc(words)}”` : ""}${filters ? ` ${filters}` : ""}.${clear}`;
     out.innerHTML = d.results.map(hit).join("");
     watchLogos(out);
+    hideBrokenIcons(out);
     $("s-clear")?.addEventListener("click", () => {
       state.seller = null;
       state.category = null;
@@ -216,7 +235,7 @@ async function load(): Promise<void> {
   if (dot) dot.className = "dot ok";
   for (const s of overview.sellers) logoOf.set(`${s.source}|${s.name}`, s);
   const { endpoints, sellers } = overview.counts;
-  const onBase = overview.networks.find((n) => n.id === "eip155:8453")?.endpoints ?? 0;
+  const onBase = overview.networks?.find((n) => n.id === "eip155:8453")?.endpoints ?? 0;
   $("b-meta").textContent = `${endpoints} paid APIs from ${sellers} sellers · paid per call in USDC on Arc${onBase ? `, ${onBase} of them on Base too` : ""} · searched the same way by people and agents`;
   $("b-count").textContent = `${endpoints} endpoints, ${sellers} sellers`;
   $("b-sellers-sub").textContent = `${sellers} sellers, every one payable on Arc.`;
@@ -224,6 +243,7 @@ async function load(): Promise<void> {
   watchLogos($("b-logos"));
   $("b-sellers").innerHTML = overview.sellers.map(sellerCard).join("");
   watchLogos($("b-sellers"));
+  hideBrokenIcons($("b-sellers"));
   renderCategories();
 }
 

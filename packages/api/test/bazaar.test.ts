@@ -66,11 +66,13 @@ describe("the bazaar, by seller", () => {
     expect(b.categories[0]).toEqual({ name: "Web search & research", endpoints: 2, sellers: 1 });
     // What an agent on each network can buy here: Arc everything, Base all but one, Solana only ours.
     // "plain": how many take a payment from any x402 client there, rather than through Circle Gateway only.
-    expect(b.networks).toEqual([
+    expect(b.networks.map(({ logo: _l, ...n }) => n)).toEqual([
       { id: "eip155:5042", name: "Arc", endpoints: 7, sellers: 3, plain: 1 },
       { id: "eip155:8453", name: "Base", endpoints: 6, sellers: 3, plain: 2 },
       { id: SOLANA, name: "Solana", endpoints: 2, sellers: 1, plain: 2 },
     ]);
+    // Each network's logo comes the same way a seller's does: read from its own site by our server.
+    expect(b.networks[1]!.logo).toBe("/v1/bazaar/logo?site=https%3A%2F%2Fwww.base.org");
     expect(ours!.networks).toEqual(["eip155:5042", "eip155:8453", SOLANA]);
     expect(ours!.plainNetworks).toEqual(["eip155:5042", "eip155:8453", SOLANA]);
     expect(orthogonal!.plainNetworks).toEqual([]);

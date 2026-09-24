@@ -41,8 +41,8 @@ export interface BazaarOverview {
   network: string;
   counts: { endpoints: number; sellers: number; categories: number };
   categories: Array<{ name: string; endpoints: number; sellers: number }>;
-  /** How much of the bazaar each network can pay for: an agent on Base, say, sees what it can buy. */
-  networks: Array<{ id: string; name: string; endpoints: number; sellers: number; plain: number }>;
+  /** How much of the bazaar each network can pay for: an agent on Base, say, sees what it can buy. Arc, Base and Solana first. */
+  networks: Array<{ id: string; name: string; endpoints: number; sellers: number; plain: number; logo: string | null }>;
   sellers: BazaarSeller[];
   circleReadAt: number | null;
   note: string;
@@ -64,8 +64,34 @@ export const NETWORK_NAMES: Record<string, string> = {
   "eip155:59144": "Linea",
   "eip155:480": "World Chain",
   "eip155:1329": "Sei",
+  "eip155:146": "Sonic",
+  "eip155:999": "HyperEVM",
   "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "Solana",
 };
+/** Each network's own site, where its logo is read from, the same way a seller's is. */
+export const NETWORK_SITES: Record<string, string> = {
+  "eip155:5042": "https://www.arc.network",
+  "eip155:5042002": "https://www.arc.network",
+  "eip155:8453": "https://www.base.org",
+  "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "https://solana.com",
+  "eip155:1": "https://ethereum.org",
+  "eip155:137": "https://polygon.technology",
+  "eip155:42161": "https://arbitrum.io",
+  "eip155:10": "https://www.optimism.io",
+  // avax.network serves no raster icon; its builders' site does.
+  "eip155:43114": "https://build.avax.network",
+  "eip155:130": "https://www.unichain.org",
+  "eip155:59144": "https://linea.build",
+  "eip155:480": "https://world.org",
+  "eip155:1329": "https://www.sei.io",
+  "eip155:146": "https://www.soniclabs.com",
+  "eip155:999": "https://hyperliquid.xyz",
+};
+/** The networks CRA AGENT's own routes take, shown first wherever networks are listed. */
+const LEAD = ["eip155:5042", "eip155:5042002", "eip155:8453", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"];
+const lead = (id: string): number => (LEAD.includes(id) ? LEAD.indexOf(id) : LEAD.length);
+const logoPath = (site: string): string => `/v1/bazaar/logo?site=${encodeURIComponent(site)}`;
+
 /** Path segments that say how an API is served, not what it sells. */
 const PLUMBING = new Set(["api", "apis", "v0", "v1", "v2", "v3", "paid", "direct", "standard", "evm", "x402", "public", "rest"]);
 
@@ -116,7 +142,7 @@ export function bazaarOverview(cat: Catalogue, network: string): BazaarOverview 
       name: first.name,
       source: first.source,
       site,
-      logo: ours || !site ? null : `/v1/bazaar/logo?site=${encodeURIComponent(site)}`,
+      logo: ours || !site ? null : logoPath(site),
       // A proxy of many APIs has no one sentence for itself; its families say more.
       description: ours ? OURS_DESCRIPTION : shared ? description : null,
       categories: topKeys(tally(list, (i) => i.category), 3),
@@ -126,8 +152,8 @@ export function bazaarOverview(cat: Catalogue, network: string): BazaarOverview 
       families: families.size > 1 ? topKeys(families, 10) : [],
       familyCount: families.size > 1 ? families.size : 0,
       rail: rails.size > 1 ? "both" : first.rail,
-      networks: [...networks].sort((a, b) => Number(b[0] === network) - Number(a[0] === network) || b[1] - a[1]).map(([n]) => n),
-      plainNetworks: [...new Set(list.flatMap((i) => i.plainNetworks))].sort((a, b) => Number(b === network) - Number(a === network)),
+      networks: [...networks].sort((a, b) => lead(a[0]) - lead(b[0]) || b[1] - a[1]).map(([n]) => n),
+      plainNetworks: [...new Set(list.flatMap((i) => i.plainNetworks))].sort((a, b) => lead(a) - lead(b)),
     };
   });
   // Ours first, it is our bazaar and says so; then by how much each sells.
@@ -145,8 +171,8 @@ export function bazaarOverview(cat: Catalogue, network: string): BazaarOverview 
     }
   }
   const networks = [...perNetwork]
-    .map(([id, r]) => ({ id, name: NETWORK_NAMES[id] ?? id, endpoints: r.endpoints, sellers: r.sellers.size, plain: r.plain }))
-    .sort((a, b) => Number(b.id === network) - Number(a.id === network) || b.endpoints - a.endpoints);
+    .map(([id, r]) => ({ id, name: NETWORK_NAMES[id] ?? id, endpoints: r.endpoints, sellers: r.sellers.size, plain: r.plain, logo: NETWORK_SITES[id] ? logoPath(NETWORK_SITES[id]) : null }))
+    .sort((a, b) => lead(a.id) - lead(b.id) || b.endpoints - a.endpoints);
   return {
     network,
     counts: { endpoints: items.length, sellers: sellers.length, categories: categories.length },
@@ -242,7 +268,7 @@ export function mountBazaar(app: Hono, deps: { catalogue: (origin: string) => Pr
     const hit = latest.get(origin);
     if (hit && Date.now() - hit.at < 60_000) return hit;
     const body = bazaarOverview(await deps.catalogue(origin), caip2);
-    const fresh = { at: Date.now(), body, sites: new Set(body.sellers.flatMap((s) => (s.site ? [s.site] : []))) };
+    const fresh = { at: Date.now(), body, sites: new Set([...body.sellers.flatMap((s) => (s.site ? [s.site] : [])), ...Object.values(NETWORK_SITES)]) };
     if (latest.size > 8) latest.clear();
     latest.set(origin, fresh);
     return fresh;
