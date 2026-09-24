@@ -20,8 +20,13 @@ import type { RuntimeState } from "../state.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const hex = (n: number) => `0x${n.toString(16)}`;
-/** Every public Arc endpoint takes a log range this size; some refuse 10,000. */
-const WINDOW = 2000;
+/**
+ * Log ranges: as wide as the endpoints take (some refuse 10,000 blocks), halved when every endpoint
+ * refuses one, widened again after each range that worked. Most of Arc's early history is empty, and
+ * a fixed small range spends hours asking about nothing.
+ */
+const WINDOW_MAX = 9000;
+const WINDOW_MIN = 500;
 const RECEIPTS_PER_BATCH = 50;
 
 /** Where the history fill stands. `until` is the first block ingested with extraction: below it, this fills. */
@@ -93,6 +98,7 @@ export class PaymentsWorker {
 
   private async run(start: PaymentsFill): Promise<void> {
     let fill = start;
+    let window = WINDOW_MAX;
     this.log.info({ ...fill }, "direct payments history fill started");
     while (!this.stopped && fill.cursor < fill.until) {
       try {
@@ -101,12 +107,22 @@ export class PaymentsWorker {
           await sleep(5000);
           continue;
         }
-        const to = Math.min(fill.cursor + WINDOW - 1, fill.until - 1);
-        const logs = await this.authLogs(fill.cursor, to);
+        const to = Math.min(fill.cursor + window - 1, fill.until - 1);
+        let logs: RpcLog[];
+        try {
+          logs = await this.authLogs(fill.cursor, to);
+        } catch (err) {
+          if (window > WINDOW_MIN) {
+            window = Math.max(WINDOW_MIN, Math.floor(window / 2));
+            continue;
+          }
+          throw err;
+        }
         const receipts = await this.receipts([...new Set(logs.map((l) => l.transactionHash.toLowerCase()))]);
         await writeDirectPayments(this.db, { directPayments: paymentsFromReceipts(receipts) });
         fill = { ...fill, cursor: to + 1 };
         await setState(this.db, "direct_payments", fill);
+        window = Math.min(WINDOW_MAX, window * 2);
         if (fill.cursor >= fill.until) this.log.info({ ...fill }, "direct payments history filled");
       } catch (err) {
         this.log.warn({ err: (err as Error).message, cursor: fill.cursor }, "direct payments history fill retry");
