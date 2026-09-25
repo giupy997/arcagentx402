@@ -107,6 +107,7 @@
         <label class="field"><span>Wallet that gets paid</span><input id="s-payto" spellcheck="false" autocomplete="off" placeholder="0x…"><small>An address you control on Arc. Only the address: never a key.</small></label>
         <label class="field"><span>Solana address (optional)</span><input id="s-solana" spellcheck="false" autocomplete="off" placeholder="Leave empty to sell on Arc only"><small>Most x402 buyers today are on Solana. With this, the same routes are also for sale to them, and they pay you in USDC on Solana, on this address. Nothing crosses chains.</small></label>
         <label class="field"><span>Lightning connection file (optional)</span><input id="s-lightning" spellcheck="false" autocomplete="off" placeholder="Leave empty to sell without Lightning"><small>To be paid in sats as well, on your own Lightning node. Write the path, on the machine that runs the command, of a file that holds a receive-only Nostr Wallet Connect string from your node, like /home/you/.secrets/nwc-receive. Only the path: never the connection itself.</small></label>
+        <label class="field check"><span><input type="checkbox" id="s-lnfac"> Let the CRA facilitator check the Lightning payments</span><small>A Lightning payment is checked once and its proof remembered, so it cannot be used twice. By default the command keeps that record in a file on your machine. With this, our facilitator keeps it instead: open to anyone, no registration, nothing to pay. Pick one and keep it.</small></label>
       </div>
     </div>
     <div class="chart-card wide">

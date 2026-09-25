@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { checkLnbtcChallenge, LNBTC_MAINNET, localLightning, MemoryReplayStore, payLnbtcChallenge } from "@cra-agent/lightning";
+import { checkLnbtcChallenge, LNBTC_MAINNET, lnbtcFacilitatorClient, localLightning, MemoryReplayStore, payLnbtcChallenge, settleLnbtc, type LnbtcFacilitatorClient } from "@cra-agent/lightning";
 import { createProxyApp, type LightningSettlement } from "../src/proxy.js";
 
 const PAY_TO = "0x33b37c6d7a98b58da3Ccb3F36A4b578053d0Ea74";
@@ -17,7 +17,7 @@ beforeAll(() => {
 });
 afterAll(() => void vi.unstubAllGlobals());
 
-function world(o: { slowNode?: boolean } = {}) {
+function world(o: { slowNode?: boolean; facilitator?: LnbtcFacilitatorClient } = {}) {
   const node = localLightning({ privateKey: KEY });
   const upstream: Array<{ url: string; body: string }> = [];
   const settled: LightningSettlement[] = [];
@@ -37,7 +37,7 @@ function world(o: { slowNode?: boolean } = {}) {
     routes: [{ pattern: "/*", price: "0.002" }],
     free: ["/health"],
     facilitatorUrl: FACILITATOR,
-    lightning: { receiver, network: LNBTC_MAINNET, replay: new MemoryReplayStore(), rate: async () => ({ rate: "84000", sources: {}, at: 0 }), offerTimeoutMs: 100, onSettled: (e) => void settled.push(e) },
+    lightning: { receiver, network: LNBTC_MAINNET, ...(o.facilitator ? { facilitator: o.facilitator } : { replay: new MemoryReplayStore() }), rate: async () => ({ rate: "84000", sources: {}, at: 0 }), offerTimeoutMs: 100, onSettled: (e) => void settled.push(e) },
     fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
       upstream.push({ url: String(input), body: init?.body ? Buffer.from(init.body as ArrayBuffer).toString() : "" });
       return Response.json({ answer: 42 });
@@ -109,6 +109,42 @@ describe("selling an API in sats as well", () => {
     const res = await slow.app.request("http://seller.test/v1/forecast", { headers: { accept: "application/json" } });
     expect(res.status).toBe(402);
     expect(decode(res.headers.get("PAYMENT-REQUIRED")).accepts.map((a: { network: string }) => a.network)).toEqual(["eip155:5042"]);
+  });
+
+  it("can leave the proofs to a facilitator, which then remembers them in its place", async () => {
+    const replay = new MemoryReplayStore();
+    const calls: string[] = [];
+    const facilitatorFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(String(input).replace("https://facilitator.example", ""));
+      if (String(input).endsWith("/supported")) return Response.json({ kinds: [{ x402Version: 2, scheme: "exact", network: LNBTC_MAINNET }] });
+      const b = JSON.parse(String(init!.body));
+      const s = await settleLnbtc(b.paymentPayload, b.paymentRequirements, { replay });
+      return Response.json(s.success ? s : { ...s, transaction: "" });
+    }) as typeof fetch;
+    const facilitator = lnbtcFacilitatorClient("https://facilitator.example", { fetchImpl: facilitatorFetch });
+    expect(await facilitator.supports(LNBTC_MAINNET)).toBe(true);
+    const w = world({ facilitator });
+    const url = "http://seller.test/v1/forecast";
+    const { checked, proof } = await pay(w, url);
+    const res = await w.app.request(url, { headers: { "PAYMENT-SIGNATURE": proof } });
+    expect(res.status).toBe(200);
+    expect(decode(res.headers.get("PAYMENT-RESPONSE")).transaction).toBe(checked.invoice.paymentHash);
+    const again = await w.app.request(url, { headers: { "PAYMENT-SIGNATURE": proof } });
+    expect(decode(again.headers.get("PAYMENT-REQUIRED")).error).toBe("duplicate_settlement");
+    expect(calls).toEqual(["/supported", "/settle", "/settle"]);
+    expect(w.upstream).toHaveLength(1);
+    expect((await (await w.app.request("http://seller.test/.well-known/x402")).json()).lightning.settledBy).toBe("https://facilitator.example");
+  });
+
+  it("answers 503 when the facilitator cannot be reached, so the buyer can send the same proof again", async () => {
+    const down = lnbtcFacilitatorClient("https://facilitator.example", { fetchImpl: (async () => new Response("busy", { status: 503 })) as typeof fetch });
+    const w = world({ facilitator: down });
+    const url = "http://seller.test/v1/forecast";
+    const { proof } = await pay(w, url);
+    const res = await w.app.request(url, { headers: { "PAYMENT-SIGNATURE": proof } });
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toMatch(/nothing was claimed/);
+    expect(w.upstream).toHaveLength(0);
   });
 
   it("lists the Lightning rail with the node's key on /.well-known/x402", async () => {

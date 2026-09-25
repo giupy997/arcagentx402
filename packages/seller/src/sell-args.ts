@@ -7,6 +7,8 @@ export interface SellArgs {
   payToSolana?: string;
   /** A file holding the seller's receive-only Nostr Wallet Connect string: also sell in sats, paid to that node. */
   payToLightning?: string;
+  /** Where Lightning proofs are checked and remembered, when not on this machine: an x402 facilitator that settles lnbtc. */
+  lightningFacilitatorUrl?: string;
   network: "arc" | "arcTestnet";
   port: number;
   routes: PricedPath[];
@@ -28,7 +30,7 @@ export function parseSellArgs(argv: readonly string[]): SellArgs {
     const [key, value] = eq > 0 && !a.startsWith("--route") && !a.startsWith("--upstream-header") ? [a.slice(2, eq), a.slice(eq + 1)] : [a.slice(2), argv[++i] ?? ""];
     many.set(key, [...(many.get(key) ?? []), value]);
   }
-  const known = ["target", "pay-to", "pay-to-solana", "pay-to-lightning", "price", "route", "free", "name", "description", "network", "port", "upstream-header", "facilitator", "list"];
+  const known = ["target", "pay-to", "pay-to-solana", "pay-to-lightning", "lightning-facilitator", "price", "route", "free", "name", "description", "network", "port", "upstream-header", "facilitator", "list"];
   for (const k of many.keys()) if (!known.includes(k)) throw new Error(`unknown option --${k}`);
   const one = (k: string): string | undefined => many.get(k)?.at(-1);
 
@@ -61,9 +63,13 @@ export function parseSellArgs(argv: readonly string[]): SellArgs {
   }
   // "cra" is our facilitator: it settles for registered wallets on Arc and lets browser wallets pay.
   const facilitatorUrl = one("facilitator") === "cra" ? "https://api.cra-agent.tech/facilitator" : one("facilitator");
+  const lnf = one("lightning-facilitator");
+  if (lnf !== undefined && !payToLightning) throw new Error("--lightning-facilitator goes with --pay-to-lightning");
+  if (lnf !== undefined && lnf !== "cra" && !/^https:\/\/\S+$/i.test(lnf)) throw new Error("--lightning-facilitator takes cra or the https URL of an x402 facilitator that settles lnbtc");
+  const lightningFacilitatorUrl = lnf === "cra" ? "https://api.cra-agent.tech/facilitator" : lnf;
   const list = one("list");
   if (list && !/^https:\/\/\S+$/i.test(list)) throw new Error("--list takes the public https URL buyers will call");
   const name = one("name");
   const description = one("description");
-  return { target, payTo, network, port, routes, free: many.get("free") ?? [], upstreamHeaders, ...(payToSolana ? { payToSolana } : {}), ...(payToLightning ? { payToLightning } : {}), ...(name ? { name } : {}), ...(description ? { description } : {}), ...(facilitatorUrl ? { facilitatorUrl } : {}), ...(list ? { list } : {}) };
+  return { target, payTo, network, port, routes, free: many.get("free") ?? [], upstreamHeaders, ...(payToSolana ? { payToSolana } : {}), ...(payToLightning ? { payToLightning } : {}), ...(lightningFacilitatorUrl ? { lightningFacilitatorUrl } : {}), ...(name ? { name } : {}), ...(description ? { description } : {}), ...(facilitatorUrl ? { facilitatorUrl } : {}), ...(list ? { list } : {}) };
 }

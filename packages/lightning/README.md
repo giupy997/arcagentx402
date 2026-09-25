@@ -15,6 +15,9 @@ The x402 `exact` scheme on Bitcoin Lightning (`lnbtc`), as specified in x402's
   CRA API and `cra-agent-sell --pay-to-lightning` both use it.
 - `PgReplayStore` (Postgres) and `FileReplayStore` (one local file, for a seller without a database) keep
   settled proofs past a restart.
+- `lnbtcFacilitatorClient(url)` settles through an x402 facilitator that supports `lnbtc`, such as ours at
+  `https://api.cra-agent.tech/facilitator`, in place of a local store: pass it to `lnbtcPaywall` as
+  `facilitator`.
 - `nwcReceiver` / `nwcPayer` reach a node over Nostr Wallet Connect. The receiver refuses a connection that
   could pay. `btcUsdRate` is the median of three exchanges, with no price when they disagree.
 

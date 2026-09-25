@@ -6,12 +6,16 @@
 import { usdToMsat } from "./amounts.js";
 import { httpBinding } from "./binding.js";
 import type { BtcUsd } from "./btcusd.js";
-import { issueLnbtcChallenge, settleLnbtc, type LnbtcRequirements, type LnbtcSettleError, type ReceiverAdapter, type ReplayStore } from "./lnbtc.js";
+import type { LnbtcFacilitatorClient } from "./facilitator-client.js";
+import { issueLnbtcChallenge, settleLnbtc, type LnbtcRequirements, type LnbtcSettlement, type LnbtcSettleError, type ReceiverAdapter, type ReplayStore } from "./lnbtc.js";
 
 export interface LnbtcPaywallOptions {
   readonly receiver: () => Promise<ReceiverAdapter>;
   readonly network: string;
-  readonly replay: ReplayStore;
+  /** Where proofs are claimed, here. Give this or `facilitator`, never both for one node. */
+  readonly replay?: ReplayStore;
+  /** A facilitator that checks and claims proofs in its own store, in place of `replay`. */
+  readonly facilitator?: LnbtcFacilitatorClient;
   readonly rate: () => Promise<BtcUsd>;
   /** The least an invoice asks, in millisatoshis. Default 1,000: one sat. */
   readonly minMsat?: bigint;
@@ -42,7 +46,7 @@ export type LnbtcOffer =
 export type LnbtcSettled =
   | { readonly ok: true; readonly settlement: { readonly success: true; readonly transaction: string; readonly network: string }; readonly amountMsat: string }
   | { readonly ok: false; readonly status: 402; readonly error: LnbtcSettleError }
-  | { readonly ok: false; readonly status: 503; readonly error: "node_unavailable" | "replay_store_unavailable" };
+  | { readonly ok: false; readonly status: 503; readonly error: "node_unavailable" | "replay_store_unavailable" | "facilitator_unavailable" };
 
 export interface LnbtcPaywall {
   /** A fresh invoice for this request, or why there is none. `client` is who asks, for the issuance limit. */
@@ -82,6 +86,7 @@ function limiter(perClient: number, total: number, now: () => number) {
 }
 
 export function lnbtcPaywall(o: LnbtcPaywallOptions): LnbtcPaywall {
+  if (!o.replay === !o.facilitator) throw new Error("give a replay store or a facilitator, one of the two");
   const minMsat = o.minMsat ?? 1000n;
   const maxTimeoutSeconds = o.maxTimeoutSeconds ?? 300;
   const tolerance = o.tolerance ?? 0.05;
@@ -133,12 +138,12 @@ export function lnbtcPaywall(o: LnbtcPaywallOptions): LnbtcPaywall {
         maxTimeoutSeconds,
         extra: { assetTransferMethod: "bolt11", paymentFlow: "upfront", requestHash: bound(sale), requestBindingProfile: "http:1", requestBindingParams: params, invoice },
       };
-      let settled;
+      let settled: LnbtcSettlement;
       try {
-        settled = await settleLnbtc(proof, requirements, { replay: o.replay, now: Math.floor(now() / 1000) });
+        settled = o.facilitator ? await o.facilitator.settle(proof, requirements) : await settleLnbtc(proof, requirements, { replay: o.replay!, now: Math.floor(now() / 1000) });
       } catch {
         // Nothing was claimed: the same proof can come back once the store answers again.
-        return { ok: false, status: 503, error: "replay_store_unavailable" };
+        return { ok: false, status: 503, error: o.facilitator ? "facilitator_unavailable" : "replay_store_unavailable" };
       }
       if (!settled.success) return { ok: false, status: 402, error: settled.errorReason };
       return { ok: true, settlement: settled, amountMsat: requirements.amount };

@@ -147,6 +147,8 @@ export interface SellInput {
   readonly payToSolana: string;
   /** Where, on the seller's machine, a file holds their node's receive-only NWC connection: sats too. Empty otherwise. */
   readonly lightningFile: string;
+  /** Lightning proofs checked and remembered by the CRA facilitator instead of a file on the seller's machine. */
+  readonly lightningFacilitator: boolean;
   /** Dollars per call, as typed. */
   readonly price: string;
   readonly name: string;
@@ -179,6 +181,7 @@ export function sellCommand(i: SellInput): Step {
   const parts = [`npx -y @cra-agent/seller --target '${i.target}' --pay-to ${i.payTo} --price ${i.price}`];
   if (i.payToSolana) parts.push(`--pay-to-solana ${i.payToSolana}`);
   if (i.lightningFile) parts.push(`--pay-to-lightning '${i.lightningFile}'`);
+  if (i.lightningFile && i.lightningFacilitator) parts.push("--lightning-facilitator cra");
   if (i.name) parts.push(`--name '${i.name}'`);
   for (const f of i.free) parts.push(`--free '${f}'`);
   if (i.network !== "arc") parts.push(`--network ${i.network}`);
@@ -204,7 +207,7 @@ export function sellNextSteps(i: SellInput): Step[] {
     ...(i.lightningFile
       ? [{
           title: "Before you start: the connection to your Lightning node",
-          explain: "In Alby Hub, open Connections, add a connection and give it the Read Only permissions: it can create invoices and read your node's key, never pay. Copy the connection string into the file named in the command, with your editor, so it does not end up in your shell history; the first line makes the file readable only by you. Your node needs inbound capacity to receive, a channel bought from an LSP, and must sign invoices with a description hash: Alby Hub on its default LDK backend does. Settled payments are remembered in ~/.cra-agent/lnbtc-replay.jsonl, so a proof cannot be used twice, even after a restart.",
+          explain: `In Alby Hub, open Connections, add a connection and give it the Read Only permissions: it can create invoices and read your node's key, never pay. Copy the connection string into the file named in the command, with your editor, so it does not end up in your shell history; the first line makes the file readable only by you. Your node needs inbound capacity to receive, a channel bought from an LSP, and must sign invoices with a description hash: Alby Hub on its default LDK backend does. ${i.lightningFacilitator ? "Each payment is checked by the CRA facilitator, which remembers its proof so it cannot be used twice: keep that choice for this node." : "Settled payments are remembered in ~/.cra-agent/lnbtc-replay.jsonl, so a proof cannot be used twice, even after a restart."}`,
           code: `install -m 600 /dev/null '${i.lightningFile}'\nnano '${i.lightningFile}'`,
         }]
       : []),

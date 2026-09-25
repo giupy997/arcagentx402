@@ -91,6 +91,20 @@ rounded up, at least `LIGHTNING_MIN_MSAT` (1 sat by default); an invoice lasts 3
 lists the routes, the rate and our node's key. An agent pays with `cra-agent pay <url> --lightning` when
 `CRA_NWC_PAY_FILE` holds a connection that can pay.
 
+The same checks are open to every seller as a facilitator: `POST /facilitator/settle` with an `lnbtc` body is
+answered by the API itself, without registration, and anything else still goes to the Arc facilitator.
+`/facilitator/supported` lists both. Claims share `lnbtc_settlements` with our own routes and are pruned
+hourly, a day after they stop mattering; what the facilitator settled for others is counted in
+`facilitator_lnbtc` (migration 016, applied when the collector starts: restart it with the API on this
+deploy) and shown at `/v1/facilitator/lightning`. Limits, in `.env` if the defaults do not fit:
+
+```bash
+LNBTC_FACILITATOR_MAX_TIMEOUT=3600   # invoices that last longer are refused, so every claim can be pruned
+LNBTC_FACILITATOR_PER_MINUTE=60      # settle calls per client address
+LNBTC_FACILITATOR_DAILY_CAP=20000    # settlements for everyone per UTC day
+# LNBTC_FACILITATOR=off              # to close it
+```
+
 ## Backups
 
 ```bash

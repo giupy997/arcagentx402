@@ -81,10 +81,13 @@
     <pre class="json" id="r-flag"></pre>
     <p class="sub">Agents keep paying too: they sign the same kind of authorization. Check it from the outside with <span class="mono">GET /v1/facilitator/sellers/&lt;your address&gt;</span>, which shows the day's count.</p>
   </div>
+  <div class="chart-card wide">
+    <div class="head"><div><h2>Selling for sats? No registration</h2><div class="sub">The same facilitator settles x402 on Lightning (<span class="mono">exact</span> on <span class="mono">lnbtc</span>) for any seller. Nothing moves and nothing costs us gas: it checks the buyer's proof against your requirements, as the spec lays out, and records its payment hash once, so it cannot be used twice. With the sell command, add <span class="mono">--lightning-facilitator cra</span> next to <span class="mono">--pay-to-lightning</span>. Any other x402 server can send its proofs to <span class="mono">POST https://api.cra-agent.tech/facilitator/settle</span>. Limits and counts: <a href="https://api.cra-agent.tech/v1/facilitator/lightning">/v1/facilitator/lightning</a>.</div></div></div>
+  </div>
 </main>
 
 <footer class="site light">
-  <span>The facilitator is <a href="https://github.com/giupy997/arcagentx402/tree/main/packages/facilitator" rel="noopener">open source</a> · it only settles for registered wallets, on Arc, in USDC</span>
+  <span>The facilitator is <a href="https://github.com/giupy997/arcagentx402/tree/main/packages/facilitator" rel="noopener">open source</a> · on Arc it settles USDC for registered wallets; on Lightning, for anyone</span>
   <span><a href="/">Home</a> · <a href="/factory#sell">Factory</a> · <a href="/market">Market</a> · <a href="/v1/facilitator">/v1/facilitator</a></span>
 </footer>
 <script src="/config.js"></script>

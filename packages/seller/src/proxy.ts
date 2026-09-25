@@ -16,7 +16,7 @@
  */
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { lnbtcPaywall, paymentNetwork, type BtcUsd, type ReceiverAdapter, type ReplayStore } from "@cra-agent/lightning";
+import { lnbtcPaywall, paymentNetwork, type BtcUsd, type LnbtcFacilitatorClient, type ReceiverAdapter, type ReplayStore } from "@cra-agent/lightning";
 import { createSeller, type SellerConfig, type SettlementEvent } from "./index.js";
 
 export interface PricedPath {
@@ -57,8 +57,10 @@ export interface LightningSale {
   /** LNBTC_MAINNET or LNBTC_TESTNET, as the node is. */
   readonly network: string;
   readonly rate: () => Promise<BtcUsd>;
-  /** Where settled proofs are remembered. It must survive restarts: FileReplayStore, without a database. */
-  readonly replay: ReplayStore;
+  /** Where settled proofs are remembered, here. It must survive restarts: FileReplayStore, without a database. */
+  readonly replay?: ReplayStore;
+  /** Or a facilitator that checks and remembers them. One of the two, and the same one every time for a node. */
+  readonly facilitator?: LnbtcFacilitatorClient;
   /** The least an invoice asks, in millisatoshis. Default 1,000: one sat. */
   readonly minMsat?: bigint;
   /** How long a 402 waits for the node's invoice before it goes out without one. Default 5 s. */
@@ -130,7 +132,7 @@ export function createProxyApp(opts: ProxyOptions): Hono {
   for (const r of routes) seller.route(r.pattern, r.price, { description: r.description ?? opts.description ?? `${opts.name ?? "API"}: ${r.pattern}`, maxTimeoutSeconds: 120 });
 
   const ln = opts.lightning;
-  const sats = ln ? lnbtcPaywall({ receiver: async () => ln.receiver, network: ln.network, replay: ln.replay, rate: ln.rate, ...(ln.minMsat ? { minMsat: ln.minMsat } : {}) }) : null;
+  const sats = ln ? lnbtcPaywall({ receiver: async () => ln.receiver, network: ln.network, ...(ln.facilitator ? { facilitator: ln.facilitator } : {}), ...(ln.replay ? { replay: ln.replay } : {}), rate: ln.rate, ...(ln.minMsat ? { minMsat: ln.minMsat } : {}) }) : null;
   // The first pattern that matches sets the price, as it does for the other rails.
   const priced = routes.map((r) => ({ priceUsd: r.price.replace("$", ""), matches: matcher(r.pattern) }));
 
@@ -144,7 +146,7 @@ export function createProxyApp(opts: ProxyOptions): Hono {
       network: seller.network,
       payTo: seller.sellerAddress,
       ...(opts.payToSolana ? { solana: { payTo: opts.payToSolana } } : {}),
-      ...(ln ? { lightning: { network: ln.network, payTo: ln.receiver.pubkey, scheme: "exact", asset: "BTC", pricing: "each route's dollar price in millisatoshis at the BTC/USD rate when the 402 is made, at least 1 sat" } } : {}),
+      ...(ln ? { lightning: { network: ln.network, payTo: ln.receiver.pubkey, scheme: "exact", asset: "BTC", pricing: "each route's dollar price in millisatoshis at the BTC/USD rate when the 402 is made, at least 1 sat", settledBy: ln.facilitator ? ln.facilitator.url : "this server" } } : {}),
       networks: [seller.network, ...(opts.payToSolana ? [opts.network === "arc" ? "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" : "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"] : []), ...(ln ? [ln.network] : [])],
       settlement: opts.facilitatorUrl ? "direct" : "circle-gateway",
       routes: routes.map((r) => ({ pattern: r.pattern, priceUsd: r.price.replace("$", ""), description: r.description ?? null })),
@@ -172,7 +174,7 @@ export function createProxyApp(opts: ProxyOptions): Hono {
 
     if (payment && paymentNetwork(payment)?.startsWith("lnbtc:")) {
       const settled = await sats.settle(await saleOf(c, priceUsd), payment);
-      if (!settled.ok && settled.status === 503) return c.json({ error: "the payment could not be recorded right now; send the same proof again shortly" }, 503);
+      if (!settled.ok && settled.status === 503) return c.json({ error: `the payment could not be checked right now (${settled.error}); nothing was claimed, send the same proof again shortly` }, 503);
       if (!settled.ok) {
         const refused = { x402Version: 2, error: settled.error, resource: { url: c.req.raw.url }, accepts: [] };
         return c.json(refused, 402, { "PAYMENT-REQUIRED": b64(refused) });

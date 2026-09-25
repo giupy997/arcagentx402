@@ -26,6 +26,9 @@ describe("the command line of cra-agent-sell", () => {
     expect(parseSellArgs([...base, "--pay-to-lightning", "/home/me/.secrets/nwc-receive"]).payToLightning).toBe("/home/me/.secrets/nwc-receive");
     expect(parseSellArgs(base).payToLightning).toBeUndefined();
     expect(() => parseSellArgs([...base, "--pay-to-lightning", "nostr+walletconnect://abc?relay=x&secret=y"])).toThrow(/file path, not the connection/);
+    expect(parseSellArgs([...base, "--pay-to-lightning", "/n", "--lightning-facilitator", "cra"]).lightningFacilitatorUrl).toBe("https://api.cra-agent.tech/facilitator");
+    expect(() => parseSellArgs([...base, "--lightning-facilitator", "cra"])).toThrow(/goes with --pay-to-lightning/);
+    expect(() => parseSellArgs([...base, "--pay-to-lightning", "/n", "--lightning-facilitator", "http://plain.example"])).toThrow(/https URL/);
   });
   it("parses prices and route flags", () => {
     expect(normalisePrice("0.002")).toBe("$0.002");

@@ -30,6 +30,7 @@ A caller who has not paid gets `402 Payment Required` with the price; a caller w
 | `--facilitator cra` | Settle through the CRA facilitator instead of Circle Gateway: browser wallets can then pay you, and it pays the gas. The `--pay-to` wallet registers once, with a signature, at [cra-agent.tech/register](https://cra-agent.tech/register); each wallet gets 200 settlements a day. |
 | `--list <public-url>` | Once running, add this public https address to the [CRA market](https://cra-agent.tech/market). |
 | `--pay-to-lightning <file>` | Also sell in sats over Lightning, paid to your own node. The file holds a receive-only Nostr Wallet Connect string (in Alby Hub, a connection with the Read Only permissions). See below. |
+| `--lightning-facilitator <url\|cra>` | Have Lightning proofs checked and remembered by this x402 facilitator instead of a file on your machine. `cra` is ours: open to anyone, no registration, free. |
 
 What is for sale is published, free to read, at `/.well-known/x402`. Payments settle through Circle Gateway and add up in the Gateway balance of `--pay-to`; collect them with `cra-agent withdraw <usdc>` from [`@cra-agent/mcp`](https://www.npmjs.com/package/@cra-agent/mcp). [CRA Factory](https://cra-agent.tech/factory#sell) writes the command for you.
 
@@ -41,6 +42,7 @@ With `--pay-to-lightning`, every 402 also offers x402 `exact` on `lnbtc` ([the s
 - The command reaches your node before it starts, and stops if the connection can pay, cannot create invoices, or is on a network other than mainnet or testnet.
 - Your node needs inbound capacity, and must sign invoices with a description hash. Alby Hub does on its default LDK backend.
 - Settled proofs are remembered in `~/.cra-agent/lnbtc-replay.jsonl` (or `CRA_LNBTC_REPLAY_FILE`), so a proof works once, even across restarts. Run one process per file.
+- Or, with `--lightning-facilitator cra`, [our facilitator](https://api.cra-agent.tech/v1/facilitator/lightning) checks each proof and remembers it: useful with several servers in front of one node, which must share one record. Keep the same choice for a node, because the file and the facilitator do not see each other's proofs. If the facilitator does not answer at start, the command stops rather than switch to the file.
 - Lightning is paid up front, as the scheme has it. If your API then fails, the sats are already yours: there is no refund on Lightning.
 - New invoices are limited to 30 a minute per client address and 600 a minute in all. A browser gets the paywall page without one. If your node takes more than 5 seconds, the 402 goes out with the other rails only.
 - The invoice is bound to the URL the buyer called. A reverse proxy in front must pass the public host, in `Host` or `X-Forwarded-Host`, and `X-Forwarded-Proto`.

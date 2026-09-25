@@ -172,6 +172,7 @@ function readSell(): SellInput {
     payTo: input("s-payto").value.trim(),
     payToSolana: input("s-solana").value.trim(),
     lightningFile: input("s-lightning").value.trim(),
+    lightningFacilitator: input("s-lnfac").checked,
     price: input("s-price").value.trim(),
     name: input("s-name").value.trim(),
     free: $<HTMLTextAreaElement>("s-free").value.split(/[\n,]+/).map((f) => f.trim()).filter(Boolean),
@@ -209,6 +210,7 @@ function renderSell(): void {
 const markSellNetwork = choices($("s-networks"), NETWORKS, (id) => { sellNetwork = id; markSellNetwork(id); renderSell(); });
 markSellNetwork(sellNetwork);
 $("s-browser").addEventListener("change", renderSell);
+$("s-lnfac").addEventListener("change", renderSell);
 for (const id of ["s-target", "s-payto", "s-solana", "s-lightning", "s-price", "s-name", "s-free", "s-public"]) $(id).addEventListener("input", renderSell);
 
 type Mode = "buy" | "sell";

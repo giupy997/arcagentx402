@@ -27,3 +27,4 @@ export { btcUsdRate, RATE_SOURCES, type BtcUsd, type RateSource } from "./btcusd
 export { nwcReceiver, nwcPayer, readConnection, lnbtcNetwork } from "./nwc.js";
 export { lnbtcPaywall, paymentNetwork, type LnbtcPaywall, type LnbtcPaywallOptions, type LnbtcSale, type LnbtcOffer, type LnbtcSettled } from "./paywall.js";
 export { FileReplayStore } from "./file-replay.js";
+export { lnbtcFacilitatorClient, type LnbtcFacilitatorClient } from "./facilitator-client.js";
