@@ -153,7 +153,7 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger,
       asset: "BTC",
       payTo: pubkey,
       spec: "https://github.com/x402-foundation/x402/blob/main/specs/schemes/exact/scheme_exact_lnbtc.md",
-      pricing: "each route's dollar price in millisatoshis at the median BTC/USD of Coinbase, Kraken and Bitstamp, rounded up, at least 1 sat; an invoice lasts 300 seconds",
+      pricing: "each route's dollar price in sats at the median BTC/USD of Coinbase, Kraken and Bitstamp, rounded up to a whole sat, at least 1; an invoice lasts 300 seconds",
       btcUsd,
       routes: lightningRoutes.map((r) => ({ route: `GET ${r.path}`, priceUsd: r.priceUsd })),
     });

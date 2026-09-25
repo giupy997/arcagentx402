@@ -65,9 +65,9 @@ describe("selling an API in sats as well", () => {
     const w = world();
     const { required, checked } = await pay(w, "http://seller.test/v1/forecast?city=rome");
     expect(required.accepts.map((a: { network: string }) => a.network)).toEqual(["eip155:5042", LNBTC_MAINNET]);
-    // $0.002 at $84,000 a bitcoin, rounded up: 2,381 millisatoshis.
-    expect(required.accepts[1]).toMatchObject({ scheme: "exact", amount: "2381", asset: "BTC", payTo: w.node.receiver.pubkey, maxTimeoutSeconds: 300 });
-    expect(checked.invoice.amountMsat).toBe("2381");
+    // $0.002 at $84,000 a bitcoin is 2,381 millisatoshis, rounded up to a whole sat: 3 sats.
+    expect(required.accepts[1]).toMatchObject({ scheme: "exact", amount: "3000", asset: "BTC", payTo: w.node.receiver.pubkey, maxTimeoutSeconds: 300 });
+    expect(checked.invoice.amountMsat).toBe("3000");
   });
 
   it("serves a paid retry after checking the proof, once, and says what was settled", async () => {
@@ -79,7 +79,7 @@ describe("selling an API in sats as well", () => {
     expect(await res.json()).toEqual({ answer: 42 });
     expect(decode(res.headers.get("PAYMENT-RESPONSE"))).toEqual({ success: true, transaction: checked.invoice.paymentHash, network: LNBTC_MAINNET });
     expect(w.upstream.map((u) => u.url)).toEqual(["https://api.example.com/v1/forecast?city=rome"]);
-    expect(w.settled).toEqual([{ resource: url, paymentHash: checked.invoice.paymentHash, amountMsat: "2381", priceUsd: "0.002", status: 200 }]);
+    expect(w.settled).toEqual([{ resource: url, paymentHash: checked.invoice.paymentHash, amountMsat: "3000", priceUsd: "0.002", status: 200 }]);
 
     const again = await w.app.request(url, { headers: { "PAYMENT-SIGNATURE": proof } });
     expect(again.status).toBe(402);

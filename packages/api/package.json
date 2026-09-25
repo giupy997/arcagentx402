@@ -8,10 +8,10 @@
     "start": "node --env-file-if-exists=../../.env --import tsx src/main.ts"
   },
   "dependencies": {
-    "@cra-agent/accounting": "0.0.14",
-    "@cra-agent/identity": "0.0.14",
-    "@cra-agent/lightning": "0.0.14",
-    "@cra-agent/seller": "0.0.14",
+    "@cra-agent/accounting": "0.0.15",
+    "@cra-agent/identity": "0.0.15",
+    "@cra-agent/lightning": "0.0.15",
+    "@cra-agent/seller": "0.0.15",
     "@hono/node-server": "^1.14.0",
     "hono": "^4.7.0",
     "pg": "^8.16.0",

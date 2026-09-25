@@ -11,7 +11,12 @@ const encode = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64")
 
 function world(o: { rate?: () => Promise<BtcUsd>; perClient?: number } = {}) {
   let usd = "84000";
-  const node = localLightning({ privateKey: KEY, now: () => T });
+  const local = localLightning({ privateKey: KEY, now: () => T });
+  // Like Alby Hub behind Nostr Wallet Connect: no invoice for a fraction of a sat.
+  const node = { ...local, receiver: { ...local.receiver, createInvoice: async (a: Parameters<typeof local.receiver.createInvoice>[0]) => {
+    if (BigInt(a.amountMsat) % 1000n !== 0n) throw new Error("the amount must be a whole number of satoshis");
+    return local.receiver.createInvoice(a);
+  } } };
   const settled: LightningSettled[] = [];
   const app = new Hono();
   app.use(
@@ -22,7 +27,8 @@ function world(o: { rate?: () => Promise<BtcUsd>; perClient?: number } = {}) {
       publicOrigin: ORIGIN,
       routes: [
         { path: "/v1/lightning/fees/estimate", priceUsd: "0.001", description: "fee estimate" },
-        { path: "/v1/lightning/rpc/health", priceUsd: "0.001", description: "rpc health" },
+        { path: "/v1/lightning/rpc/health", priceUsd: "0.05", description: "rpc health" },
+        { path: "/v1/lightning/fees/forecast", priceUsd: "0.001", description: "fee forecast" },
       ],
       replay: new MemoryReplayStore(),
       rate: o.rate ?? (async () => ({ rate: usd, sources: {}, at: 0 })),
@@ -33,6 +39,7 @@ function world(o: { rate?: () => Promise<BtcUsd>; perClient?: number } = {}) {
   );
   app.get("/v1/lightning/fees/estimate", (c) => c.json({ gwei: 20 }));
   app.get("/v1/lightning/rpc/health", (c) => c.json({ ok: true }));
+  app.get("/v1/lightning/fees/forecast", (c) => c.json({ trend: 0 }));
   return { app, node, settled, setUsd: (v: string) => (usd = v) };
 }
 
@@ -52,13 +59,13 @@ describe("our routes paid over Lightning", () => {
     const w = world();
     const { required, checked, payload } = await buy(w, "/v1/lightning/fees/estimate?gas=21000");
     expect(required.resource.url).toBe(`${ORIGIN}/v1/lightning/fees/estimate?gas=21000`);
-    // $0.001 at $84,000 a bitcoin, rounded up: 1,191 millisatoshis.
-    expect(required.accepts[0]).toMatchObject({ scheme: "exact", network: LNBTC_MAINNET, amount: "1191", asset: "BTC", payTo: w.node.receiver.pubkey, maxTimeoutSeconds: 300 });
+    // $0.001 at $84,000 a bitcoin is 1,191 millisatoshis, rounded up to a whole sat: 2 sats.
+    expect(required.accepts[0]).toMatchObject({ scheme: "exact", network: LNBTC_MAINNET, amount: "2000", asset: "BTC", payTo: w.node.receiver.pubkey, maxTimeoutSeconds: 300 });
     const res = await w.app.request("http://api.cra-agent.tech/v1/lightning/fees/estimate?gas=21000", { headers: { "PAYMENT-SIGNATURE": encode(payload) } });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ gwei: 20 });
     expect(decode(res.headers.get("PAYMENT-RESPONSE"))).toEqual({ success: true, transaction: checked.invoice.paymentHash, network: LNBTC_MAINNET });
-    expect(w.settled).toEqual([{ route: "/v1/lightning/fees/estimate", paymentHash: checked.invoice.paymentHash, amountMsat: "1191", priceUsd: "0.001", status: 200 }]);
+    expect(w.settled).toEqual([{ route: "/v1/lightning/fees/estimate", paymentHash: checked.invoice.paymentHash, amountMsat: "2000", priceUsd: "0.001", status: 200 }]);
   });
 
   it("serves a proof once, and only for the request its invoice was issued for", async () => {
@@ -70,7 +77,8 @@ describe("our routes paid over Lightning", () => {
     expect(dup.status).toBe(402);
     expect(decode(dup.headers.get("PAYMENT-REQUIRED")).error).toBe("duplicate_settlement");
     const { payload: other } = await buy(w, "/v1/lightning/fees/estimate?gas=21000");
-    const elsewhere = await w.app.request("http://api.cra-agent.tech/v1/lightning/rpc/health", { headers: { "PAYMENT-SIGNATURE": encode(other) } });
+    // Same price, another route: only the binding tells them apart.
+    const elsewhere = await w.app.request("http://api.cra-agent.tech/v1/lightning/fees/forecast", { headers: { "PAYMENT-SIGNATURE": encode(other) } });
     expect(elsewhere.status).toBe(402);
     expect((await elsewhere.json()).error).toBe("invalid_exact_lnbtc_request_mismatch");
     const otherQuery = await w.app.request("http://api.cra-agent.tech/v1/lightning/fees/estimate?gas=50000", { headers: { "PAYMENT-SIGNATURE": encode(other) } });
@@ -79,14 +87,24 @@ describe("our routes paid over Lightning", () => {
 
   it("keeps the invoice's amount through a small move in the rate, not a large one", async () => {
     const w = world();
-    const small = await buy(w, "/v1/lightning/fees/estimate");
-    w.setUsd("86000"); // 2.4% dearer bitcoin: 1,163 msat today against 1,191 invoiced
-    expect((await w.app.request("http://api.cra-agent.tech/v1/lightning/fees/estimate", { headers: { "PAYMENT-SIGNATURE": encode(small.payload) } })).status).toBe(200);
+    // $0.05: 60 sats at $84,000 a bitcoin.
+    const small = await buy(w, "/v1/lightning/rpc/health");
+    w.setUsd("86000"); // 2.4% dearer bitcoin: 59 sats today against 60 invoiced
+    expect((await w.app.request("http://api.cra-agent.tech/v1/lightning/rpc/health", { headers: { "PAYMENT-SIGNATURE": encode(small.payload) } })).status).toBe(200);
     w.setUsd("84000");
-    const large = await buy(w, "/v1/lightning/fees/estimate");
-    w.setUsd("95000");
-    const res = await w.app.request("http://api.cra-agent.tech/v1/lightning/fees/estimate", { headers: { "PAYMENT-SIGNATURE": encode(large.payload) } });
+    const large = await buy(w, "/v1/lightning/rpc/health");
+    w.setUsd("95000"); // 53 sats today against 60 invoiced
+    const res = await w.app.request("http://api.cra-agent.tech/v1/lightning/rpc/health", { headers: { "PAYMENT-SIGNATURE": encode(large.payload) } });
     expect((await res.json()).error).toBe("invalid_exact_lnbtc_amount_mismatch");
+  });
+
+  it("asks the node for whole sats only, which is all Alby Hub will invoice", async () => {
+    const w = world();
+    for (const usd of ["84000", "83941.41", "61234.5"]) {
+      w.setUsd(usd);
+      const { required } = await buy(w, "/v1/lightning/fees/estimate");
+      expect(BigInt(required.accepts[0].amount) % 1000n).toBe(0n);
+    }
   });
 
   it("without a rate: no new invoice, but a paid proof still settles", async () => {

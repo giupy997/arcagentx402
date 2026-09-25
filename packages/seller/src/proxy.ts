@@ -146,7 +146,7 @@ export function createProxyApp(opts: ProxyOptions): Hono {
       network: seller.network,
       payTo: seller.sellerAddress,
       ...(opts.payToSolana ? { solana: { payTo: opts.payToSolana } } : {}),
-      ...(ln ? { lightning: { network: ln.network, payTo: ln.receiver.pubkey, scheme: "exact", asset: "BTC", pricing: "each route's dollar price in millisatoshis at the BTC/USD rate when the 402 is made, at least 1 sat", settledBy: ln.facilitator ? ln.facilitator.url : "this server" } } : {}),
+      ...(ln ? { lightning: { network: ln.network, payTo: ln.receiver.pubkey, scheme: "exact", asset: "BTC", pricing: "each route's dollar price in sats at the BTC/USD rate when the 402 is made, rounded up to a whole sat, at least 1", settledBy: ln.facilitator ? ln.facilitator.url : "this server" } } : {}),
       networks: [seller.network, ...(opts.payToSolana ? [opts.network === "arc" ? "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" : "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"] : []), ...(ln ? [ln.network] : [])],
       settlement: opts.facilitatorUrl ? "direct" : "circle-gateway",
       routes: routes.map((r) => ({ pattern: r.pattern, priceUsd: r.price.replace("$", ""), description: r.description ?? null })),

@@ -87,7 +87,7 @@ LIGHTNING_NWC_FILE=/opt/cra-agent/.secrets/nwc-receive
 ```
 
 Prices are each route's dollar price in millisatoshis at the median BTC/USD of Coinbase, Kraken and Bitstamp,
-rounded up, at least `LIGHTNING_MIN_MSAT` (1 sat by default); an invoice lasts 300 seconds. `/v1/lightning`
+rounded up to a whole sat (Alby Hub makes no invoice for a fraction of one), at least `LIGHTNING_MIN_MSAT` (1 sat by default); an invoice lasts 300 seconds. `/v1/lightning`
 lists the routes, the rate and our node's key. An agent pays with `cra-agent pay <url> --lightning` when
 `CRA_NWC_PAY_FILE` holds a connection that can pay.
 

@@ -9,7 +9,8 @@ The x402 `exact` scheme on Bitcoin Lightning (`lnbtc`), as specified in x402's
 - `checkLnbtcChallenge` and `payLnbtcChallenge` are the buyer's checks before paying, and the payload after.
 - `settleLnbtc` is the facilitator's settlement: the spec's checks in order, its error reasons, the
   paid-but-expired window, and one atomic claim of `network:payment_hash` in a durable `ReplayStore`.
-- `usdToMsat` prices a dollar amount in millisatoshis at a stated BTC/USD rate, rounding up.
+- `usdToMsat` prices a dollar amount in millisatoshis at a stated BTC/USD rate, rounding up; `lnbtcPaywall`
+  then rounds up to a whole sat, since nodes behind Nostr Wallet Connect make no invoice for less.
 - `lnbtcPaywall` is a seller's side apart from any web framework. `offer` makes the challenge for a 402, with
   a per-client limit on new invoices. `settle` checks a paid retry against the request that will run. The
   CRA API and `cra-agent-sell --pay-to-lightning` both use it.

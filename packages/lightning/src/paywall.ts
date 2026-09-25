@@ -19,6 +19,11 @@ export interface LnbtcPaywallOptions {
   readonly rate: () => Promise<BtcUsd>;
   /** The least an invoice asks, in millisatoshis. Default 1,000: one sat. */
   readonly minMsat?: bigint;
+  /**
+   * Prices are rounded up to a multiple of this, in millisatoshis. Default 1,000, whole sats: nodes behind
+   * Nostr Wallet Connect, Alby Hub among them, refuse to make an invoice for a fraction of a sat.
+   */
+  readonly stepMsat?: bigint;
   /** How long an invoice can be paid. Default 300 seconds. */
   readonly maxTimeoutSeconds?: number;
   /** A paid retry keeps the amount its invoice named when that is within this share of today's price. Default 5%. */
@@ -94,9 +99,13 @@ export function lnbtcPaywall(o: LnbtcPaywallOptions): LnbtcPaywall {
   const allow = limiter(o.limits?.perClient ?? 30, o.limits?.total ?? 600, now);
   const params = { headers: [] as string[] };
   const bound = (s: LnbtcSale) => httpBinding({ method: s.method, url: s.url, body: s.body, header: s.header }, params).requestHash;
+  const step = o.stepMsat ?? 1000n;
+  if (step < 1n) throw new Error("stepMsat must be at least 1");
   const todayMsat = async (priceUsd: string) => {
     const rate = await o.rate().catch(() => null);
-    return rate ? { rate: rate.rate, msat: BigInt(usdToMsat(priceUsd, rate.rate, minMsat)) } : null;
+    if (!rate) return null;
+    const exact = BigInt(usdToMsat(priceUsd, rate.rate, minMsat));
+    return { rate: rate.rate, msat: ((exact + step - 1n) / step) * step };
   };
 
   return {

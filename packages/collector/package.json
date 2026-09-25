@@ -10,7 +10,7 @@
     "status": "node --env-file-if-exists=../../.env --import tsx src/cli/status.ts"
   },
   "dependencies": {
-    "@cra-agent/accounting": "0.0.14",
+    "@cra-agent/accounting": "0.0.15",
     "pg": "^8.16.0",
     "pino": "^9.7.0",
     "viem": "^2.31.0",

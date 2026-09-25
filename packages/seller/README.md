@@ -36,7 +36,7 @@ What is for sale is published, free to read, at `/.well-known/x402`. Payments se
 
 ### Paid in sats, on your own node
 
-With `--pay-to-lightning`, every 402 also offers x402 `exact` on `lnbtc` ([the scheme](https://github.com/x402-foundation/x402/blob/main/specs/schemes/exact/scheme_exact_lnbtc.md)), next to Arc and Solana. The offer carries a fresh invoice from your node for the route's dollar price in sats, at the BTC/USD rate of the moment (the median of Coinbase, Kraken and Bitstamp) and at least 1 sat. The invoice's description hash commits to the request: its method, URL and body. A buyer pays it and retries with the preimage. The proof is checked and claimed once before the call goes to your API.
+With `--pay-to-lightning`, every 402 also offers x402 `exact` on `lnbtc` ([the scheme](https://github.com/x402-foundation/x402/blob/main/specs/schemes/exact/scheme_exact_lnbtc.md)), next to Arc and Solana. The offer carries a fresh invoice from your node for the route's dollar price in sats, at the BTC/USD rate of the moment (the median of Coinbase, Kraken and Bitstamp), rounded up to a whole sat and at least 1. The invoice's description hash commits to the request: its method, URL and body. A buyer pays it and retries with the preimage. The proof is checked and claimed once before the call goes to your API.
 
 - The connection string is a secret. It stays in a file only you can read (`chmod 600`), and the command refuses it on the command line.
 - The command reaches your node before it starts, and stops if the connection can pay, cannot create invoices, or is on a network other than mainnet or testnet.

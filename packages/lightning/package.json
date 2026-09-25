@@ -1,6 +1,6 @@
 {
   "name": "@cra-agent/lightning",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "The x402 exact scheme on Bitcoin Lightning (lnbtc): strict BOLT11, request binding, preimage settlement with durable replay protection.",
   "keywords": [
     "x402",

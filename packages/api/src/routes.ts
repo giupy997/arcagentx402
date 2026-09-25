@@ -142,10 +142,10 @@ const TOOL_ROUTES: readonly PaidRoute[] = [
   {
     path: "/v1/paid/arc/usyc",
     group: "Arc, read live",
-    plain: { label: "USYC on Arc: price and growth", explain: "What one USYC, Circle's tokenized money market fund, is worth today, how fast that grew over the last week and month, and how much USYC exists on Arc. Read from its own contracts on Arc." },
+    plain: { label: "USYC on Arc: price and yield", explain: "What one USYC, Circle's tokenized money market fund of short-term US Treasuries, is worth today, the yield its price shows over the last week and month, and how much USYC exists on Arc. Read from its own contracts on Arc." },
     price: "$0.001",
-    summary: "USYC's price, growth and supply on Arc, from the oracle its Teller uses",
-    description: "The price of USYC (Circle's tokenized money market fund) from the oracle its Teller mints and redeems at, the price's growth over 7 and 30 days as a yearly rate, every published price on Arc, and the supply on Arc.",
+    summary: "USYC's price, yield and supply on Arc, from the oracle its Teller uses",
+    description: "The price of USYC (Circle's tokenized money market fund of short-term US Treasuries) from the oracle its Teller mints and redeems at, the yield its price shows over 7 and 30 days as a yearly rate, every published price on Arc, and the supply on Arc.",
   },
   {
     path: "/v1/paid/web/extract",
