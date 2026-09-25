@@ -5,13 +5,21 @@
  */
 import { readFileSync } from "node:fs";
 import { NWCClient } from "@getalby/sdk/nwc";
-import type { PayerAdapter, ReceiverAdapter } from "./lnbtc.js";
+import { LNBTC_MAINNET, LNBTC_TESTNET, type PayerAdapter, type ReceiverAdapter } from "./lnbtc.js";
 
 /** A connection string from a file that holds only it (a trailing newline is fine). */
 export function readConnection(path: string): string {
   const url = readFileSync(path, "utf8").trim();
   if (!url.startsWith("nostr+walletconnect://")) throw new Error(`${path} does not hold a nostr+walletconnect:// connection`);
   return url;
+}
+
+/** The x402 network of a node, from the name its get_info gives: the scheme is defined on mainnet and testnet. */
+export function lnbtcNetwork(name: string | undefined): string {
+  const n = (name ?? "mainnet").toLowerCase();
+  if (n === "mainnet" || n === "bitcoin") return LNBTC_MAINNET;
+  if (n === "testnet") return LNBTC_TESTNET;
+  throw new Error(`this node is on ${name}; x402 on Lightning is defined for mainnet and testnet`);
 }
 
 const within = <T>(p: Promise<T>, ms: number, what: string): Promise<T> =>
@@ -21,7 +29,7 @@ const within = <T>(p: Promise<T>, ms: number, what: string): Promise<T> =>
  * Our node, receiving: its key is read once (get_info) and becomes payTo. The client is kept open and made
  * again after a failure, since relays drop connections.
  */
-export async function nwcReceiver(connection: string, o: { timeoutMs?: number } = {}): Promise<ReceiverAdapter & { close(): void }> {
+export async function nwcReceiver(connection: string, o: { timeoutMs?: number } = {}): Promise<ReceiverAdapter & { readonly nodeNetwork: string; close(): void }> {
   const timeout = o.timeoutMs ?? 10_000;
   let client = new NWCClient({ nostrWalletConnectUrl: connection });
   const info = await within(client.getInfo(), timeout, "get_info");
@@ -29,6 +37,8 @@ export async function nwcReceiver(connection: string, o: { timeoutMs?: number } 
   if (info.methods.includes("pay_invoice")) throw new Error("this connection can also pay: give the receiver a receive-only connection");
   return {
     pubkey: info.pubkey,
+    /** As get_info names it; lnbtcNetwork turns it into the x402 network. */
+    nodeNetwork: info.network,
     async createInvoice({ amountMsat, descriptionHash, expirySeconds }) {
       try {
         const made = await within(client.makeInvoice({ amount: Number(amountMsat), description_hash: descriptionHash, expiry: expirySeconds }), timeout, "make_invoice");

@@ -29,8 +29,21 @@ A caller who has not paid gets `402 Payment Required` with the price; a caller w
 | `--network`, `--port` | `arc` (default) or `arcTestnet`; port 8402 by default. |
 | `--facilitator cra` | Settle through the CRA facilitator instead of Circle Gateway: browser wallets can then pay you, and it pays the gas. The `--pay-to` wallet registers once, with a signature, at [cra-agent.tech/register](https://cra-agent.tech/register); each wallet gets 200 settlements a day. |
 | `--list <public-url>` | Once running, add this public https address to the [CRA market](https://cra-agent.tech/market). |
+| `--pay-to-lightning <file>` | Also sell in sats over Lightning, paid to your own node. The file holds a receive-only Nostr Wallet Connect string (in Alby Hub, a connection with the Read Only permissions). See below. |
 
 What is for sale is published, free to read, at `/.well-known/x402`. Payments settle through Circle Gateway and add up in the Gateway balance of `--pay-to`; collect them with `cra-agent withdraw <usdc>` from [`@cra-agent/mcp`](https://www.npmjs.com/package/@cra-agent/mcp). [CRA Factory](https://cra-agent.tech/factory#sell) writes the command for you.
+
+### Paid in sats, on your own node
+
+With `--pay-to-lightning`, every 402 also offers x402 `exact` on `lnbtc` ([the scheme](https://github.com/x402-foundation/x402/blob/main/specs/schemes/exact/scheme_exact_lnbtc.md)), next to Arc and Solana. The offer carries a fresh invoice from your node for the route's dollar price in sats, at the BTC/USD rate of the moment (the median of Coinbase, Kraken and Bitstamp) and at least 1 sat. The invoice's description hash commits to the request: its method, URL and body. A buyer pays it and retries with the preimage. The proof is checked and claimed once before the call goes to your API.
+
+- The connection string is a secret. It stays in a file only you can read (`chmod 600`), and the command refuses it on the command line.
+- The command reaches your node before it starts, and stops if the connection can pay, cannot create invoices, or is on a network other than mainnet or testnet.
+- Your node needs inbound capacity, and must sign invoices with a description hash. Alby Hub does on its default LDK backend.
+- Settled proofs are remembered in `~/.cra-agent/lnbtc-replay.jsonl` (or `CRA_LNBTC_REPLAY_FILE`), so a proof works once, even across restarts. Run one process per file.
+- Lightning is paid up front, as the scheme has it. If your API then fails, the sats are already yours: there is no refund on Lightning.
+- New invoices are limited to 30 a minute per client address and 600 a minute in all. A browser gets the paywall page without one. If your node takes more than 5 seconds, the 402 goes out with the other rails only.
+- The invoice is bound to the URL the buyer called. A reverse proxy in front must pass the public host, in `Host` or `X-Forwarded-Host`, and `X-Forwarded-Proto`.
 
 ## Hono
 

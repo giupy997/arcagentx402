@@ -145,6 +145,8 @@ export interface SellInput {
   readonly payTo: string;
   /** A Solana address, when the seller wants Solana buyers too. Empty otherwise. */
   readonly payToSolana: string;
+  /** Where, on the seller's machine, a file holds their node's receive-only NWC connection: sats too. Empty otherwise. */
+  readonly lightningFile: string;
   /** Dollars per call, as typed. */
   readonly price: string;
   readonly name: string;
@@ -162,6 +164,9 @@ export function sellProblems(i: SellInput): string[] {
   if (!/^https?:\/\/[^\s'"`$]+$/i.test(i.target)) out.push("The address of your API must start with http:// or https://, with no spaces or quotes.");
   if (!/^0x[0-9a-fA-F]{40}$/.test(i.payTo)) out.push("The wallet is a 0x address, 42 characters long. Paste it from your wallet.");
   if (i.payToSolana && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(i.payToSolana)) out.push("The Solana address does not look like one. Paste it from your Solana wallet, or leave it empty.");
+  // The connection is a secret: it never goes in a command, only the path of the file that holds it.
+  if (/^nostr\+walletconnect:/i.test(i.lightningFile)) out.push("Do not paste the Lightning connection here: it is a secret. Save it in a file on the machine that runs the command, readable only by you, and write that file's path.");
+  else if (i.lightningFile && !/^\.{0,2}\/[^\s'"`$\\]+$/.test(i.lightningFile)) out.push("The Lightning file is a path on your machine, like /home/you/.secrets/nwc-receive: starting with / or ./, with no spaces, quotes or ~.");
   if (!AMOUNT.test(i.price) || Number(i.price) <= 0) out.push("The price must be an amount in dollars, like 0.002.");
   if (/['"`$\\]/.test(i.name)) out.push("The name cannot contain quotes, backticks, dollar signs or backslashes.");
   for (const f of i.free) if (!/^\/[^\s'"`$]*$/.test(f)) out.push(`\u201c${f}\u201d is not a path. Write it like /health.`);
@@ -173,6 +178,7 @@ export function sellProblems(i: SellInput): string[] {
 export function sellCommand(i: SellInput): Step {
   const parts = [`npx -y @cra-agent/seller --target '${i.target}' --pay-to ${i.payTo} --price ${i.price}`];
   if (i.payToSolana) parts.push(`--pay-to-solana ${i.payToSolana}`);
+  if (i.lightningFile) parts.push(`--pay-to-lightning '${i.lightningFile}'`);
   if (i.name) parts.push(`--name '${i.name}'`);
   for (const f of i.free) parts.push(`--free '${f}'`);
   if (i.network !== "arc") parts.push(`--network ${i.network}`);
@@ -180,7 +186,7 @@ export function sellCommand(i: SellInput): Step {
   if (i.publicUrl) parts.push(`--list '${i.publicUrl}'`);
   return {
     title: "Run this where your API runs",
-    explain: `Needs Node 20 or newer. It starts a small server on port 8402 that stands in front of your API: a caller who has not paid gets the price, a caller who has paid gets your API's answer, untouched. Your code does not change, and this process never holds a key. A call your API fails is not charged.${i.publicUrl ? " Once it is up, it adds your public address to the market." : ""}`,
+    explain: `Needs Node 20 or newer. It starts a small server on port 8402 that stands in front of your API: a caller who has not paid gets the price, a caller who has paid gets your API's answer, untouched. Your code does not change, and this process never holds a key. A call your API fails is not charged${i.lightningFile ? " in USDC; in sats the payment comes first, as Lightning's x402 scheme has it, so a failed call is still paid" : ""}.${i.lightningFile ? " With Lightning it reaches your node before it starts, and stops if the connection is wrong." : ""}${i.publicUrl ? " Once it is up, it adds your public address to the market." : ""}`,
     code: parts.join(" "),
   };
 }
@@ -189,11 +195,19 @@ export function sellInWords(i: SellInput): string {
   const free = i.free.length ? ` These paths stay free: ${i.free.join(", ")}.` : "";
   const browser = i.browserWallets ? " Browser wallets can pay too, settled by the CRA facilitator, once the wallet is registered." : "";
   const solana = i.payToSolana ? ` Buyers on Solana can pay too, in USDC on Solana, to ${i.payToSolana.slice(0, 4)}\u2026${i.payToSolana.slice(-4)}.` : "";
-  return `Every call to ${i.name || "your API"} will cost $${i.price}, paid in USDC on ${i.network === "arc" ? "Arc mainnet" : "Arc testnet"} to ${i.payTo.slice(0, 6)}\u2026${i.payTo.slice(-4)}.${free}${browser}${solana} Buyers are AI agents (ours or any x402 client). The money lands in the Circle Gateway balance of that wallet: you collect it with one command, shown below.`;
+  const sats = i.lightningFile ? " Buyers with bitcoin can pay in sats over Lightning, straight to your node: the same price in dollars, turned into sats at the rate of the moment, at least 1 sat." : "";
+  return `Every call to ${i.name || "your API"} will cost $${i.price}, paid in USDC on ${i.network === "arc" ? "Arc mainnet" : "Arc testnet"} to ${i.payTo.slice(0, 6)}\u2026${i.payTo.slice(-4)}.${free}${browser}${solana}${sats} Buyers are AI agents (ours or any x402 client). The money lands in the Circle Gateway balance of that wallet: you collect it with one command, shown below.`;
 }
 
 export function sellNextSteps(i: SellInput): Step[] {
   return [
+    ...(i.lightningFile
+      ? [{
+          title: "Before you start: the connection to your Lightning node",
+          explain: "In Alby Hub, open Connections, add a connection and give it the Read Only permissions: it can create invoices and read your node's key, never pay. Copy the connection string into the file named in the command, with your editor, so it does not end up in your shell history; the first line makes the file readable only by you. Your node needs inbound capacity to receive, a channel bought from an LSP, and must sign invoices with a description hash: Alby Hub on its default LDK backend does. Settled payments are remembered in ~/.cra-agent/lnbtc-replay.jsonl, so a proof cannot be used twice, even after a restart.",
+          code: `install -m 600 /dev/null '${i.lightningFile}'\nnano '${i.lightningFile}'`,
+        }]
+      : []),
     ...(i.browserWallets
       ? [{ title: "Register the wallet that gets paid", explain: "Once, with the wallet you gave as --pay-to: connect it on the page below and sign a message. No transaction, nothing moves. Until it is registered, the facilitator refuses payments to it and the command tells you so at start.", code: "https://cra-agent.tech/register" }]
       : []),

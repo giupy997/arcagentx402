@@ -8,8 +8,15 @@
  *
  * What is ours here is the forwarding and the catalogue. Pricing, verification and settlement are
  * the same seller the rest of this package exposes.
+ *
+ * With a Lightning node the same routes are also for sale in sats: the 402 then carries an `exact` offer on
+ * `lnbtc` next to the others, with a fresh invoice from the seller's node bound to the request. That scheme is
+ * paid up front: the proof is checked and claimed before the call goes upstream, and the sats stay with the
+ * seller even if the API behind then fails.
  */
+import type { Context } from "hono";
 import { Hono } from "hono";
+import { lnbtcPaywall, paymentNetwork, type BtcUsd, type ReceiverAdapter, type ReplayStore } from "@cra-agent/lightning";
 import { createSeller, type SellerConfig, type SettlementEvent } from "./index.js";
 
 export interface PricedPath {
@@ -39,7 +46,33 @@ export interface ProxyOptions {
   readonly onSettlement?: (event: SettlementEvent) => void;
   /** Settle directly through this facilitator instead of Circle Gateway. */
   readonly facilitatorUrl?: string;
+  /** Also sell for bitcoin over Lightning, paid to the seller's own node. */
+  readonly lightning?: LightningSale;
   readonly fetch?: typeof fetch;
+}
+
+export interface LightningSale {
+  /** The seller's node, receiving: nwcReceiver with a receive-only connection, or any ReceiverAdapter. */
+  readonly receiver: ReceiverAdapter;
+  /** LNBTC_MAINNET or LNBTC_TESTNET, as the node is. */
+  readonly network: string;
+  readonly rate: () => Promise<BtcUsd>;
+  /** Where settled proofs are remembered. It must survive restarts: FileReplayStore, without a database. */
+  readonly replay: ReplayStore;
+  /** The least an invoice asks, in millisatoshis. Default 1,000: one sat. */
+  readonly minMsat?: bigint;
+  /** How long a 402 waits for the node's invoice before it goes out without one. Default 5 s. */
+  readonly offerTimeoutMs?: number;
+  readonly onSettled?: (e: LightningSettlement) => void;
+}
+
+export interface LightningSettlement {
+  readonly resource: string;
+  readonly paymentHash: string;
+  readonly amountMsat: string;
+  readonly priceUsd: string;
+  /** What the API behind answered. The sats were taken before it ran. */
+  readonly status: number;
 }
 
 const AMOUNT = /^\$?\d{1,6}(\.\d{1,6})?$/;
@@ -47,6 +80,7 @@ const AMOUNT = /^\$?\d{1,6}(\.\d{1,6})?$/;
 const NOT_FORWARDED = new Set(["host", "connection", "keep-alive", "transfer-encoding", "upgrade", "te", "trailer", "proxy-authorization", "proxy-authenticate", "content-length", "payment-signature", "x-payment", "accept-encoding"]);
 /** Headers of the upstream response that describe its transport, not its content. */
 const NOT_RETURNED = new Set(["connection", "keep-alive", "transfer-encoding", "content-encoding", "content-length"]);
+const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64");
 
 export function normalisePrice(raw: string): string {
   const v = raw.trim();
@@ -95,6 +129,11 @@ export function createProxyApp(opts: ProxyOptions): Hono {
   });
   for (const r of routes) seller.route(r.pattern, r.price, { description: r.description ?? opts.description ?? `${opts.name ?? "API"}: ${r.pattern}`, maxTimeoutSeconds: 120 });
 
+  const ln = opts.lightning;
+  const sats = ln ? lnbtcPaywall({ receiver: async () => ln.receiver, network: ln.network, replay: ln.replay, rate: ln.rate, ...(ln.minMsat ? { minMsat: ln.minMsat } : {}) }) : null;
+  // The first pattern that matches sets the price, as it does for the other rails.
+  const priced = routes.map((r) => ({ priceUsd: r.price.replace("$", ""), matches: matcher(r.pattern) }));
+
   const app = new Hono();
   /** What is for sale here, free to read: directories and agents look for it before paying. */
   app.get("/.well-known/x402", (c) =>
@@ -105,7 +144,8 @@ export function createProxyApp(opts: ProxyOptions): Hono {
       network: seller.network,
       payTo: seller.sellerAddress,
       ...(opts.payToSolana ? { solana: { payTo: opts.payToSolana } } : {}),
-      networks: [seller.network, ...(opts.payToSolana ? [opts.network === "arc" ? "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" : "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"] : [])],
+      ...(ln ? { lightning: { network: ln.network, payTo: ln.receiver.pubkey, scheme: "exact", asset: "BTC", pricing: "each route's dollar price in millisatoshis at the BTC/USD rate when the 402 is made, at least 1 sat" } } : {}),
+      networks: [seller.network, ...(opts.payToSolana ? [opts.network === "arc" ? "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" : "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"] : []), ...(ln ? [ln.network] : [])],
       settlement: opts.facilitatorUrl ? "direct" : "circle-gateway",
       routes: routes.map((r) => ({ pattern: r.pattern, priceUsd: r.price.replace("$", ""), description: r.description ?? null })),
       free: [...(opts.free ?? [])],
@@ -113,11 +153,58 @@ export function createProxyApp(opts: ProxyOptions): Hono {
     }),
   );
 
+  /** The request as the buyer made it: an invoice is bound to its method, URL and body. */
+  const saleOf = async (c: Context, priceUsd: string) => ({
+    method: c.req.method,
+    url: c.req.raw.url,
+    body: ["GET", "HEAD"].includes(c.req.method) ? null : new Uint8Array(await c.req.arrayBuffer()),
+    header: (n: string) => c.req.header(n) ?? null,
+    priceUsd,
+  });
+
   const paywall = seller.middleware();
   app.use("*", async (c, next) => {
     if (c.req.path === "/.well-known/x402") return next();
     if (freeMatchers.some((m) => m(c.req.method, c.req.path))) return next();
-    return paywall(c, next);
+    const priceUsd = sats ? priced.find((r) => r.matches(c.req.method, c.req.path))?.priceUsd : undefined;
+    if (!sats || !ln || !priceUsd) return paywall(c, next);
+    const payment = c.req.header("payment-signature") ?? c.req.header("x-payment");
+
+    if (payment && paymentNetwork(payment)?.startsWith("lnbtc:")) {
+      const settled = await sats.settle(await saleOf(c, priceUsd), payment);
+      if (!settled.ok && settled.status === 503) return c.json({ error: "the payment could not be recorded right now; send the same proof again shortly" }, 503);
+      if (!settled.ok) {
+        const refused = { x402Version: 2, error: settled.error, resource: { url: c.req.raw.url }, accepts: [] };
+        return c.json(refused, 402, { "PAYMENT-REQUIRED": b64(refused) });
+      }
+      await next();
+      // The upstream's own response comes back as it is: the receipt goes on it afterwards.
+      const served = new Response(c.res.body, c.res);
+      served.headers.set("PAYMENT-RESPONSE", b64(settled.settlement));
+      c.res = undefined;
+      c.res = served;
+      ln.onSettled?.({ resource: c.req.raw.url, paymentHash: settled.settlement.transaction, amountMsat: settled.amountMsat, priceUsd, status: c.res.status });
+      return;
+    }
+
+    const res = (await paywall(c, next)) ?? c.res;
+    // An offer in sats goes on a 402 for an API caller, next to the other rails. A browser gets the paywall page.
+    const required = !payment && res.status === 402 && !(res.headers.get("content-type") ?? "").includes("text/html") ? res.headers.get("PAYMENT-REQUIRED") : null;
+    if (!required) return res;
+    const client = (c.req.header("x-forwarded-for") ?? "").split(",")[0]!.trim() || "direct";
+    const sale = await saleOf(c, priceUsd);
+    const offer = await Promise.race([sats.offer(sale, client), new Promise<null>((r) => setTimeout(() => r(null), ln.offerTimeoutMs ?? 5_000).unref?.())]);
+    if (!offer?.ok) return res; // no rate, too many invoices, or the node is slow: the other rails are still on offer
+    let doc: { accepts?: unknown[] } | null = null;
+    try {
+      doc = JSON.parse(Buffer.from(required, "base64").toString("utf8")) as { accepts?: unknown[] };
+    } catch {
+      return res;
+    }
+    if (!Array.isArray(doc?.accepts)) return res;
+    const headers = new Headers(res.headers);
+    headers.set("PAYMENT-REQUIRED", b64({ ...doc, accepts: [...doc.accepts, offer.requirements] }));
+    return new Response(res.body, { status: res.status, headers });
   });
 
   app.all("*", async (c) => {

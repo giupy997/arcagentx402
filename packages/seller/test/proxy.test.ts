@@ -21,6 +21,12 @@ describe("the command line of cra-agent-sell", () => {
     const a = parseSellArgs(["--target", "https://a.com", "--pay-to", PAY_TO, "--price", "1", "--upstream-header", "Authorization: Bearer a=b:c"]);
     expect(a.upstreamHeaders).toEqual({ Authorization: "Bearer a=b:c" });
   });
+  it("takes the Lightning connection as a file, never as the connection itself", () => {
+    const base = ["--target", "https://a.com", "--pay-to", PAY_TO, "--price", "0.002"];
+    expect(parseSellArgs([...base, "--pay-to-lightning", "/home/me/.secrets/nwc-receive"]).payToLightning).toBe("/home/me/.secrets/nwc-receive");
+    expect(parseSellArgs(base).payToLightning).toBeUndefined();
+    expect(() => parseSellArgs([...base, "--pay-to-lightning", "nostr+walletconnect://abc?relay=x&secret=y"])).toThrow(/file path, not the connection/);
+  });
   it("parses prices and route flags", () => {
     expect(normalisePrice("0.002")).toBe("$0.002");
     expect(() => normalisePrice("0")).toThrow();

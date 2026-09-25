@@ -24,4 +24,6 @@ export {
 export { lnbtcAmount, msatToUsd6, usdToMsat } from "./amounts.js";
 export { PgReplayStore, type Queryable } from "./pg-replay.js";
 export { btcUsdRate, RATE_SOURCES, type BtcUsd, type RateSource } from "./btcusd.js";
-export { nwcReceiver, nwcPayer, readConnection } from "./nwc.js";
+export { nwcReceiver, nwcPayer, readConnection, lnbtcNetwork } from "./nwc.js";
+export { lnbtcPaywall, paymentNetwork, type LnbtcPaywall, type LnbtcPaywallOptions, type LnbtcSale, type LnbtcOffer, type LnbtcSettled } from "./paywall.js";
+export { FileReplayStore } from "./file-replay.js";

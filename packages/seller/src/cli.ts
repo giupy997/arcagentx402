@@ -17,12 +17,19 @@
  *   --facilitator <url|cra> settle directly through this x402 facilitator instead of Circle Gateway; "cra" is
  *                           ours: browser wallets can then pay, after --pay-to registers at cra-agent.tech/register
  *   --list <public-url>     once running, add this public URL to the CRA marketplace
+ *   --pay-to-lightning <file>  also sell in sats over Lightning, paid to your own node: the file holds
+ *                           a receive-only Nostr Wallet Connect string (Alby Hub: an app with only
+ *                           "Create invoices" and "Read your node info"). Settled proofs are remembered
+ *                           in ~/.cra-agent/lnbtc-replay.jsonl, or CRA_LNBTC_REPLAY_FILE.
  *
  * Payments go through Circle Gateway: the money lands in the Gateway balance of --pay-to, from
- * where its owner withdraws it. This process never holds a key.
+ * where its owner withdraws it. Sats land on the seller's node. This process never holds a key.
  */
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { serve } from "@hono/node-server";
-import { createProxyApp } from "./proxy.js";
+import { btcUsdRate, FileReplayStore, lnbtcNetwork, nwcReceiver, readConnection } from "@cra-agent/lightning";
+import { createProxyApp, type LightningSale } from "./proxy.js";
 import { parseSellArgs } from "./sell-args.js";
 
 const MARKET = process.env.CRA_MARKET_URL ?? "https://api.cra-agent.tech/v1/market";
@@ -49,8 +56,23 @@ async function addToMarket(url: string): Promise<void> {
   }
 }
 
-function main(): void {
+/** The seller's node, reached once before the first buyer: a wrong connection should stop the start, not a sale. */
+async function lightningSale(file: string): Promise<LightningSale> {
+  const receiver = await nwcReceiver(readConnection(file));
+  const network = lnbtcNetwork(receiver.nodeNetwork);
+  const replay = new FileReplayStore(process.env.CRA_LNBTC_REPLAY_FILE ?? join(homedir(), ".cra-agent", "lnbtc-replay.jsonl"));
+  return {
+    receiver,
+    network,
+    replay,
+    rate: btcUsdRate(),
+    onSettled: (e) => console.log(`${new Date().toISOString()} settled ${e.amountMsat} msat over Lightning for ${e.resource} (${e.paymentHash}); your API answered ${e.status}`),
+  };
+}
+
+async function main(): Promise<void> {
   const a = parseSellArgs(process.argv.slice(2));
+  const lightning = a.payToLightning ? await lightningSale(a.payToLightning) : undefined;
   const app = createProxyApp({
     target: a.target,
     payTo: a.payTo,
@@ -62,19 +84,28 @@ function main(): void {
     ...(a.name ? { name: a.name } : {}),
     ...(a.description ? { description: a.description } : {}),
     ...(a.facilitatorUrl ? { facilitatorUrl: a.facilitatorUrl } : {}),
+    ...(lightning ? { lightning } : {}),
     onSettlement: (e) => console.log(`${new Date().toISOString()} ${e.outcome} ${(Number(e.amount) / 1e6).toFixed(6)} USDC from ${e.payer ?? "unknown"}${e.transaction ? ` (${e.transaction})` : ""}${e.reason ? `: ${e.reason}` : ""}`),
   });
   // Behind a TLS proxy the request arrives as http, and the 402 would advertise an http URL buyers cannot use.
+  // A Lightning invoice is bound to the URL the buyer called, so the host they called counts too.
   const fetchWithRealScheme: typeof app.fetch = (request, ...rest) => {
     const proto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-    if (proto !== "https" || !request.url.startsWith("http://")) return app.fetch(request, ...rest);
-    return app.fetch(new Request(`https://${request.url.slice("http://".length)}`, request), ...rest);
+    const host = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+    const url = new URL(request.url);
+    const secure = proto === "https" && url.protocol === "http:";
+    const moved = !!host && /^[a-z0-9.-]+(:\d+)?$/i.test(host) && host.toLowerCase() !== url.host.toLowerCase();
+    if (!secure && !moved) return app.fetch(request, ...rest);
+    const scheme = secure ? "https:" : url.protocol;
+    const rawPath = request.url.slice(request.url.indexOf("/", request.url.indexOf("//") + 2));
+    return app.fetch(new Request(`${scheme}//${moved ? host : url.host}${rawPath}`, request), ...rest);
   };
   serve({ fetch: fetchWithRealScheme, port: a.port }, () => {
     console.log(`Selling ${a.target} on http://localhost:${a.port}`);
     for (const r of a.routes) console.log(`  ${r.pattern.padEnd(28)} ${r.price} per call`);
     for (const f of a.free) console.log(`  ${f.padEnd(28)} free`);
     if (a.payToSolana) console.log(`Also for sale on Solana, paid to ${a.payToSolana} there.`);
+    if (lightning) console.log(`Also for sale in sats over Lightning, paid to your node ${lightning.receiver.pubkey}. Proofs are remembered in ${(lightning.replay as FileReplayStore).path}.`);
     console.log(`Paid to ${a.payTo} on ${a.network === "arc" ? "Arc mainnet" : "Arc testnet"}, settled ${a.facilitatorUrl ? `by ${a.facilitatorUrl}` : "through Circle Gateway"}.`);
     console.log(`What is for sale, for anyone to read: http://localhost:${a.port}/.well-known/x402`);
     console.log("Buyers need a public https address in front of this port. Once you have one, add it to the marketplace with --list <url>.");
@@ -83,9 +114,7 @@ function main(): void {
   });
 }
 
-try {
-  main();
-} catch (err) {
+main().catch((err: unknown) => {
   console.error(`cra-agent-sell: ${(err as Error).message}`);
   process.exit(1);
-}
+});
