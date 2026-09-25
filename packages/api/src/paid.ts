@@ -7,7 +7,7 @@ import { deployStats, feeEstimate, feeSummary, fxSummary, marketPrices, recentDe
 import { PAIRS, resolvePair } from "./pairs.js";
 import { PAID_ROUTES, type QueryParam } from "./routes.js";
 import { mountToolHandlers } from "./tools.js";
-import { btcUsdRate, LNBTC_MAINNET, LNBTC_TESTNET, nwcReceiver, PgReplayStore, readConnection, type ReceiverAdapter } from "@cra-agent/lightning";
+import { btcUsdRate, LNBTC_MAINNET, LNBTC_TESTNET, msatToUsd6, nwcReceiver, PgReplayStore, readConnection, type ReceiverAdapter } from "@cra-agent/lightning";
 import { lightningMiddleware } from "./lightning.js";
 
 /** What a route costs on the direct rail: its own price, but never below the floor that covers our gas. */
@@ -133,7 +133,9 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
         minMsat: BigInt(process.env.LIGHTNING_MIN_MSAT ?? "1000"),
         onSettled: async (e) => {
           const payTo = (await receiver()).pubkey;
-          await recordSettlement(db, { rail: "lightning", network: lightningNetwork, outcome: "settled", payer: null, payTo, amountUsdc6: parseUsdc6(e.priceUsd).toString(), tx: e.paymentHash, reason: e.status >= 400 ? `paid, then the route answered ${e.status}` : null, route: e.route }).catch((err: unknown) => log.warn({ err, tx: e.paymentHash }, "lightning settlement not recorded"));
+          // What was received, in dollars at the rate of the moment: with the 1-sat floor it can be more than the route's price.
+          const received = await rate().then((r) => msatToUsd6(e.amountMsat, r.rate).toString()).catch(() => parseUsdc6(e.priceUsd).toString());
+          await recordSettlement(db, { rail: "lightning", network: lightningNetwork, outcome: "settled", payer: null, payTo, amountUsdc6: received, tx: e.paymentHash, reason: e.status >= 400 ? `paid, then the route answered ${e.status}` : null, route: e.route }).catch((err: unknown) => log.warn({ err, tx: e.paymentHash }, "lightning settlement not recorded"));
         },
       }),
     );
