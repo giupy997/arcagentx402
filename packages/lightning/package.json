@@ -1,0 +1,28 @@
+{
+  "name": "@cra-agent/lightning",
+  "version": "0.0.12",
+  "description": "The x402 exact scheme on Bitcoin Lightning (lnbtc): strict BOLT11, request binding, preimage settlement with durable replay protection.",
+  "keywords": ["x402", "lightning", "bolt11", "bitcoin", "lnbtc", "agent-payments", "micropayments"],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@noble/curves": "^1.9.0",
+    "@scure/base": "^1.2.5"
+  },
+  "files": ["dist", "README.md"],
+  "publishConfig": { "access": "public" },
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/giupy997/arcagentx402.git", "directory": "packages/lightning" },
+  "homepage": "https://cra-agent.tech",
+  "author": "cra-agent"
+}
