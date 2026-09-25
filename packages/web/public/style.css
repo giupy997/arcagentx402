@@ -463,6 +463,7 @@ footer.site a { word-break: break-all; }
 .t-step.think .k { color: #8fb8f5; }
 .t-step.search .k { color: rgba(219, 230, 247, .7); }
 .t-step.buy .k { color: var(--mint); }
+.t-step.fetch .k { color: #7fd6e8; }
 .t-step.refused .k { color: #ec835a; }
 .t-step .cost, .t-now .cost { color: #f3cf8e; font-variant-numeric: tabular-nums; }
 .t-step .cost.free, .t-now .cost.free { color: rgba(219, 230, 247, .42); }

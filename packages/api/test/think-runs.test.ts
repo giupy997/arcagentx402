@@ -20,6 +20,7 @@ const row = (over: Partial<ThinkRunRow> = {}): ThinkRunRow => ({
     { kind: "think", detail: "I need a web search.", costUsdc: "0.003026", ledgerId: "1", tx: "c9229599-ff5b-4f65-ae0a-e75085fdf83b", atMs: 3100, ms: 3050 },
     { kind: "search", detail: '"web search": 6 results', costUsdc: "0", ledgerId: null, query: "web search", results: [{ seller: "Exa", what: "Search the web", priceUsd: "0.007" }], atMs: 3400 },
     { kind: "think", detail: "Exa will do.", costUsdc: "0.00467", ledgerId: "2", tx: "af0156fb", atMs: 8900 },
+    { kind: "fetch", detail: "GET https://api.dexscreener.com/token-boosts/top/v1 -> 200", costUsdc: "0", ledgerId: null, url: "https://api.dexscreener.com/token-boosts/top/v1", method: "GET", seller: "DexScreener", status: 200, atMs: 9000 },
     { kind: "nonsense", detail: "dropped" },
   ],
   answer: null,
@@ -35,7 +36,7 @@ describe("a thinking run as the page reads it", () => {
     const v = runView(row(), T0.getTime() + 10_000);
     expect(v.status).toBe("running");
     expect(v.phase).toMatchObject({ kind: "buy", seller: "Exa" });
-    expect(v.steps.map((s) => s.kind)).toEqual(["think", "search", "think"]);
+    expect(v.steps.map((s) => s.kind)).toEqual(["think", "search", "think", "fetch"]);
     expect(v.spent).toEqual({ thinkingUsdc: "0.007696", toolsUsdc: "0", totalUsdc: "0.007696", thoughts: 2, purchases: 0 });
     expect(v.paid).toEqual([{ seller: "BlockRun.AI", role: "brain", payments: 2, usdc: "0.007696" }]);
     expect(v.checked).toBe(false);
@@ -50,7 +51,7 @@ describe("a thinking run as the page reads it", () => {
 
   it("once answered: the recorded bill, who was paid for what, and an answer that rests on a purchase", () => {
     const steps = [
-      ...(row().steps as unknown[]).slice(0, 3),
+      ...(row().steps as unknown[]).slice(0, 4),
       { kind: "buy", detail: "POST https://api.exa.ai/search -> 200", costUsdc: "0.007", ledgerId: "3", tx: "cfc8afb6", url: "https://api.exa.ai/search", method: "POST", seller: "Exa", status: 200, atMs: 11_000 },
       { kind: "think", detail: "Done.", costUsdc: "0.004871", ledgerId: "4", atMs: 15_000 },
     ];
@@ -63,6 +64,7 @@ describe("a thinking run as the page reads it", () => {
       { seller: "Exa", role: "tool", payments: 1, usdc: "0.007" },
     ]);
     expect(v.checked).toBe(true);
-    expect(v.steps[3]).toMatchObject({ kind: "buy", seller: "Exa", status: 200, tx: "cfc8afb6" });
+    expect(v.steps[3]).toMatchObject({ kind: "fetch", seller: "DexScreener", costUsdc: "0" });
+    expect(v.steps[4]).toMatchObject({ kind: "buy", seller: "Exa", status: 200, tx: "cfc8afb6" });
   });
 });

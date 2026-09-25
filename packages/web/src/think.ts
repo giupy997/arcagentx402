@@ -10,7 +10,7 @@ import { initChrome } from "./menu.js";
 
 initChrome();
 
-type Kind = "think" | "search" | "buy" | "refused";
+type Kind = "think" | "search" | "buy" | "fetch" | "refused";
 interface Step {
   kind: Kind;
   detail: string;
@@ -26,7 +26,7 @@ interface Step {
   results?: Array<{ seller: string; what: string; priceUsd: string }>;
 }
 interface Spent { thinkingUsdc: string; toolsUsdc: string; totalUsdc: string; thoughts: number; purchases: number }
-type Phase = { kind: "think"; n: number } | { kind: "search"; query: string } | { kind: "buy"; url: string; method: string; seller: string; priceUsd: string };
+type Phase = { kind: "think"; n: number } | { kind: "search"; query: string } | { kind: "buy"; url: string; method: string; seller: string; priceUsd: string } | { kind: "fetch"; url: string; method: string; seller: string };
 type Status = "running" | "answered" | "budget" | "steps" | "brain" | "failed" | "interrupted";
 interface Run {
   id: number;
@@ -112,6 +112,10 @@ function logo(name: string | null | undefined, size = ""): string {
   return `<span class="b-logo ${size}"><img src="${esc(API_BASE + path)}" alt="" decoding="async">${monogram(n)}</span>`;
 }
 
+/** Free public APIs the agent calls: not sellers in the bazaar, but their logo comes the same way. */
+const FREE_TOOL_SITES: Record<string, string> = { DexScreener: "https://dexscreener.com" };
+for (const [name, site] of Object.entries(FREE_TOOL_SITES)) logoPath.set(name, `/v1/bazaar/logo?site=${encodeURIComponent(site)}`);
+
 async function loadLogos(): Promise<void> {
   const b = await getJson<Bazaar>("/v1/bazaar").catch(() => null);
   if (!b) return;
@@ -181,7 +185,7 @@ function stepHtml(run: Run, s: Step, index: number): string {
   const n = s.kind === "think" ? String(thought).padStart(2, "0") : "";
   // A seller that fails is not paid: x402 settles only after it answers.
   const charged = micro(s.costUsdc) > 0;
-  const cost = s.kind === "search" ? `<span class="cost free">free</span>` : s.kind === "refused" ? `<span class="cost free">·</span>` : s.kind === "buy" && !charged ? `<span class="cost free">$0</span>` : `<span class="cost">$${esc(s.costUsdc)}</span>`;
+  const cost = s.kind === "search" || s.kind === "fetch" ? `<span class="cost free">free</span>` : s.kind === "refused" ? `<span class="cost free">·</span>` : s.kind === "buy" && !charged ? `<span class="cost free">$0</span>` : `<span class="cost">$${esc(s.costUsdc)}</span>`;
   const sub: string[] = [];
   let txt = "";
   if (s.kind === "think") {
@@ -199,6 +203,9 @@ function stepHtml(run: Run, s: Step, index: number): string {
       bySeller.set(r.seller, g);
     }
     if (bySeller.size) sub.push([...bySeller].map(([seller, g]) => `${logo(seller, "xs")}${esc(seller)}${g.n > 1 ? ` ×${g.n}` : ""} <span class="price">${g.n > 1 ? "from " : ""}$${esc(g.price)}</span>`).join('<i class="sep">·</i>'));
+  } else if (s.kind === "fetch") {
+    txt = `${esc(s.method ?? "")} ${esc(shortUrl(s.url))} <span class="dim">→ ${s.status ?? ""}</span>`;
+    sub.push(`${logo(s.seller, "xs")}${esc(s.seller ?? "a public API")}, free public API: nothing paid`);
   } else if (s.kind === "buy") {
     txt = `${esc(s.method ?? "")} ${esc(shortUrl(s.url))} <span class="dim">→ ${s.status ?? ""}</span>`;
     sub.push(charged ? `${logo(s.seller, "xs")}paid ${esc(s.seller ?? "the seller")}` : `${logo(s.seller, "xs")}${esc(s.seller ?? "the seller")} failed, not charged`);
@@ -207,7 +214,7 @@ function stepHtml(run: Run, s: Step, index: number): string {
   }
   if (s.tx) sub.push(`settled <span class="tx" title="${esc(s.tx)}">${esc(shortTx(s.tx))}</span>`);
   if (s.ms && s.kind !== "search") sub.push(`${(s.ms / 1000).toFixed(1)}s`);
-  const label = s.kind === "think" ? "think" : s.kind === "search" ? "search" : s.kind === "buy" ? "buy" : "refused";
+  const label = s.kind;
   return `<li class="t-step ${s.kind}"><span class="n">${n}</span><span class="k">${label}</span>${cost}<span class="txt">${txt}</span>${sub.length ? `<span class="sub">${sub.join('<i class="sep">·</i>')}</span>` : ""}</li>`;
 }
 
@@ -229,6 +236,7 @@ function show(run: Run, upTo: number): void {
 function phaseHtml(run: Run, p: Phase): string {
   if (p.kind === "think") return `<span class="n">${String(p.n).padStart(2, "0")}</span><span class="k">think</span><span class="cost">…</span><span class="txt">paying ${esc(brainLabel(run))} for thought ${p.n}<span class="spin"></span></span>`;
   if (p.kind === "search") return `<span class="n"></span><span class="k">search</span><span class="cost free">free</span><span class="txt">searching the bazaar for “${esc(p.query)}”<span class="spin"></span></span>`;
+  if (p.kind === "fetch") return `<span class="n"></span><span class="k">fetch</span><span class="cost free">free</span><span class="txt">calling ${esc(p.method)} ${esc(shortUrl(p.url))} from ${esc(p.seller)}<span class="spin"></span></span>`;
   return `<span class="n"></span><span class="k">buy</span><span class="cost">$${esc(p.priceUsd)}</span><span class="txt">buying ${esc(p.method)} ${esc(shortUrl(p.url))} from ${esc(p.seller)}<span class="spin"></span></span>`;
 }
 
@@ -378,6 +386,7 @@ function replay(run: Run): void {
     if (s.kind === "think") p = { kind: "think", n: ++thought };
     else if (s.kind === "search") p = { kind: "search", query: s.query ?? "" };
     else if (s.kind === "buy") p = { kind: "buy", url: s.url ?? "", method: s.method ?? "", seller: s.seller ?? "", priceUsd: s.costUsdc };
+    else if (s.kind === "fetch") p = { kind: "fetch", url: s.url ?? "", method: s.method ?? "", seller: s.seller ?? "" };
     if (p) {
       const shownPhase = p;
       timers.push(window.setTimeout(() => phase(run, shownPhase), prev + 200));

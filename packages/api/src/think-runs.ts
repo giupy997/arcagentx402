@@ -10,7 +10,8 @@ import type { Db } from "./db.js";
 type Status = "running" | "answered" | "budget" | "steps" | "brain" | "failed" | "interrupted";
 
 export interface ThinkStepView {
-  kind: "think" | "search" | "buy" | "refused";
+  /** fetch: a free public API, nothing paid. */
+  kind: "think" | "search" | "buy" | "fetch" | "refused";
   detail: string;
   costUsdc: string;
   atMs: number | null;
@@ -92,7 +93,7 @@ function stepOf(raw: unknown): ThinkStepView | null {
   if (!raw || typeof raw !== "object") return null;
   const s = raw as Record<string, unknown>;
   const kind = s.kind;
-  if (kind !== "think" && kind !== "search" && kind !== "buy" && kind !== "refused") return null;
+  if (kind !== "think" && kind !== "search" && kind !== "buy" && kind !== "fetch" && kind !== "refused") return null;
   const view: ThinkStepView = {
     kind,
     detail: text(s.detail, 600) ?? "",

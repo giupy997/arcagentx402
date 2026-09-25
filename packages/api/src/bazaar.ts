@@ -69,6 +69,9 @@ export const NETWORK_NAMES: Record<string, string> = {
   "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "Solana",
 };
 /** Each network's own site, where its logo is read from, the same way a seller's is. */
+/** Free public APIs the thinking agent calls (cra-agent.tech/think shows their logo next to what it paid for). */
+export const FREE_TOOL_SITES: readonly string[] = ["https://dexscreener.com"];
+
 export const NETWORK_SITES: Record<string, string> = {
   "eip155:5042": "https://www.arc.network",
   "eip155:5042002": "https://www.arc.network",
@@ -268,7 +271,7 @@ export function mountBazaar(app: Hono, deps: { catalogue: (origin: string) => Pr
     const hit = latest.get(origin);
     if (hit && Date.now() - hit.at < 60_000) return hit;
     const body = bazaarOverview(await deps.catalogue(origin), caip2);
-    const fresh = { at: Date.now(), body, sites: new Set([...body.sellers.flatMap((s) => (s.site ? [s.site] : [])), ...Object.values(NETWORK_SITES)]) };
+    const fresh = { at: Date.now(), body, sites: new Set([...body.sellers.flatMap((s) => (s.site ? [s.site] : [])), ...Object.values(NETWORK_SITES), ...FREE_TOOL_SITES]) };
     if (latest.size > 8) latest.clear();
     latest.set(origin, fresh);
     return fresh;

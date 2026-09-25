@@ -195,6 +195,23 @@ describe("an agent that pays for its own thinking", () => {
     expect(r.steps.find((s) => s.kind === "buy")).toMatchObject({ status: 502, costUsdc: "0" });
   });
 
+  it("calls a free public API without paying, and records it as a fetch, not a purchase", async () => {
+    const DEX = "https://api.dexscreener.com/token-boosts/top/v1";
+    const w = world(
+      [
+        { thought: "Boosted tokens.", action: "search", query: "trending memecoins" },
+        { thought: "Free, use it.", action: "buy", url: DEX },
+        { thought: "Done.", action: "answer", text: "ok" },
+      ],
+      () => ({ status: 200, body: '{"first":[]}', paidUsdc: "0", ledgerId: null, refused: null }),
+    );
+    const free = found({ url: DEX, method: "GET", priceUsd: "0", name: "DexScreener", params: [] });
+    const r = await think(opts(), { ...w.deps, search: async () => [free] });
+    expect(w.paid.find((p) => p.url === DEX)).toMatchObject({ maxUsdc: "0" });
+    expect(r.steps.find((s) => s.url === DEX)).toMatchObject({ kind: "fetch", costUsdc: "0", status: 200, seller: "DexScreener" });
+    expect(r.spent).toMatchObject({ toolsUsdc: "0", purchases: 0, thoughts: 3 });
+  });
+
   it("gives an unreadable brain one more chance, then stops", async () => {
     const w = world(["Sure! Let me think about that.", "Still not JSON."]);
     const r = await think(opts(), w.deps);

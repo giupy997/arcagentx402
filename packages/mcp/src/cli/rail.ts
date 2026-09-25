@@ -23,6 +23,7 @@ import { railFromEnv } from "../rail-from-env.js";
 import { runInit } from "./init.js";
 import { BLOCKRUN_CHAT, DEFAULT_MODEL, think, type Paid } from "../think.js";
 import { ThinkRecorder } from "../think-record.js";
+import { digestFree, freeTools, isFree, toolAllowed, wantsWeb } from "../free-tools.js";
 
 /** The url and the amount in order, and --method / --body wherever they are. A body means POST. */
 function callOptions(args: readonly string[]): { positional: string[]; method: "GET" | "POST"; body: string | undefined } {
@@ -143,7 +144,7 @@ async function main(): Promise<void> {
         return i >= 0 ? args[i + 1] : undefined;
       };
       // Only these take a value; --json and --record stand alone, so the task may follow them.
-      const VALUED = new Set(["--budget", "--ceiling", "--model", "--steps", "--tokens", "--brain", "--questions"]);
+      const VALUED = new Set(["--budget", "--ceiling", "--model", "--steps", "--tokens", "--brain", "--questions", "--tools"]);
       let task = args.filter((a, i) => !a.startsWith("--") && !(i > 0 && VALUED.has(args[i - 1]!))).join(" ").trim();
       const questions = flag("--questions");
       if (!task && questions) {
@@ -154,7 +155,10 @@ async function main(): Promise<void> {
         const n = args.includes("--record") && process.env.DATABASE_URL ? await ThinkRecorder.count(process.env.DATABASE_URL) : Math.floor(Date.now() / 3_600_000);
         task = list[n % list.length]!;
       }
-      if (!task) throw new Error('usage: think "<task>" [--budget 0.10] [--ceiling 0.01] [--model anthropic/claude-haiku-4.5] [--steps 8] [--tokens 350] [--brain <url>] [--json] [--record] [--questions <file>]');
+      if (!task) throw new Error('usage: think "<task>" [--budget 0.10] [--ceiling 0.01] [--model anthropic/claude-haiku-4.5] [--steps 8] [--tokens 350] [--brain <url>] [--json] [--record] [--questions <file>] [--tools <file>]');
+      // --tools: URL prefixes the agent may use, one a line; anything else is never shown to it, so never bought.
+      const toolsFile = flag("--tools");
+      const allowedTool = toolAllowed(toolsFile ? readFileSync(toolsFile, "utf8").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#")) : null);
       const amount = /^\d{1,6}(\.\d{1,6})?$/;
       const budgetUsdc = flag("--budget") ?? "0.10";
       const thoughtCeilingUsdc = flag("--ceiling") ?? "0.01";
@@ -181,7 +185,9 @@ async function main(): Promise<void> {
       const pay = async (url: string, init: { method: "GET" | "POST"; body?: string }, maxUsdc: string): Promise<Paid> => {
         try {
           const { response, receipt } = await rail.fetch(url, { method: init.method, headers: { accept: "application/json", ...(init.body === undefined ? {} : { "content-type": "application/json" }) }, ...(init.body === undefined ? {} : { body: init.body }) }, { maxUsdc });
-          const body = await response.text();
+          const raw = await response.text();
+          // A free public API's answer is large and unordered: the agent reads its digest (free-tools.ts).
+          const body = (response.ok && isFree(url) ? digestFree(url, raw) : null) ?? raw;
           return { status: response.status, body, paidUsdc: receipt?.status === "settled" ? receipt.amountUsdc : "0", ledgerId: receipt ? String(receipt.ledgerId) : null, refused: null, tx: receipt?.txHash ?? null };
         } catch (err) {
           if (err instanceof PolicyRejected) return { status: 0, body: "", paidUsdc: "0", ledgerId: null, refused: `${err.decision.rule}: ${err.decision.reason}` };
@@ -214,8 +220,21 @@ async function main(): Promise<void> {
           {
             pay,
             say,
-            // Only what this wallet's policy lets it pay: a result it could never buy only costs the brain a thought.
-            search: async (q) => (await searchMarket(q, { limit: 12 })).results.filter((x) => x.network === caip2 && fit(x, policy, caip2, NOTHING_SPENT, null).payable).slice(0, 6),
+            // Free public APIs first when they fit, then only what this wallet's policy lets it pay: a result it
+            // could never buy only costs the brain a thought. A bazaar that does not answer leaves the free ones.
+            search: async (q) => {
+              // Wide, then filtered: the bazaar's first dozen can all be sellers this wallet may not pay.
+              const usable = async (query: string) =>
+                (await searchMarket(query, { limit: 40 }).then((a) => a.results).catch(() => [])).filter((x) => x.network === caip2 && fit(x, policy, caip2, NOTHING_SPENT, null).payable && allowedTool(x.url));
+              let found = [...freeTools(q, caip2).filter((x) => allowedTool(x.url)), ...(await usable(q))];
+              // News and posts come from the web: when the words ask for them, a web search comes first.
+              const isWeb = (x: { label: string | null }) => /\bweb\b/i.test(x.label ?? "") && /\bsearch/i.test(x.label ?? "");
+              if (wantsWeb(q)) {
+                const web = found.find(isWeb) ?? (await usable("web search")).find(isWeb);
+                if (web) found = [web, ...found.filter((x) => x !== web)];
+              }
+              return found.slice(0, 6);
+            },
             ...(recorder ? { onStep: (s) => recorder!.step(s), onPhase: (p) => recorder!.phase(p) } : {}),
           },
         );

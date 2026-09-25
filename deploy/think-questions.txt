@@ -1,26 +1,44 @@
 # Questions the thinking agent on the server answers, one per run, in turn (cra-agent-think.service, every 30 minutes).
-# Each needs something the model cannot know by itself, so the agent has to find and buy it: a web search
-# from Exa, or a live stock price from BlockRun. Lines starting with # are skipped.
+# Each needs something the model cannot know by itself, so the agent has to find it: DEX data from DexScreener
+# (free), market data from CoinGecko, live stock prices from BlockRun, the web from Exa. Lines starting with # are skipped.
 What is the biggest story in crypto today? One sentence, with a source.
+Which tokens have the most active boosts on DexScreener right now? Name three, with their chains.
 What is Apple's stock price right now, and what moved it today? Two sentences, with a source.
+What are the trending coins on CoinGecko right now? Name three.
 What did Circle announce most recently? Two sentences, with a source.
+What is the most traded PEPE pair on DexScreener right now, and its 24-hour volume? One sentence.
 Which AI model launch is in the news this week? One sentence, with a source.
+What are bitcoin and ether trading at right now? One sentence, with the source of the prices.
 What is new on Arc this week? Two sentences, with a source.
+What is the price of the CRA token on Arc, according to DexScreener? One sentence.
 What is Nvidia's stock price right now? One sentence, with the source of the price.
+Which new token profiles appeared on DexScreener most recently? Name two, with their chains.
+What are people saying about Arc on X this week? Two sentences, with a source.
+What is the biggest WETH/USDC pair on Base by 24-hour volume, according to DexScreener? One sentence.
 What is the latest on stablecoin rules in the United States? Two sentences, with a source.
-How much USDC is in circulation right now? One sentence, with a source.
-What is the latest news about x402 or payments by AI agents? Two sentences, with a source.
+What is the price of SOL right now, and how much did it move in 24 hours? One sentence, with the source.
+What did Coinbase announce most recently? One sentence, with a source.
 What is Circle's stock (CRCL) trading at right now? One sentence, with the source of the price.
+Which chain has the most boosted tokens on DexScreener right now? One sentence.
+What is the latest news about x402 or payments by AI agents? Two sentences, with a source.
+What is the most traded Solana memecoin pair on DexScreener right now? One sentence, with its 24-hour volume.
+How much USDC is in circulation right now? One sentence, with a source.
 What happened with Ethereum this week? Two sentences, with a source.
-What is the biggest tech story today? One sentence, with a source.
-When did Arc mainnet go live, and which companies run its validators? Two sentences, with a source.
+What is the price of HYPE on DexScreener right now, and its biggest pair? One sentence.
 What is Coinbase's stock price right now, and why did it move? Two sentences, with a source.
+What is new on Base this week? One sentence, with a source.
 Which crypto company raised money this week, and how much? One sentence, with a source.
+What does Polymarket say about bitcoin's price this week? One sentence.
 What is the latest news about tokenized stocks? Two sentences, with a source.
 What is Tesla's stock price right now? One sentence, with the source of the price.
+What is the latest news about Hyperliquid? One sentence, with a source.
+What is the biggest tech story today? One sentence, with a source.
 What is the latest news about Solana? One sentence, with a source.
+What did Circle post or announce on X this week? One sentence, with a source.
+What is MicroStrategy's (MSTR) stock price right now? One sentence, with the source of the price.
 What is the biggest story in fintech today? One sentence, with a source.
 What is the latest news about Bitcoin ETFs? One sentence, with a source.
+When did Arc mainnet go live, and which companies run its validators? Two sentences, with a source.
 What is Microsoft's stock price right now, and what is in the news about it? Two sentences, with a source.
 What is the latest news about Robinhood Chain? One sentence, with a source.
 What did OpenAI or Anthropic announce most recently? One sentence, with a source.

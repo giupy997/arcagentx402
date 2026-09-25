@@ -41,7 +41,8 @@ export interface Paid {
 export type Phase =
   | { kind: "think"; n: number }
   | { kind: "search"; query: string }
-  | { kind: "buy"; url: string; method: string; seller: string; priceUsd: string };
+  | { kind: "buy"; url: string; method: string; seller: string; priceUsd: string }
+  | { kind: "fetch"; url: string; method: string; seller: string };
 
 export interface ThinkDeps {
   pay(url: string, init: { method: "GET" | "POST"; body?: string }, maxUsdc: string): Promise<Paid>;
@@ -67,7 +68,8 @@ export interface ThinkOptions {
 }
 
 export interface Step {
-  kind: "think" | "search" | "buy" | "refused";
+  /** fetch: a call to a free public API, nothing paid. */
+  kind: "think" | "search" | "buy" | "fetch" | "refused";
   detail: string;
   costUsdc: string;
   ledgerId: string | null;
@@ -113,8 +115,8 @@ Reply with exactly one JSON object and nothing else, in one of these shapes:
 {"thought": "<one short sentence>", "action": "answer", "text": "<your final answer to the task>"}
 
 Rules:
-- search is free. It finds paid APIs on Arc by what they do, not the answer itself: search "web search", "bitcoin price" or "arc gas fees", not the question. It returns their url, method, price, and the parameters they take.
-- buy calls one of those APIs and pays its price. You can only buy a url that a search returned. Replace any {placeholder} in it and change example values to what you need.
+- search is free. It finds APIs by what they do, not the answer itself: search "web search", "bitcoin price" or "dex pairs", not the question. It returns their url, method, price, and the parameters they take. Most are paid APIs on Arc; a few are free public ones, with price 0.
+- buy calls one of those APIs and pays its price, nothing for a free one: prefer a free one when it can answer. You can only buy a url that a search returned. Replace any {placeholder} in it and change example values to what you need.
 - Send only the parameters the task needs, with values a parameter's "about" allows: a seller can charge for a request it rejects.
 - Your memory ends before today and can be wrong about anything recent. Check dates, news and recent facts by buying a web search.
 - Never invent a fact or a source. Name only sources you bought in this task, and say plainly what you could not check.
@@ -293,6 +295,22 @@ export async function think(opts: ThinkOptions, deps: ThinkDeps): Promise<ThinkR
         continue;
       }
       const price = parseUsdc6(listed.priceUsd);
+      if (price === 0n) {
+        // A free public API: nothing to pay, so no budget to check; the call is still recorded, as a fetch.
+        const sentFree = await phase({ kind: "fetch", url, method: listed.method, seller: listed.name });
+        const got = await deps.pay(url, { method: listed.method }, "0");
+        if (got.refused || got.status === 0) {
+          const why = got.refused ?? got.body.slice(0, 160);
+          await add({ kind: "refused", detail: `not fetched: ${why}`, costUsdc: "0", ledgerId: null, url, seller: listed.name });
+          deps.say(`      not fetched: ${why}`);
+          messages.push({ role: "user", content: `Not fetched: ${why}` });
+          continue;
+        }
+        await add({ kind: "fetch", detail: `${listed.method} ${url} -> ${got.status}`, costUsdc: "0", ledgerId: null, url, method: listed.method, seller: listed.name, status: got.status, ms: Date.now() - sentFree });
+        deps.say(`      fetch  free    ${listed.method} ${url.length > 70 ? `${url.slice(0, 67)}...` : url} -> ${got.status}`);
+        messages.push({ role: "user", content: `Fetched ${url} (status ${got.status}, free). Response, cut to ${RESULT_CHARS} characters:\n${got.body.slice(0, RESULT_CHARS)}`, result: true });
+        continue;
+      }
       if (compareUsdc6(price, left()) > 0) {
         await add({ kind: "refused", detail: `not bought: $${listed.priceUsd} is more than the $${formatUsdc6(left())} left`, costUsdc: "0", ledgerId: null, url, seller: listed.name });
         deps.say(`      not bought: $${listed.priceUsd} is more than the budget left`);
@@ -323,7 +341,8 @@ export async function think(opts: ThinkOptions, deps: ThinkDeps): Promise<ThinkR
       if (parseUsdc6(bought.paidUsdc) > 0n) purchases++;
       await add({ kind: "buy", detail: `${listed.method} ${url} -> ${bought.status}`, costUsdc: bought.paidUsdc, ledgerId: bought.ledgerId, tx: bought.tx ?? null, url, method: listed.method, seller: listed.name, status: bought.status, ms: Date.now() - sent });
       deps.say(`      buy    $${bought.paidUsdc}  ${listed.method} ${url.length > 70 ? `${url.slice(0, 67)}...` : url} -> ${bought.status}`);
-      const failed = bought.status >= 400 ? `, an error: the seller charged for it anyway, so fix the request from what it says before trying again` : "";
+      const charged = parseUsdc6(bought.paidUsdc) > 0n;
+      const failed = bought.status >= 400 ? (charged ? ", an error, and it was charged anyway: fix the request from what it says before trying again" : ", an error, and nothing was charged") : "";
       messages.push({ role: "user", content: `Bought ${url} (status ${bought.status}${failed}). Response, cut to ${RESULT_CHARS} characters:\n${bought.body.slice(0, RESULT_CHARS)}`, result: true });
       continue;
     }
