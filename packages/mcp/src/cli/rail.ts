@@ -12,7 +12,7 @@
  *   cra-agent think "<task>" [--budget 0.10] [--model …] [--steps 8]   an agent that pays for its own thinking, and its tools
  *   cra-agent think --record [--questions <file>]   the same, kept in Postgres as it runs (cra-agent.tech/think shows it live)
  */
-import { formatUsdc6 } from "@cra-agent/accounting";
+import { compareUsdc6, formatUsdc6, parseUsdc6 } from "@cra-agent/accounting";
 import { describePolicy, parsePolicyString } from "@cra-agent/policy";
 import { readFileSync } from "node:fs";
 import type { Address } from "viem";
@@ -197,6 +197,13 @@ async function main(): Promise<void> {
       let recorder: ThinkRecorder | null = null;
       if (args.includes("--record")) {
         if (!process.env.DATABASE_URL) throw new Error("--record writes the run to Postgres: set DATABASE_URL");
+        // On a timer, a run starts only when the wallet can pay for all of it: an empty wallet skips quietly
+        // instead of leaving a half-paid, failed run on the page.
+        const { gatewayAvailable } = await rail.balances();
+        if (compareUsdc6(parseUsdc6(gatewayAvailable), parseUsdc6(budgetUsdc)) < 0) {
+          console.log(`Skipped: $${gatewayAvailable} left in Circle Gateway, less than the $${budgetUsdc} a run may spend. Top it up with cra-agent deposit.`);
+          break;
+        }
         recorder = await ThinkRecorder.start(process.env.DATABASE_URL, { agent: rail.address, network: caip2, task, model, brainUrl, brainName, budgetUsdc, ceilingUsdc: thoughtCeilingUsdc, policy: limits });
         say(`Recording as run ${recorder.id}`);
       }
