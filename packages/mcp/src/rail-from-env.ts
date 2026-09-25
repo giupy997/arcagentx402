@@ -4,6 +4,7 @@ import { MemoryLedger, PgLedger, type Ledger } from "@cra-agent/ledger";
 import { DEFAULT_POLICY, parsePolicyString, type SpendPolicy } from "@cra-agent/policy";
 import { createRail, type Rail } from "@cra-agent/router";
 import { createEscrowClient, type EscrowClient } from "@cra-agent/escrow";
+import { btcUsdRate, LNBTC_MAINNET, LNBTC_TESTNET, nwcPayer, readConnection } from "@cra-agent/lightning";
 import type { Address } from "viem";
 import type { Hex } from "viem";
 
@@ -19,8 +20,10 @@ import type { Hex } from "viem";
  *   CRA_IDENTITY      on | off  (default on)
  *   DATABASE_URL          optional; with it the ledger is Postgres, without it in-memory
  *   CRA_EVALUATOR         optional address that evaluates ERC-8183 jobs this agent creates (default: the agent)
+ *   CRA_NWC_PAY_FILE      optional file holding a Nostr Wallet Connect string that can pay: the agent can then pay
+ *                         sellers in bitcoin over Lightning (x402 exact on lnbtc), and its policy allows that network
  */
-export interface RailFromEnv { rail: Rail; ledger: Ledger; policy: SpendPolicy; network: ArcNetwork; agentId: string; signer: ReturnType<typeof createSigner>; escrow: () => EscrowClient; /** The endpoint picked at startup, for anything that talks to the chain outside the rail. */ rpcUrl: string }
+export interface RailFromEnv { rail: Rail; ledger: Ledger; policy: SpendPolicy; network: ArcNetwork; agentId: string; signer: ReturnType<typeof createSigner>; escrow: () => EscrowClient; /** The endpoint picked at startup, for anything that talks to the chain outside the rail. */ rpcUrl: string; /** Closes the Lightning wallet's relay connections, when there is one. */ close: () => void }
 
 /** Accept the pre-rename ARCRAIL_* variables so existing setups keep working. */
 function withLegacyNames(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -66,7 +69,12 @@ export async function railFromEnv(rawEnv: NodeJS.ProcessEnv = process.env): Prom
     console.error(JSON.stringify({ event: "rpc.none_answered", using: redactRpcUrl(rpcUrl), error: (err as Error).message }));
   }
   const identity = (env.CRA_IDENTITY ?? "on") === "off" ? null : createErc8004Resolver({ network, rpcUrl });
-  const rail = createRail({ network, signer, policy, ledger, identity, agentId, rpcUrl, log: (e, d) => console.error(JSON.stringify({ event: e, ...d })) });
+  // A Lightning wallet is an explicit choice of whoever runs the agent: with one, the policy also allows the
+  // Lightning network, and every limit still applies, a price in sats counted in dollars.
+  const payer = env.CRA_NWC_PAY_FILE ? nwcPayer(readConnection(env.CRA_NWC_PAY_FILE)) : null;
+  const lnbtc = network === "arc" ? LNBTC_MAINNET : LNBTC_TESTNET;
+  const limits = payer && !policy.allowedNetworks.includes(lnbtc) ? { ...policy, allowedNetworks: [...policy.allowedNetworks, lnbtc] } : policy;
+  const rail = createRail({ network, signer, policy: limits, ledger, identity, agentId, rpcUrl, log: (e, d) => console.error(JSON.stringify({ event: e, ...d })), ...(payer ? { lightning: { payer, rate: btcUsdRate() } } : {}) });
   const escrow = () => createEscrowClient({ network, signer, rpcUrl, ...(env.CRA_EVALUATOR ? { evaluator: env.CRA_EVALUATOR as Address } : {}) });
-  return { rail, ledger, policy, network, agentId, signer, escrow, rpcUrl };
+  return { rail, ledger, policy: limits, network, agentId, signer, escrow, rpcUrl, close: () => payer?.close() };
 }

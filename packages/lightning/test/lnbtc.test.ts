@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { httpBinding, mcpBinding, type HttpRequestForBinding } from "../src/binding.js";
 import { encodeBolt11, fromHex } from "../src/bolt11.js";
 import { checkLnbtcChallenge, issueLnbtcChallenge, LNBTC_MAINNET, localLightning, MemoryReplayStore, payLnbtcChallenge, settleLnbtc, type LnbtcRequirements } from "../src/lnbtc.js";
-import { lnbtcAmount, usdToMsat } from "../src/amounts.js";
+import { lnbtcAmount, msatToUsd6, usdToMsat } from "../src/amounts.js";
 
 // The spec's example, verbatim: requirements, the paid proof, and the settlement it must produce.
 const G = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
@@ -255,6 +255,13 @@ describe("amounts", () => {
     expect(() => lnbtcAmount(21)).toThrow();
     expect(() => lnbtcAmount("$1")).toThrow();
     expect(() => lnbtcAmount("0.0001 sat")).toThrow();
+  });
+
+  it("counts millisatoshis in dollars for limits, rounding up", () => {
+    expect(msatToUsd6("1200", "84000")).toBe(1008n);
+    expect(msatToUsd6("1", "84000")).toBe(1n);
+    expect(msatToUsd6("100000000000", "83979.37")).toBe(83979370000n);
+    expect(() => msatToUsd6("1.5", "84000")).toThrow();
   });
 
   it("prices dollars in millisatoshis, rounding up, never under a floor", () => {

@@ -21,5 +21,7 @@ export {
   type PayerAdapter,
   type ReceiverAdapter,
 } from "./lnbtc.js";
-export { lnbtcAmount, usdToMsat } from "./amounts.js";
+export { lnbtcAmount, msatToUsd6, usdToMsat } from "./amounts.js";
 export { PgReplayStore, type Queryable } from "./pg-replay.js";
+export { btcUsdRate, RATE_SOURCES, type BtcUsd, type RateSource } from "./btcusd.js";
+export { nwcReceiver, nwcPayer, readConnection } from "./nwc.js";

@@ -7,6 +7,8 @@ import { deployStats, feeEstimate, feeSummary, fxSummary, marketPrices, recentDe
 import { PAIRS, resolvePair } from "./pairs.js";
 import { PAID_ROUTES, type QueryParam } from "./routes.js";
 import { mountToolHandlers } from "./tools.js";
+import { btcUsdRate, LNBTC_MAINNET, LNBTC_TESTNET, nwcReceiver, PgReplayStore, readConnection, type ReceiverAdapter } from "@cra-agent/lightning";
+import { lightningMiddleware } from "./lightning.js";
 
 /** What a route costs on the direct rail: its own price, but never below the floor that covers our gas. */
 export function directPriceOf(price: string): string {
@@ -101,6 +103,58 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
     handlersUnder("/v1/direct");
     log.info({ facilitator: directFacilitator, routes: PAID_ROUTES.length }, "direct settlement routes mounted");
   }
+
+  // The same routes paid in bitcoin over Lightning, when our node's receive-only connection is on this host.
+  // The route that fails on purpose is left out: a Lightning payment cannot be handed back.
+  const lightningFile = process.env.LIGHTNING_NWC_FILE;
+  const lightningNetwork = network === "mainnet" ? LNBTC_MAINNET : LNBTC_TESTNET;
+  const lightningRoutes = PAID_ROUTES.filter((r) => !r.alwaysFails).map((r) => ({ path: r.path.replace("/v1/paid", "/v1/lightning"), priceUsd: r.price.replace("$", ""), description: r.description }));
+  let node: Promise<ReceiverAdapter> | null = null;
+  // Asked for when first needed and again after a failure, so a node that is down at start comes back on its own.
+  const receiver = (): Promise<ReceiverAdapter> => {
+    node ??= nwcReceiver(readConnection(lightningFile!)).catch((err: unknown) => {
+      node = null;
+      log.warn({ err: (err as Error).message }, "lightning node not reachable");
+      throw err;
+    });
+    return node;
+  };
+  const rate = btcUsdRate();
+  if (lightningFile) {
+    app.use(
+      "/v1/lightning/*",
+      lightningMiddleware({
+        receiver,
+        network: lightningNetwork,
+        publicOrigin: process.env.PUBLIC_API_ORIGIN ?? "https://api.cra-agent.tech",
+        routes: lightningRoutes,
+        replay: new PgReplayStore(db),
+        rate,
+        minMsat: BigInt(process.env.LIGHTNING_MIN_MSAT ?? "1000"),
+        onSettled: async (e) => {
+          const payTo = (await receiver()).pubkey;
+          await recordSettlement(db, { rail: "lightning", network: lightningNetwork, outcome: "settled", payer: null, payTo, amountUsdc6: parseUsdc6(e.priceUsd).toString(), tx: e.paymentHash, reason: e.status >= 400 ? `paid, then the route answered ${e.status}` : null, route: e.route }).catch((err: unknown) => log.warn({ err, tx: e.paymentHash }, "lightning settlement not recorded"));
+        },
+      }),
+    );
+    handlersUnder("/v1/lightning");
+    log.info({ routes: lightningRoutes.length, network: lightningNetwork }, "lightning routes mounted");
+  }
+  app.get("/v1/lightning", async (c) => {
+    if (!lightningFile) return c.json({ lightning: "off" });
+    const pubkey = await receiver().then((r) => r.pubkey).catch(() => null);
+    const btcUsd = await rate().then((r) => r.rate).catch(() => null);
+    return c.json({
+      scheme: "exact",
+      network: lightningNetwork,
+      asset: "BTC",
+      payTo: pubkey,
+      spec: "https://github.com/x402-foundation/x402/blob/main/specs/schemes/exact/scheme_exact_lnbtc.md",
+      pricing: "each route's dollar price in millisatoshis at the median BTC/USD of Coinbase, Kraken and Bitstamp, rounded up, at least 1 sat; an invoice lasts 300 seconds",
+      btcUsd,
+      routes: lightningRoutes.map((r) => ({ route: `GET ${r.path}`, priceUsd: r.priceUsd })),
+    });
+  });
 
   function handlersUnder(prefix: string): void {
 

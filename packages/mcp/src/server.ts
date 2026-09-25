@@ -9,7 +9,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { formatUsdc6 } from "@cra-agent/accounting";
 import { describePolicy } from "@cra-agent/policy";
-import { EscrowNotImplemented, PolicyRejected, verifySpendReceipt, type SignedSpendReceipt } from "@cra-agent/router";
+import { EscrowNotImplemented, LightningNotPaid, PolicyRejected, verifySpendReceipt, type SignedSpendReceipt } from "@cra-agent/router";
 import { evaluatePolicy } from "@cra-agent/policy";
 import { usdc6 } from "@cra-agent/accounting";
 import type { Address, Hex } from "viem";
@@ -51,12 +51,14 @@ async function main(): Promise<void> {
       method: z.enum(["GET", "POST"]).optional(),
       body: z.string().optional(),
       maxUsdc: z.string().regex(/^\d{1,6}(\.\d{1,6})?$/).optional().describe("Refuse if the seller asks more than this (decimal USDC) at pay time. Checked on the live 402, before anything is signed. From arc_search, pass the listed priceUsd."),
+      lightning: z.boolean().optional().describe("Pay in bitcoin over Lightning when the seller's 402 offers it (x402 exact on lnbtc), from the agent's Lightning wallet. The price in sats counts in dollars against the same limits."),
     },
-  }, async ({ url, method, body, maxUsdc }) => {
+  }, async ({ url, method, body, maxUsdc, lightning }) => {
     try {
       const init: RequestInit = { method: method ?? "GET", headers: { accept: "application/json" } };
       if (body !== undefined) { init.body = body; (init.headers as Record<string, string>)["content-type"] = "application/json"; }
-      const { response, receipt } = await rail.fetch(url, init, maxUsdc === undefined ? {} : { maxUsdc });
+      const pay = lightning ? rail.fetchLightning.bind(rail) : rail.fetch.bind(rail);
+      const { response, receipt } = await pay(url, init, maxUsdc === undefined ? {} : { maxUsdc });
       const raw = await response.text();
       let data: unknown = raw;
       try { data = JSON.parse(raw); } catch { /* keep text */ }
@@ -64,6 +66,7 @@ async function main(): Promise<void> {
     } catch (err: unknown) {
       if (err instanceof PolicyRejected) return fail(`rejected by policy (${err.decision.rule}): ${err.decision.reason}. Quote: ${err.quote.priceUsdc} USDC to ${err.quote.payTo}`);
       if (err instanceof EscrowNotImplemented) return fail(err.message);
+      if (err instanceof LightningNotPaid) return fail(`${err.message}. Nothing was paid.`);
       return fail(`payment failed: ${(err as Error).message}`);
     }
   });

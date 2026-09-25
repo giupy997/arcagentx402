@@ -18,6 +18,7 @@ import { x402Client, x402HTTPClient } from "@x402/core/client";
 import type { PaymentPayload, PaymentRequired, PaymentRequirements } from "@x402/core/types";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { wrapFetchWithPayment } from "@x402/fetch";
+import { checkLnbtcChallenge, msatToUsd6, payLnbtcChallenge, type PayerAdapter } from "@cra-agent/lightning";
 import { createPublicClient, http, type Address, type Hex } from "viem";
 import { CHAINS } from "@cra-agent/identity";
 import { chooseRail, DEFAULT_THRESHOLDS, type RouteDecision, type RouteThresholds } from "./decide.js";
@@ -39,6 +40,11 @@ export interface RailConfig {
   readonly thresholds?: RouteThresholds;
   readonly fetch?: typeof globalThis.fetch;
   readonly log?: (event: string, data: Record<string, unknown>) => void;
+  /**
+   * A Lightning wallet, for sellers that take bitcoin (x402 exact on lnbtc): it pays invoices and returns
+   * their preimages. `rate` is BTC/USD, so a price in sats counts against limits written in dollars.
+   */
+  readonly lightning?: { readonly payer: PayerAdapter; readonly rate: () => Promise<{ rate: string }> };
 }
 
 export interface Quote {
@@ -106,6 +112,14 @@ export class PolicyRejected extends Error {
   }
 }
 
+/** A Lightning payment that was not made: the challenge failed a check, or the wallet did not pay. */
+export class LightningNotPaid extends Error {
+  override readonly name = "LightningNotPaid";
+  constructor(readonly reason: string) {
+    super(`not paid over Lightning: ${reason}`);
+  }
+}
+
 export class EscrowNotImplemented extends Error {
   override readonly name = "EscrowNotImplemented";
   constructor(readonly quote: Quote) {
@@ -150,6 +164,12 @@ export interface Rail {
    * price, so a seller who raised it since is refused even when the new price is inside the limits.
    */
   fetch(url: string, init?: RequestInit, opts?: { maxUsdc?: string }): Promise<RailResponse>;
+  /**
+   * The same, paid in bitcoin over Lightning when the seller's 402 offers it: the invoice is checked
+   * against this very request before anything is paid, its price in sats counts in dollars against the
+   * policy, and the proof goes back with the retry. Needs `lightning` in the config.
+   */
+  fetchLightning(url: string, init?: RequestInit, opts?: { maxUsdc?: string }): Promise<RailResponse>;
   balances(): Promise<{ address: Address; wallet: string; gatewayAvailable: string; gatewayTotal: string }>;
   /**
    * Batched settlement means the money reaches the seller on chain later than the response.
@@ -347,6 +367,82 @@ export function createRail(cfg: RailConfig): Rail {
         return { url, host: hostOf(url), price: usdc6(0n), priceUsdc: "0", network: "-", scheme: "-", asset: "-", payTo: "-", batching: false, route: { rail: "nanopayment", reason: "n/a" }, policy: { allow: false, rule: "network", reason: `seller accepts no payment on ${caip2} (offers: ${pr.accepts.map((a) => a.network).join(", ")})` }, identity: null, resource: pr.resource, options: pr.accepts.length, budget: budgetOf(usdc6(0n), { spentInWindow: usdc6(0n), spentInWindowWithCounterparty: usdc6(0n) }) };
       }
       return buildQuote(url, pr, req);
+    },
+
+    async fetchLightning(url, init, opts = {}) {
+      const wallet = cfg.lightning;
+      if (!wallet) throw new LightningNotPaid("no Lightning wallet is configured for this agent");
+      const startedAt = Date.now();
+      const method = (init?.method ?? "GET").toUpperCase();
+      const headers = new Headers(init?.headers);
+      if (!headers.has("accept")) headers.set("accept", "application/json");
+      const first = await baseFetch(url, { ...init, headers });
+      if (first.status !== 402) return { response: first, receipt: null };
+      let pr: { accepts?: Array<Record<string, unknown>>; resource?: { url?: string } } | null = null;
+      try {
+        const h = first.headers.get("PAYMENT-REQUIRED");
+        pr = h ? JSON.parse(Buffer.from(h, "base64").toString("utf8")) : ((await first.json()) as typeof pr);
+      } catch {
+        pr = null;
+      }
+      const offer = pr?.accepts?.find((a) => typeof a.network === "string" && a.network.startsWith("lnbtc:"));
+      if (!offer) throw new LightningNotPaid(`the seller offers no Lightning payment (it takes ${(pr?.accepts ?? []).map((a) => String(a.network)).join(", ") || "nothing readable"})`);
+      const body = typeof init?.body === "string" ? new TextEncoder().encode(init.body) : init?.body instanceof Uint8Array ? init.body : null;
+      const checked = checkLnbtcChallenge(offer, { profile: "http:1", request: { method, url, body, header: (n) => headers.get(n) }, ...(pr?.resource?.url ? { resourceUrl: pr.resource.url } : {}) });
+      if (!checked.ok) throw new LightningNotPaid(checked.reason);
+      const req = checked.requirements;
+      const amountMsat = checked.invoice.amountMsat!;
+      const { rate } = await wallet.rate();
+      const price = usdc6(msatToUsd6(amountMsat, rate));
+      const since = new Date(Date.now() - DAY_MS);
+      const [spent, spentCp, count] = await Promise.all([cfg.ledger.spentSince(cfg.agentId, since), cfg.ledger.spentSince(cfg.agentId, since, req.payTo), cfg.ledger.countSince(cfg.agentId, new Date(Date.now() - cfg.policy.rateLimit.windowMs))]);
+      const ctx: PolicyContext = { amount: price, network: req.network, payTo: req.payTo, host: hostOf(url), spentInWindow: spent, spentInWindowWithCounterparty: spentCp, paymentsInRateWindow: count, identityVerified: null, sellerBond: null };
+      const quote: Quote = { url, host: hostOf(url), price, priceUsdc: formatUsdc6(price), network: req.network, scheme: req.scheme, asset: req.asset, payTo: req.payTo, batching: false, route: { rail: "nanopayment", reason: "a Lightning invoice, paid at once" }, policy: evaluatePolicy(cfg.policy, ctx), identity: null, resource: (pr?.resource ?? { url }) as PaymentRequired["resource"], options: pr?.accepts?.length ?? 1, budget: budgetOf(price, ctx) };
+      const base = { agentId: cfg.agentId, rail: "lightning" as const, url, host: quote.host, method, network: req.network, scheme: req.scheme, asset: req.asset, payTo: req.payTo, amount: price };
+      const meta = { amountMsat, btcUsd: rate, paymentHash: checked.invoice.paymentHash };
+      const ceiling = opts.maxUsdc === undefined ? null : parseUsdc6(opts.maxUsdc);
+      const decision = quote.policy.allow && ceiling !== null && compareUsdc6(price, ceiling) > 0 ? { allow: false as const, rule: "max_price" as const, reason: `the seller asks ${quote.priceUsdc} USDC in sats, above the ${formatUsdc6(ceiling)} USDC ceiling set for this call` } : quote.policy;
+      if (!decision.allow) {
+        await cfg.ledger.record({ ...base, status: "rejected", reason: `${decision.rule}: ${decision.reason}`, meta });
+        log("policy.rejected", { url, rule: decision.rule, reason: decision.reason });
+        throw new PolicyRejected(decision, quote);
+      }
+      const rec = await cfg.ledger.record({ ...base, status: "signed", meta });
+      const paid = await payLnbtcChallenge(checked, wallet.payer);
+      if (!paid.ok) {
+        const inFlight = paid.reason === "exact_lnbtc_payment_in_flight";
+        await cfg.ledger.update(rec.id, { status: "failed", reason: inFlight ? "the wallet did not answer in time: the payment may still complete; do not pay again" : paid.reason, latencyMs: Date.now() - startedAt });
+        throw new LightningNotPaid(paid.reason);
+      }
+      log("payment.signed", { ledgerId: rec.id, url, amountMsat, rail: "lightning" });
+      const retry = new Headers(headers);
+      retry.set("PAYMENT-SIGNATURE", Buffer.from(JSON.stringify(paid.payload)).toString("base64"));
+      const response = await baseFetch(url, { ...init, headers: retry });
+      let settlement: { success?: boolean; transaction?: string; errorReason?: string } | null = null;
+      try {
+        const h = response.headers.get("PAYMENT-RESPONSE");
+        settlement = h ? JSON.parse(Buffer.from(h, "base64").toString("utf8")) : null;
+      } catch {
+        settlement = null;
+      }
+      const ok = settlement?.success === true && settlement.transaction === checked.invoice.paymentHash;
+      let refusal: string | null = null;
+      if (!ok && response.status === 402) {
+        try {
+          refusal = (JSON.parse(Buffer.from(response.headers.get("PAYMENT-REQUIRED") ?? "", "base64").toString("utf8")) as { error?: string }).error ?? null;
+        } catch {
+          refusal = null;
+        }
+      }
+      // Lightning has settled before the seller looks at the proof: a refusal here is money spent for nothing.
+      const reason = ok ? null : `paid ${amountMsat} msat, but the seller ${refusal ? `refused the proof: ${refusal}` : `answered ${response.status} without a receipt`}`;
+      const latencyMs = Date.now() - startedAt;
+      await cfg.ledger.update(rec.id, { status: ok ? "settled" : "failed", reason, txHash: checked.invoice.paymentHash, httpStatus: response.status, latencyMs, settledAt: new Date(), meta: { ...meta, feesMsat: paid.feesMsat } });
+      log(ok ? "payment.settled" : "payment.failed", { ledgerId: rec.id, tx: checked.invoice.paymentHash, reason, rail: "lightning" });
+      return {
+        response,
+        receipt: { ledgerId: rec.id, amount: price, amountUsdc: formatUsdc6(price), payTo: req.payTo, network: req.network, status: ok ? "settled" : "failed", txHash: checked.invoice.paymentHash, latencyMs, reason, resource: url, budget: quote.budget, attestation: null },
+      };
     },
 
     async fetch(url, init, opts = {}) {

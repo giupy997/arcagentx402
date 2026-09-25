@@ -568,7 +568,7 @@ export async function selftestSummary(db: Db, agentId = "selftest"): Promise<Sel
 }
 
 export interface SettlementRow {
-  rail: "direct" | "gateway" | "base" | "solana";
+  rail: "direct" | "gateway" | "base" | "solana" | "lightning";
   network: string;
   outcome: "settled" | "failed" | "not_charged";
   payer: string | null;

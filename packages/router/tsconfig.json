@@ -1,2 +1,1 @@
-{ "extends": "../../tsconfig.base.json", "compilerOptions": { "rootDir": "src", "outDir": "dist" }, "include": ["src"],
-  "references": [{ "path": "../accounting" }, { "path": "../identity" }, { "path": "../ledger" }, { "path": "../policy" }] }
+{"extends": "../../tsconfig.base.json", "compilerOptions": {"rootDir": "src", "outDir": "dist"}, "include": ["src"], "references": [{"path": "../accounting"}, {"path": "../identity"}, {"path": "../ledger"}, {"path": "../policy"}, {"path": "../lightning"}]}

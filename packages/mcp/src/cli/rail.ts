@@ -3,6 +3,7 @@
  * Tiny CLI over the same rail the MCP server uses. For humans and for smoke tests.
  *   cra-agent quote <url>        cra-agent pay <url> [max usdc]        cra-agent balance
  *   cra-agent pay <url> [max usdc] --body '{"query":"x402"}'    a POST with a JSON body (--method POST without one)
+ *   cra-agent pay <url> [max usdc] --lightning   paid in bitcoin over Lightning, when CRA_NWC_PAY_FILE holds a wallet
  *   cra-agent quote <url> --body '{"query":"x402"}'    the price of that POST: some sellers want the body before they name one
  *   cra-agent deposit <usdc>     cra-agent ledger [n]       cra-agent policy
  *   cra-agent withdraw <usdc> [max fee]    Gateway balance back to the wallet: how a seller collects
@@ -16,7 +17,7 @@ import { compareUsdc6, formatUsdc6, parseUsdc6 } from "@cra-agent/accounting";
 import { describePolicy, parsePolicyString } from "@cra-agent/policy";
 import { readFileSync } from "node:fs";
 import type { Address } from "viem";
-import { EscrowNotImplemented, PolicyRejected, verifySpendReceipt, type SignedSpendReceipt } from "@cra-agent/router";
+import { EscrowNotImplemented, LightningNotPaid, PolicyRejected, verifySpendReceipt, type SignedSpendReceipt } from "@cra-agent/router";
 import { CAIP2, registerIdentity, type ArcNetwork } from "@cra-agent/identity";
 import { fit, forAgent, NOTHING_SPENT, searchMarket } from "../search.js";
 import { railFromEnv } from "../rail-from-env.js";
@@ -27,13 +28,15 @@ import { digestFree, freeTools, isFree, toolAllowed, wantsWeb } from "../free-to
 import { expandQuestions, pickQuestion } from "../think-questions.js";
 
 /** The url and the amount in order, and --method / --body wherever they are. A body means POST. */
-function callOptions(args: readonly string[]): { positional: string[]; method: "GET" | "POST"; body: string | undefined } {
+function callOptions(args: readonly string[]): { positional: string[]; method: "GET" | "POST"; body: string | undefined; lightning: boolean } {
   const positional: string[] = [];
   let method: string | undefined;
   let body: string | undefined;
+  let lightning = false;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--method") method = args[++i];
     else if (args[i] === "--body") body = args[++i];
+    else if (args[i] === "--lightning") lightning = true;
     else positional.push(args[i]!);
   }
   const m = (method ?? (body === undefined ? "GET" : "POST")).toUpperCase();
@@ -46,7 +49,7 @@ function callOptions(args: readonly string[]): { positional: string[]; method: "
       throw new Error(`--body must be JSON, like '{"query":"x402"}'`);
     }
   }
-  return { positional, method: m, body };
+  return { positional, method: m, body, lightning };
 }
 
 const out = (v: unknown) => console.log(JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x), 2));
@@ -90,7 +93,7 @@ async function main(): Promise<void> {
     out({ ...check, agent: signed.message?.agent, resource: signed.message?.resource, amountBaseUnits: signed.message?.amount, settlementId: signed.message?.settlementId, policyHash: signed.message?.policyHash });
     process.exit(check.valid && check.withinStatedLimits ? 0 : 1);
   }
-  const { rail, ledger, policy, network, agentId, signer, escrow, rpcUrl } = await railFromEnv();
+  const { rail, ledger, policy, network, agentId, signer, escrow, rpcUrl, close: closeWallet } = await railFromEnv();
   switch (cmd) {
     case "quote": {
       const { positional, method, body } = callOptions(process.argv.slice(3));
@@ -101,20 +104,23 @@ async function main(): Promise<void> {
       break;
     }
     case "pay": {
-      const { positional, method, body } = callOptions(process.argv.slice(3));
+      const { positional, method, body, lightning } = callOptions(process.argv.slice(3));
       const [url, max] = positional;
-      if (!url) throw new Error("usage: pay <url> [max usdc: refuse if the seller asks more at pay time] [--body '<json>'] [--method POST]");
+      if (!url) throw new Error("usage: pay <url> [max usdc: refuse if the seller asks more at pay time] [--body '<json>'] [--method POST] [--lightning]");
       if (max !== undefined && !/^\d{1,6}(\.\d{1,6})?$/.test(max)) throw new Error("the ceiling is an amount in USDC, like 0.002");
       const init: RequestInit = { method, headers: { accept: "application/json", ...(body === undefined ? {} : { "content-type": "application/json" }) }, ...(body === undefined ? {} : { body }) };
       try {
-        const { response, receipt } = await rail.fetch(url, init, max === undefined ? {} : { maxUsdc: max });
+        const pay = lightning ? rail.fetchLightning.bind(rail) : rail.fetch.bind(rail);
+        const { response, receipt } = await pay(url, init, max === undefined ? {} : { maxUsdc: max });
         const body = await response.text();
         out({ status: response.status, receipt, body: body.slice(0, 600) });
       } catch (err) {
         if (err instanceof PolicyRejected) out({ rejected: true, rule: err.decision.rule, reason: err.decision.reason, quote: err.quote });
         else if (err instanceof EscrowNotImplemented) out({ escrow: true, message: err.message });
+        else if (err instanceof LightningNotPaid) out({ paid: false, lightning: true, reason: err.reason });
         else throw err;
       }
+      closeWallet();
       break;
     }
     case "balance": out({ network, ...(await rail.balances()) }); break;

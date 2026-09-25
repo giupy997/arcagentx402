@@ -73,6 +73,24 @@ systemctl enable --now cra-agent-think.timer
 A run costs two to three cents: about $1.15 a day on the timer, $35 a month. Check what is left with
 `cra-agent balance` under the same key; `systemctl disable --now cra-agent-think.timer` stops it.
 
+## Lightning (x402 exact on lnbtc)
+
+Our routes are also sold under `/v1/lightning/…`, paid in bitcoin: the 402 carries a fresh invoice from our
+node, bound to the request, and the paid retry is settled (preimage checked, payment hash claimed once in
+`lnbtc_settlements`, migration 015) before it is served. The node is Alby Hub in Docker on this host, its web
+interface on 127.0.0.1:8080 only (reach it with `ssh -N -L 8080:127.0.0.1:8080 root@<host>`). The API talks to
+it over Nostr Wallet Connect with a receive-only connection:
+
+```bash
+# in /opt/cra-agent/.env
+LIGHTNING_NWC_FILE=/opt/cra-agent/.secrets/nwc-receive
+```
+
+Prices are each route's dollar price in millisatoshis at the median BTC/USD of Coinbase, Kraken and Bitstamp,
+rounded up, at least `LIGHTNING_MIN_MSAT` (1 sat by default); an invoice lasts 300 seconds. `/v1/lightning`
+lists the routes, the rate and our node's key. An agent pays with `cra-agent pay <url> --lightning` when
+`CRA_NWC_PAY_FILE` holds a connection that can pay.
+
 ## Backups
 
 ```bash

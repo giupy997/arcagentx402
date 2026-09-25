@@ -39,7 +39,7 @@ Creates the agent's key in `~/.cra-agent/agent.key` (readable only by you, never
 |---|---|
 | `arc_search` | Finds what can be bought on Arc from a few words ("bitcoin price", "web search"): CRA AGENT's own data, the CRA market, and the endpoints Circle's x402 catalogue lists as payable on Arc (Exa, Goldsky, BlockRun and others). Each result: the method and the URL with example parameters, where each parameter goes (query, path or JSON body), the price, the seller, who listed it, and whether your policy allows paying it now. Free. |
 | `arc_quote` | Reads the price of a URL and says whether the policy would allow it. Pays nothing. For a POST, pass the body the payment will carry: some sellers check it before they name a price. |
-| `arc_pay` | Pays for the URL and returns the response with a receipt. Limits are checked on what the 402 asks at pay time, before anything is signed. `maxUsdc` adds a ceiling for that one call: pass the price `arc_search` listed, and a seller who raised it since is refused even inside your limits. |
+| `arc_pay` | Pays for the URL and returns the response with a receipt. With `lightning: true` it pays in bitcoin over Lightning when the seller's 402 offers it (x402 exact on lnbtc), from the wallet in `CRA_NWC_PAY_FILE`, under the same limits in dollars. Limits are checked on what the 402 asks at pay time, before anything is signed. `maxUsdc` adds a ceiling for that one call: pass the price `arc_search` listed, and a seller who raised it since is refused even inside your limits. |
 | `arc_balance` | Wallet and Circle Gateway balances. |
 | `arc_deposit` | Moves wallet USDC into the Gateway balance. Needed once before the first payment. |
 | `arc_ledger` | Every attempt: quoted, rejected, signed, settled, failed. |

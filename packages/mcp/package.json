@@ -31,15 +31,16 @@
   },
   "dependencies": {
     "@cra-agent/accounting": "0.0.12",
+    "@cra-agent/escrow": "0.0.12",
     "@cra-agent/identity": "0.0.12",
     "@cra-agent/ledger": "0.0.12",
+    "@cra-agent/lightning": "0.0.12",
     "@cra-agent/policy": "0.0.12",
     "@cra-agent/router": "0.0.12",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "zod": "^3.25.0",
-    "@cra-agent/escrow": "0.0.12",
+    "pg": "^8.16.0",
     "viem": "^2.31.0",
-    "pg": "^8.16.0"
+    "zod": "^3.25.0"
   },
   "files": [
     "dist",

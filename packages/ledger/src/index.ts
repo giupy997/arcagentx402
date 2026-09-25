@@ -5,7 +5,8 @@ import pg from "pg";
 import { sumUsdc6, toSqlNumeric, usdc6, type Usdc6 } from "@cra-agent/accounting";
 
 export type PaymentStatus = "quoted" | "rejected" | "signed" | "settled" | "failed";
-export type RailKind = "nanopayment" | "escrow";
+/** lightning: a BOLT11 invoice paid through the agent's Lightning wallet (x402 exact on lnbtc). */
+export type RailKind = "nanopayment" | "escrow" | "lightning";
 
 export interface PaymentRecord {
   readonly id: number;

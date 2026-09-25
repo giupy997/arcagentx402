@@ -47,3 +47,16 @@ export function usdToMsat(usd: string, btcUsd: string, minMsat = 1n): string {
   const msat = (num + den - 1n) / den;
   return (msat < minMsat ? minMsat : msat).toString();
 }
+
+/**
+ * Millisatoshis in micro-dollars (USDC's six decimals) at a BTC/USD rate, rounded up: what a Lightning
+ * payment counts as against limits written in dollars, never less than it is.
+ */
+export function msatToUsd6(msat: string, btcUsd: string): bigint {
+  if (!/^[0-9]+$/.test(msat)) throw new Error(`millisatoshis must be a whole number, got "${msat}"`);
+  const r = decimal(btcUsd, "BTC/USD");
+  // usd6 = msat / 1e11 BTC * rate * 1e6 = msat * rate / 1e5
+  const num = BigInt(msat) * r.digits;
+  const den = 100_000n * 10n ** BigInt(r.scale);
+  return (num + den - 1n) / den;
+}
