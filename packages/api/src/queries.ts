@@ -632,13 +632,18 @@ export async function settlementsSummary(db: Db, ownPayers: readonly string[], l
     ? (await db.query<{ payer: string }>("SELECT DISTINCT lower(payer) AS payer FROM rail_payments WHERE agent_id = 'selftest' AND payer IS NOT NULL")).rows.map((r) => r.payer)
     : [];
   const ours = [...new Set([...selftest, ...ownPayers.map(canonicalAddress)])];
+  // Lightning names no payer, so a payment of ours is known by its payment hash in our agents' own ledger:
+  // without this, our tests would count as customers.
+  const ownLightning = tables.rows[0].l
+    ? (await db.query<{ tx: string }>("SELECT DISTINCT tx_hash AS tx FROM rail_payments WHERE rail = 'lightning' AND tx_hash IS NOT NULL")).rows.map((r) => r.tx)
+    : [];
   const tally = `count(*) FILTER (WHERE outcome = 'settled') AS settled, count(*) FILTER (WHERE outcome = 'failed') AS failed,
     count(*) FILTER (WHERE outcome = 'not_charged') AS not_charged, coalesce(sum(amount_usdc6) FILTER (WHERE outcome = 'settled'), 0) AS volume,
     count(DISTINCT payer) FILTER (WHERE outcome = 'settled') AS payers`;
   type T = { settled: string; failed: string; not_charged: string; volume: string; payers: string };
   const [all, ext, first, rows] = await Promise.all([
     db.query<T>(`SELECT ${tally} FROM settlements`),
-    db.query<T>(`SELECT ${tally} FROM settlements WHERE payer IS NULL OR payer <> ALL($1::text[])`, [ours]),
+    db.query<T>(`SELECT ${tally} FROM settlements WHERE (payer IS NULL OR payer <> ALL($1::text[])) AND (tx IS NULL OR tx <> ALL($2::text[]))`, [ours, ownLightning]),
     db.query<{ at: string | null }>("SELECT extract(epoch FROM min(at))::bigint AS at FROM settlements"),
     db.query<{ at: string; rail: string; outcome: string; payer: string | null; amount_usdc6: string; tx: string | null; route: string | null; reason: string | null }>(
       "SELECT extract(epoch FROM at)::bigint AS at, rail, outcome, payer, amount_usdc6, tx, route, reason FROM settlements ORDER BY at DESC, id DESC LIMIT $1",
@@ -656,7 +661,7 @@ export async function settlementsSummary(db: Db, ownPayers: readonly string[], l
       rail: r.rail,
       outcome: r.outcome,
       payer: shortAddr(r.payer),
-      who: r.payer && selftest.includes(r.payer) ? "self-test" : r.payer && ours.includes(r.payer) ? "ours" : "external",
+      who: r.payer && selftest.includes(r.payer) ? "self-test" : (r.payer && ours.includes(r.payer)) || (r.tx && ownLightning.includes(r.tx)) ? "ours" : "external",
       amountUsdc: usd6Exact(r.amount_usdc6),
       tx: r.tx,
       route: r.route,
