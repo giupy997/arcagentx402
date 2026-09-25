@@ -5,6 +5,7 @@
  * search, the seller and the category, so any view can be shared.
  */
 import { API_BASE, ApiUnavailable, getJson } from "./api.js";
+import { monogram, watchLogos } from "./logos.js";
 import { initChrome } from "./menu.js";
 
 initChrome();
@@ -76,15 +77,6 @@ const host = (site: string | null) => {
   }
 };
 
-/** A seller without a logo gets its initials on a colour of its own, from the blues the site uses. */
-function monogram(name: string): string {
-  const words = name.replace(/[^A-Za-z0-9 ]/g, " ").trim().split(/\s+/);
-  const initials = (words.length > 1 ? `${words[0]![0]}${words[1]![0]}` : (words[0] ?? "?").slice(0, 2)).toUpperCase();
-  let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return `<span class="monogram" style="--hue:${190 + (h % 80)}">${esc(initials)}</span>`;
-}
-
 /** The seller's logo from our API, falling back to its monogram when there is none. */
 function logo(s: { name: string; source: Source; logo: string | null }, size: "sm" | "lg"): string {
   if (s.source === "cra-agent") return `<span class="b-logo ${size}"><img src="/brand/logo-96.png" alt="" width="96" height="96"></span>`;
@@ -97,15 +89,6 @@ function hideBrokenIcons(root: HTMLElement): void {
   for (const img of root.querySelectorAll<HTMLImageElement>("img.net-ico")) {
     if (img.complete && img.naturalWidth === 0) img.remove();
     else img.addEventListener("error", () => img.remove(), { once: true });
-  }
-}
-
-/** Broken logos show the monogram instead: images arrive after the markup, so this runs after each render. */
-function watchLogos(root: HTMLElement): void {
-  for (const img of root.querySelectorAll<HTMLImageElement>(".b-logo img")) {
-    const fail = () => img.parentElement?.classList.add("failed");
-    if (img.complete && img.naturalWidth === 0) fail();
-    else img.addEventListener("error", fail, { once: true });
   }
 }
 

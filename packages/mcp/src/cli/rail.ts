@@ -10,6 +10,7 @@
  *   cra-agent init [--client …] [--policy …]   makes the key, writes the AI client config; see init.ts
  *   cra-agent find <what you need> [--max <usdc>] [--limit <n>]   what can be bought on Arc; needs no key
  *   cra-agent think "<task>" [--budget 0.10] [--model …] [--steps 8]   an agent that pays for its own thinking, and its tools
+ *   cra-agent think --record [--questions <file>]   the same, kept in Postgres as it runs (cra-agent.tech/think shows it live)
  */
 import { formatUsdc6 } from "@cra-agent/accounting";
 import { describePolicy, parsePolicyString } from "@cra-agent/policy";
@@ -21,6 +22,7 @@ import { fit, forAgent, NOTHING_SPENT, searchMarket } from "../search.js";
 import { railFromEnv } from "../rail-from-env.js";
 import { runInit } from "./init.js";
 import { BLOCKRUN_CHAT, DEFAULT_MODEL, think, type Paid } from "../think.js";
+import { ThinkRecorder } from "../think-record.js";
 
 /** The url and the amount in order, and --method / --body wherever they are. A body means POST. */
 function callOptions(args: readonly string[]): { positional: string[]; method: "GET" | "POST"; body: string | undefined } {
@@ -140,8 +142,19 @@ async function main(): Promise<void> {
         const i = args.indexOf(name);
         return i >= 0 ? args[i + 1] : undefined;
       };
-      const task = args.filter((a, i) => !a.startsWith("--") && !(i > 0 && args[i - 1]!.startsWith("--"))).join(" ").trim();
-      if (!task) throw new Error('usage: think "<task>" [--budget 0.10] [--ceiling 0.01] [--model anthropic/claude-haiku-4.5] [--steps 8] [--tokens 350] [--brain <url>] [--json]');
+      // Only these take a value; --json and --record stand alone, so the task may follow them.
+      const VALUED = new Set(["--budget", "--ceiling", "--model", "--steps", "--tokens", "--brain", "--questions"]);
+      let task = args.filter((a, i) => !a.startsWith("--") && !(i > 0 && VALUED.has(args[i - 1]!))).join(" ").trim();
+      const questions = flag("--questions");
+      if (!task && questions) {
+        // A server run takes the next question of its list, going round: counted from the runs kept so far
+        // when recording, so every question comes up whatever the schedule; by the hour otherwise.
+        const list = readFileSync(questions, "utf8").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+        if (list.length === 0) throw new Error(`${questions} has no questions in it`);
+        const n = args.includes("--record") && process.env.DATABASE_URL ? await ThinkRecorder.count(process.env.DATABASE_URL) : Math.floor(Date.now() / 3_600_000);
+        task = list[n % list.length]!;
+      }
+      if (!task) throw new Error('usage: think "<task>" [--budget 0.10] [--ceiling 0.01] [--model anthropic/claude-haiku-4.5] [--steps 8] [--tokens 350] [--brain <url>] [--json] [--record] [--questions <file>]');
       const amount = /^\d{1,6}(\.\d{1,6})?$/;
       const budgetUsdc = flag("--budget") ?? "0.10";
       const thoughtCeilingUsdc = flag("--ceiling") ?? "0.01";
@@ -157,17 +170,19 @@ async function main(): Promise<void> {
       // The brain is bought like anything else: from the bazaar, unless one is named.
       let brainUrl = flag("--brain");
       let brainFrom = "given";
+      let brainName: string | null = null;
       if (!brainUrl) {
         const found = await searchMarket("chat completions llm", { limit: 10 }).catch(() => null);
         const hit = found?.results.find((r) => r.network === caip2 && /\/chat\/completions$/.test(new URL(r.url).pathname) && r.method === "POST");
         brainUrl = hit?.url ?? BLOCKRUN_CHAT;
+        brainName = hit?.name ?? "BlockRun";
         brainFrom = hit ? `${hit.name}, found in the bazaar, from $${hit.priceUsd} a thought` : "BlockRun (the bazaar did not answer)";
       }
       const pay = async (url: string, init: { method: "GET" | "POST"; body?: string }, maxUsdc: string): Promise<Paid> => {
         try {
           const { response, receipt } = await rail.fetch(url, { method: init.method, headers: { accept: "application/json", ...(init.body === undefined ? {} : { "content-type": "application/json" }) }, ...(init.body === undefined ? {} : { body: init.body }) }, { maxUsdc });
           const body = await response.text();
-          return { status: response.status, body, paidUsdc: receipt?.status === "settled" ? receipt.amountUsdc : "0", ledgerId: receipt ? String(receipt.ledgerId) : null, refused: null };
+          return { status: response.status, body, paidUsdc: receipt?.status === "settled" ? receipt.amountUsdc : "0", ledgerId: receipt ? String(receipt.ledgerId) : null, refused: null, tx: receipt?.txHash ?? null };
         } catch (err) {
           if (err instanceof PolicyRejected) return { status: 0, body: "", paidUsdc: "0", ledgerId: null, refused: `${err.decision.rule}: ${err.decision.reason}` };
           return { status: 0, body: `the call failed: ${(err as Error).message.slice(0, 140)}`, paidUsdc: "0", ledgerId: null, refused: null };
@@ -178,10 +193,31 @@ async function main(): Promise<void> {
       say(`Brain: ${model} at ${brainUrl} (${brainFrom})`);
       say(`Budget: $${budgetUsdc} for thinking and tools · at most $${thoughtCeilingUsdc} a thought · policy: $${limits.perPaymentCapUsdc} a payment, $${limits.dailyCapUsdc} a day`);
       say("");
-      const r = await think(
-        { task, brainUrl, model, budgetUsdc, thoughtCeilingUsdc, maxTokens, maxSteps },
-        { pay, say, search: async (q) => (await searchMarket(q, { limit: 6 })).results.filter((x) => x.network === caip2) },
-      );
+      // --record keeps the run in Postgres as it happens, for cra-agent.tech/think to show live.
+      let recorder: ThinkRecorder | null = null;
+      if (args.includes("--record")) {
+        if (!process.env.DATABASE_URL) throw new Error("--record writes the run to Postgres: set DATABASE_URL");
+        recorder = await ThinkRecorder.start(process.env.DATABASE_URL, { agent: rail.address, network: caip2, task, model, brainUrl, brainName, budgetUsdc, ceilingUsdc: thoughtCeilingUsdc, policy: limits });
+        say(`Recording as run ${recorder.id}`);
+      }
+      let r: Awaited<ReturnType<typeof think>>;
+      try {
+        r = await think(
+          { task, brainUrl, model, budgetUsdc, thoughtCeilingUsdc, maxTokens, maxSteps },
+          {
+            pay,
+            say,
+            search: async (q) => (await searchMarket(q, { limit: 6 })).results.filter((x) => x.network === caip2),
+            ...(recorder ? { onStep: (s) => recorder!.step(s), onPhase: (p) => recorder!.phase(p) } : {}),
+          },
+        );
+        await recorder?.finish(r);
+      } catch (err) {
+        await recorder?.fail(err);
+        throw err;
+      } finally {
+        await recorder?.close();
+      }
       if (json) {
         out(r);
         break;

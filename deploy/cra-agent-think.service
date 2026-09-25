@@ -1,0 +1,19 @@
+[Unit]
+Description=cra-agent think: the agent that pays for its own thinking answers one question, live on cra-agent.tech/think
+After=network-online.target cra-agent-api.service
+
+[Service]
+Type=oneshot
+User=craagent
+WorkingDirectory=/opt/cra-agent
+# DATABASE_URL comes from here: the run is kept in think_runs for the page, its payments in rail_payments.
+EnvironmentFile=/opt/cra-agent/.env
+Environment=CRA_NETWORK=arc
+Environment=CRA_AGENT_ID=think
+Environment=CRA_IDENTITY=off
+Environment=CRA_KEY_FILE=/opt/cra-agent/.secrets/think.key
+# Its own wallet and its own limits: a cent a payment, half a dollar a day, and only these sellers.
+# Our own API is left out on purpose: our wallet paying our routes would read as usage.
+Environment=CRA_POLICY=daily=0.5,per_seller=0.4,per_payment=0.01,allow=nano.blockrun.ai|api.exa.ai
+ExecStart=/usr/bin/node packages/mcp/dist/cli/rail.js think --record --questions deploy/think-questions.txt --budget 0.05
+TimeoutStartSec=300

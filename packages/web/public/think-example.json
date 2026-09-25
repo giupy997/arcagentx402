@@ -1,0 +1,176 @@
+{
+ "id": 1,
+ "agent": "0xe5a67b7ddf06A6e63A8e0423195aA3b76002cF2B",
+ "network": "eip155:5042",
+ "task": "When did Arc mainnet go live, and which companies run its validators? Two sentences, with a source.",
+ "model": "anthropic/claude-haiku-4.5",
+ "brain": {
+  "url": "https://nano.blockrun.ai/api/v1/chat/completions",
+  "name": "BlockRun.AI"
+ },
+ "budgetUsdc": "0.05",
+ "ceilingUsdc": "0.01",
+ "policy": {
+  "denylist": [],
+  "allowlist": null,
+  "rateLimit": "30/60s",
+  "dailyCapUsdc": "0.5",
+  "allowedNetworks": [
+   "eip155:5042",
+   "eip155:5042002"
+  ],
+  "perPaymentCapUsdc": "0.01",
+  "requiredSellerBondUsdc": "0",
+  "requireVerifiedIdentity": false,
+  "perCounterpartyDailyCapUsdc": "0.25"
+ },
+ "status": "answered",
+ "phase": null,
+ "phaseSince": null,
+ "steps": [
+  {
+   "kind": "think",
+   "detail": "Need to find when Arc mainnet launched and which companies operate validators",
+   "costUsdc": "0.003033",
+   "atMs": 3043,
+   "ms": 3039,
+   "tx": "c200100d-8e49-4d43-bb67-59411c77e024"
+  },
+  {
+   "kind": "search",
+   "detail": "\"Arc mainnet launch date validators\": 6 results",
+   "costUsdc": "0",
+   "atMs": 3170,
+   "ms": 125,
+   "tx": null,
+   "query": "Arc mainnet launch date validators",
+   "results": [
+    {
+     "seller": "CRA AGENT data",
+     "what": "Which Arc connection points are fast and reliable",
+     "priceUsd": "0.0005"
+    },
+    {
+     "seller": "CRA AGENT data",
+     "what": "What a transaction on Arc costs right now",
+     "priceUsd": "0.001"
+    },
+    {
+     "seller": "CRA AGENT data",
+     "what": "The price of Bitcoin, Ether or the euro on Arc, from real trades",
+     "priceUsd": "0.001"
+    },
+    {
+     "seller": "CRA AGENT data",
+     "what": "Bitcoin, Ether, euro and CRA prices on Arc, in one call",
+     "priceUsd": "0.002"
+    },
+    {
+     "seller": "CRA AGENT data",
+     "what": "New smart contracts appearing on Arc",
+     "priceUsd": "0.002"
+    }
+   ]
+  },
+  {
+   "kind": "think",
+   "detail": "These APIs are about Arc blockchain data, not general web search. I need a web search API to find historical information about Arc mainnet launch and validators.",
+   "costUsdc": "0.003829",
+   "atMs": 5158,
+   "ms": 1985,
+   "tx": "1ac331b4-89d9-47d7-ae53-9a8c5d32954a"
+  },
+  {
+   "kind": "search",
+   "detail": "\"web search\": 6 results",
+   "costUsdc": "0",
+   "atMs": 5349,
+   "ms": 190,
+   "tx": null,
+   "query": "web search",
+   "results": [
+    {
+     "seller": "Exa",
+     "what": "Search the web with Exa and return ranked results optimized for AI agents.",
+     "priceUsd": "0.007"
+    },
+    {
+     "seller": "Orthogonal",
+     "what": "context-dev endpoint via Orthogonal nanopayment proxy: /context-dev/web/search",
+     "priceUsd": "0.03"
+    },
+    {
+     "seller": "AIsa API",
+     "what": "Model-grounded web search (Anthropic).",
+     "priceUsd": "0.3"
+    },
+    {
+     "seller": "AIsa API",
+     "what": "Model-grounded web search (OpenAI).",
+     "priceUsd": "0.3"
+    },
+    {
+     "seller": "Orthogonal",
+     "what": "icypeas endpoint via Orthogonal nanopayment proxy: /icypeas/api/url-search/company",
+     "priceUsd": "0.01"
+    }
+   ]
+  },
+  {
+   "kind": "think",
+   "detail": "The Exa web search API at $0.007 is the cheapest option and should find information about Arc mainnet launch and validators",
+   "costUsdc": "0.004639",
+   "atMs": 7556,
+   "ms": 2206,
+   "tx": "2bd307e3-7722-499a-acee-47296eab0b88"
+  },
+  {
+   "kind": "buy",
+   "detail": "POST https://api.exa.ai/search -> 200",
+   "costUsdc": "0.007",
+   "atMs": 11443,
+   "ms": 3886,
+   "tx": "61596097-ae76-4b39-91fb-4fe96a38e392",
+   "url": "https://api.exa.ai/search",
+   "method": "POST",
+   "seller": "Exa",
+   "status": 200
+  },
+  {
+   "kind": "think",
+   "detail": "The search results show Arc mainnet launched September 16, 2026, and mention founding validators including BlackRock, Visa, ICE, and DTCC. I have enough information to answer.",
+   "costUsdc": "0.005147",
+   "atMs": 14250,
+   "ms": 2805,
+   "tx": "48cc3b61-7805-4de2-be60-599118d57112"
+  }
+ ],
+ "answer": "Arc mainnet went live on September 16, 2026. According to Circle's announcement, the founding validator cohort includes BlackRock, Visa, ICE, and DTCC, among other major financial institutions (source: Exa web search result from Circle's pressroom, dated September 16, 2026).",
+ "checked": true,
+ "spent": {
+  "thoughts": 4,
+  "purchases": 1,
+  "toolsUsdc": "0.007",
+  "totalUsdc": "0.023648",
+  "thinkingUsdc": "0.016648"
+ },
+ "paid": [
+  {
+   "seller": "BlockRun.AI",
+   "role": "brain",
+   "payments": 4,
+   "usdc": "0.016648"
+  },
+  {
+   "seller": "Exa",
+   "role": "tool",
+   "payments": 1,
+   "usdc": "0.007"
+  }
+ ],
+ "error": null,
+ "startedAt": 1790345862,
+ "finishedAt": 1790345876,
+ "now": 1790346367,
+ "example": "recorded 25 Sep 2026"
+}

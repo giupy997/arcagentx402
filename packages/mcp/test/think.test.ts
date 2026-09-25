@@ -111,6 +111,33 @@ describe("an agent that pays for its own thinking", () => {
     expect(results.map((m) => m.content.startsWith("Search results"))).toEqual([false, true, true]);
   });
 
+  it("tells a watcher each call as it goes out and each step once it lands, in order; a watcher that fails stops nothing", async () => {
+    const w = world(
+      [
+        { thought: "I need a web search.", action: "search", query: "web search" },
+        { thought: "Exa at $0.007 will do.", action: "buy", url: EXA, body: { query: "what is x402" } },
+        { thought: "I know enough.", action: "answer", text: "x402 puts payments in HTTP 402." },
+      ],
+      () => ({ status: 200, body: "{}", paidUsdc: "0.007", ledgerId: "L-tool", refused: null, tx: "gw-transfer-1" }),
+    );
+    const seen: string[] = [];
+    const r = await think(opts(), {
+      ...w.deps,
+      onPhase: (p) => void seen.push(`out: ${p?.kind}`),
+      onStep: (s) => {
+        seen.push(`in: ${s.kind}`);
+        throw new Error("the database is down");
+      },
+    });
+    expect(r.stoppedBecause).toBe("answered");
+    expect(seen).toEqual(["out: think", "in: think", "out: search", "in: search", "out: think", "in: think", "out: buy", "in: buy", "out: think", "in: think"]);
+    expect(r.steps.find((s) => s.kind === "search")).toMatchObject({ query: "web search", results: [{ seller: "Exa", what: "Search the web", priceUsd: "0.007" }] });
+    expect(r.steps.find((s) => s.kind === "buy")).toMatchObject({ url: EXA, method: "POST", seller: "Exa", status: 200, costUsdc: "0.007", tx: "gw-transfer-1" });
+    // Every step says when it landed, so a run can be replayed at its own pace.
+    const at = r.steps.map((s) => s.atMs!);
+    expect(at.every((t, i) => t >= 0 && (i === 0 || t >= at[i - 1]!))).toBe(true);
+  });
+
   it("gives an unreadable brain one more chance, then stops", async () => {
     const w = world(["Sure! Let me think about that.", "Still not JSON."]);
     const r = await think(opts(), w.deps);

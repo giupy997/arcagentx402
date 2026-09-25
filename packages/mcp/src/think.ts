@@ -33,13 +33,25 @@ export interface Paid {
   ledgerId: string | null;
   /** Set when the payment was refused before signing (policy or ceiling): nothing was paid. */
   refused: string | null;
+  /** The settlement's id when something was paid: a Circle Gateway transfer, or a transaction hash. */
+  tx?: string | null;
 }
+
+/** The call that is out right now, for anyone watching a run as it happens. */
+export type Phase =
+  | { kind: "think"; n: number }
+  | { kind: "search"; query: string }
+  | { kind: "buy"; url: string; method: string; seller: string; priceUsd: string };
 
 export interface ThinkDeps {
   pay(url: string, init: { method: "GET" | "POST"; body?: string }, maxUsdc: string): Promise<Paid>;
   search(query: string): Promise<Found[]>;
   /** One line of the story, as it happens. */
   say(line: string): void;
+  /** Each step once it has landed, with its timing: what a recorder keeps. Awaited, so steps arrive in order. */
+  onStep?(step: Step): void | Promise<void>;
+  /** A call about to go out; null once it is back. */
+  onPhase?(phase: Phase | null): void | Promise<void>;
 }
 
 export interface ThinkOptions {
@@ -59,6 +71,20 @@ export interface Step {
   detail: string;
   costUsdc: string;
   ledgerId: string | null;
+  /** When the step landed, in milliseconds after the task began: a run can be replayed at its own pace. */
+  atMs?: number;
+  /** How long its call took, in milliseconds. */
+  ms?: number;
+  /** The settlement's id, when something was paid. */
+  tx?: string | null;
+  /** buy: what was called, who sold it and what it answered. */
+  url?: string;
+  method?: string;
+  seller?: string;
+  status?: number;
+  /** search: what was asked, and the first results as the brain saw them. */
+  query?: string;
+  results?: Array<{ seller: string; what: string; priceUsd: string }>;
 }
 
 export interface ThinkResult {
@@ -165,7 +191,18 @@ export async function think(opts: ThinkOptions, deps: ThinkDeps): Promise<ThinkR
   let purchases = 0;
   const steps: Step[] = [];
   const found: Found[] = [];
+  const began = Date.now();
   const left = (): Usdc6 => headroomUsdc6(budget, addUsdc6(thinking, tools));
+  // Whoever watches the run gets each step in order; a watcher that fails never stops a run that is paying its way.
+  const add = async (s: Step): Promise<void> => {
+    const stamped = { ...s, atMs: Date.now() - began };
+    steps.push(stamped);
+    await (async () => deps.onStep?.(stamped))().catch(() => undefined);
+  };
+  const phase = async (p: Phase): Promise<number> => {
+    await (async () => deps.onPhase?.(p))().catch(() => undefined);
+    return Date.now();
+  };
   // `result` marks what a tool returned: those are the long messages, and only the latest are sent whole.
   const messages: Array<{ role: "system" | "user" | "assistant"; content: string; result?: true }> = [
     { role: "system", content: SYSTEM(opts.budgetUsdc, new Date().toISOString().slice(0, 10)) },
@@ -188,10 +225,11 @@ export async function think(opts: ThinkOptions, deps: ThinkDeps): Promise<ThinkR
     // A thought is only started when the budget can pay for the dearest one.
     if (compareUsdc6(left(), ceiling) < 0) return result(null, "budget");
     messages.push({ role: "user", content: `Budget left: $${formatUsdc6(left())}. Reply with one JSON object.` });
+    const asked = await phase({ kind: "think", n: thoughts + 1 });
     const paid = await deps.pay(opts.brainUrl, { method: "POST", body: JSON.stringify({ model: opts.model, messages: toSend(), max_tokens: opts.maxTokens }) }, formatUsdc6(ceiling));
     messages.pop();
     if (paid.refused) {
-      steps.push({ kind: "refused", detail: `thought refused before paying: ${paid.refused}`, costUsdc: "0", ledgerId: paid.ledgerId });
+      await add({ kind: "refused", detail: `thought refused before paying: ${paid.refused}`, costUsdc: "0", ledgerId: paid.ledgerId });
       deps.say(`[${step}] thought refused before paying: ${paid.refused}`);
       return result(null, "budget");
     }
@@ -199,7 +237,7 @@ export async function think(opts: ThinkOptions, deps: ThinkDeps): Promise<ThinkR
     thoughts++;
     const reply = paid.status === 200 ? completionText(paid.body) : null;
     const action = reply ? parseAction(reply) : null;
-    steps.push({ kind: "think", detail: action?.thought ?? (reply ?? `the brain answered ${paid.status}`).slice(0, 200), costUsdc: paid.paidUsdc, ledgerId: paid.ledgerId });
+    await add({ kind: "think", detail: action?.thought ?? (reply ?? `the brain answered ${paid.status}`).slice(0, 200), costUsdc: paid.paidUsdc, ledgerId: paid.ledgerId, tx: paid.tx ?? null, ms: Date.now() - asked });
     deps.say(`[${step}] think  $${paid.paidUsdc}  ${action?.thought ? `"${action.thought}"` : reply ? "(no usable JSON)" : `(brain answered ${paid.status})`}`);
     if (!action) {
       // Twice unreadable in a row is a brain that is not following, not a blip.
@@ -218,11 +256,21 @@ export async function think(opts: ThinkOptions, deps: ThinkDeps): Promise<ThinkR
 
     if (action.action === "search") {
       const query = typeof action.query === "string" ? action.query.slice(0, 200) : "";
+      const searched = await phase({ kind: "search", query });
       const hits = query ? await deps.search(query).catch(() => [] as Found[]) : [];
       found.push(...hits);
-      steps.push({ kind: "search", detail: `"${query}": ${hits.length} results`, costUsdc: "0", ledgerId: null });
+      const shown = hits.slice(0, 5).map(forBrain);
+      await add({
+        kind: "search",
+        detail: `"${query}": ${hits.length} results`,
+        costUsdc: "0",
+        ledgerId: null,
+        query,
+        results: hits.slice(0, 5).map((h) => ({ seller: h.name, what: (h.label ?? h.description ?? h.name).slice(0, 120), priceUsd: h.priceUsd })),
+        ms: Date.now() - searched,
+      });
       deps.say(`      search "${query}" -> ${hits.length} results, free`);
-      messages.push({ role: "user", content: `Search results for "${query}": APIs you can buy, not answers. If none of them can answer the task, search for the kind of API that could, like "web search".\n${JSON.stringify(hits.slice(0, 5).map(forBrain))}`, result: true });
+      messages.push({ role: "user", content: `Search results for "${query}": APIs you can buy, not answers. If none of them can answer the task, search for the kind of API that could, like "web search".\n${JSON.stringify(shown)}`, result: true });
       continue;
     }
 
@@ -230,31 +278,32 @@ export async function think(opts: ThinkOptions, deps: ThinkDeps): Promise<ThinkR
       const url = typeof action.url === "string" ? action.url : "";
       const listed = allowedResult(url, found);
       if (!listed) {
-        steps.push({ kind: "refused", detail: `not bought: ${url} was not in a search result`, costUsdc: "0", ledgerId: null });
+        await add({ kind: "refused", detail: `not bought: ${url} was not in a search result`, costUsdc: "0", ledgerId: null });
         deps.say(`      not bought: that url did not come from a search`);
         messages.push({ role: "user", content: "Not bought: you can only buy a url that one of your searches returned. Search first." });
         continue;
       }
       const price = parseUsdc6(listed.priceUsd);
       if (compareUsdc6(price, left()) > 0) {
-        steps.push({ kind: "refused", detail: `not bought: $${listed.priceUsd} is more than the $${formatUsdc6(left())} left`, costUsdc: "0", ledgerId: null });
+        await add({ kind: "refused", detail: `not bought: $${listed.priceUsd} is more than the $${formatUsdc6(left())} left`, costUsdc: "0", ledgerId: null, url, seller: listed.name });
         deps.say(`      not bought: $${listed.priceUsd} is more than the budget left`);
         messages.push({ role: "user", content: `Not bought: it costs $${listed.priceUsd} and only $${formatUsdc6(left())} is left. Answer with what you have, or find something cheaper.` });
         continue;
       }
       const body = listed.method === "POST" ? JSON.stringify(action.body ?? listed.body ?? {}) : undefined;
+      const sent = await phase({ kind: "buy", url, method: listed.method, seller: listed.name, priceUsd: listed.priceUsd });
       // The listed price is the ceiling: a seller that asks more at pay time is refused before signing.
       const bought = await deps.pay(url, { method: listed.method, ...(body === undefined ? {} : { body }) }, listed.priceUsd);
       if (bought.refused || bought.status === 0) {
         const why = bought.refused ?? bought.body.slice(0, 160);
-        steps.push({ kind: "refused", detail: `not bought: ${why}`, costUsdc: "0", ledgerId: bought.ledgerId });
+        await add({ kind: "refused", detail: `not bought: ${why}`, costUsdc: "0", ledgerId: bought.ledgerId, url, seller: listed.name });
         deps.say(`      not bought: ${why}`);
         messages.push({ role: "user", content: `Not bought: ${why}` });
         continue;
       }
       tools = addUsdc6(tools, parseUsdc6(bought.paidUsdc));
       purchases++;
-      steps.push({ kind: "buy", detail: `${listed.method} ${url} -> ${bought.status}`, costUsdc: bought.paidUsdc, ledgerId: bought.ledgerId });
+      await add({ kind: "buy", detail: `${listed.method} ${url} -> ${bought.status}`, costUsdc: bought.paidUsdc, ledgerId: bought.ledgerId, tx: bought.tx ?? null, url, method: listed.method, seller: listed.name, status: bought.status, ms: Date.now() - sent });
       deps.say(`      buy    $${bought.paidUsdc}  ${listed.method} ${url.length > 70 ? `${url.slice(0, 67)}...` : url} -> ${bought.status}`);
       messages.push({ role: "user", content: `Bought ${url} (status ${bought.status}). Response, cut to ${RESULT_CHARS} characters:\n${bought.body.slice(0, RESULT_CHARS)}`, result: true });
       continue;

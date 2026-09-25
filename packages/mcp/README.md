@@ -50,7 +50,9 @@ Creates the agent's key in `~/.cra-agent/agent.key` (readable only by you, never
 
 ## An agent that pays for its own thinking
 
-`cra-agent think "<task>"` runs a small autonomous agent whose brain is a pay-per-call LLM on Arc: BlockRun's chat completions, found in the bazaar, Claude Haiku 4.5 by default. Every thought is a paid call, and so is every tool the brain asks for: it searches the bazaar for free, then buys what it needs at the listed price. There is no API key anywhere, only the agent's wallet. The session budget (`--budget`, default $0.10) and the spending policy cover thinking and tools alike, a thought is capped with `--ceiling` (default $0.01), and the brain can only buy a URL that one of its searches returned. It prints each step with its cost and ends with the bill: so much for thinking, so much for tools. A short task costs a few cents.
+`cra-agent think "<task>"` runs a small autonomous agent whose brain is a pay-per-call LLM on Arc: BlockRun's chat completions, found in the bazaar, Claude Haiku 4.5 by default. Every thought is a paid call, and so is every tool the brain asks for: it searches the bazaar for free, then buys what it needs at the listed price. There is no API key anywhere, only the agent's wallet. The session budget (`--budget`, default $0.10) and the spending policy cover thinking and tools alike, a thought is capped with `--ceiling` (default $0.01), and the brain can only buy a URL that one of its searches returned. It prints each step with its cost and ends with the bill: so much for thinking, so much for tools. A short task costs a few cents: the run on [cra-agent.tech/think](https://cra-agent.tech/think) that found when Arc mainnet went live and who validates it cost $0.023648, four thoughts and one web search from Exa.
+
+With `--record` and a `DATABASE_URL`, the run is kept in Postgres as it happens, step by step, which is how the page shows it live and replays it after. `--questions <file>` takes the next question from a list when none is given, which is how our server runs it on a timer.
 
 ## The same thing from a terminal
 

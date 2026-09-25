@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRA Think — an agent that pays for its own thinking</title>
+<meta name="description" content="Watch an AI agent on Arc pay for every thought and every tool in USDC: its brain is a language model bought per call, its tools come from the bazaar, and it has no API keys, only a wallet and a budget.">
+<meta name="theme-color" content="#061a42">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CRA AGENT">
+<meta property="og:title" content="CRA Think — an agent that pays for its own thinking">
+<meta property="og:description" content="Every thought is a paid call to a language model, every tool is bought from the bazaar, all in USDC on Arc. No API keys: a wallet and a budget. Watch it run.">
+<meta property="og:url" content="https://cra-agent.tech/think">
+<meta property="og:image" content="https://cra-agent.tech/brand/og-think.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="CRA Think — an agent that pays for its own thinking">
+<meta name="twitter:description" content="Every thought is a paid call to a language model, every tool is bought from the bazaar, all in USDC on Arc. No API keys: a wallet and a budget. Watch it run.">
+<meta name="twitter:image" content="https://cra-agent.tech/brand/og-think.jpg">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="nav" id="nav">
+  <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+  <div class="nav-right">
+    <span class="net-pill" id="netpill"><span class="dot" id="netdot"></span><span id="netlabel">Arc mainnet</span></span>
+    <button class="menu-btn" type="button" data-menu-open aria-label="Open menu" aria-controls="menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+</header>
+<div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="Menu">
+  <div class="menu-top">
+    <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+    <button class="menu-btn" type="button" data-menu-close aria-label="Close menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3.5 3.5l11 11M14.5 3.5l-11 11" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+  <ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="/#how">How it works</a></li>
+    <li><a href="/#install">Install the agent</a></li>
+    <li><a href="/#sell">Sell an endpoint</a></li>
+    <li><a href="/network">Network</a></li>
+    <li><a href="/think">Think</a></li>
+    <li><a href="/bazaar">Bazaar</a></li>
+    <li><a href="/market">Market</a></li>
+    <li><a href="/lane">Solana Lane</a></li>
+    <li><a href="/factory">Factory</a></li>
+    <li><a href="/register">Register a seller</a></li>
+    <li><a href="/try">Try it</a></li>
+    <li><a href="/status">Status</a></li>
+    <li><a href="/token">Token</a></li>
+    <li><a href="https://x.com/Craagentarc" rel="noopener">X</a></li>
+    <li><a href="https://github.com/giupy997/arcagentx402" rel="noopener">GitHub</a></li>
+  </ul>
+  <div class="menu-foot">x402 · Circle Gateway · USDC on Arc</div>
+</div>
+
+<section class="page-head think-head">
+  <div class="marks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div class="wrap">
+    <p class="kicker" style="color:rgba(255,255,255,.8)">Think</p>
+    <h1>An agent that pays for its own thinking</h1>
+    <div class="meta">Every thought is a paid call to a language model. Every tool is bought from the bazaar. All in USDC on Arc, with no API key anywhere: a wallet and a budget.</div>
+    <div class="t-cast" id="t-cast" aria-label="Who the agent pays"></div>
+  </div>
+</section>
+
+<main class="wrap dash think">
+  <section class="term t-live" id="t-live" aria-label="The agent at work">
+    <div class="term-bar">
+      <span class="t-state" id="t-state"><i></i><span id="t-state-label">Loading</span></span>
+      <span class="t-bar-right">
+        <span id="t-when"></span>
+        <span class="t-clock" id="t-clock"></span>
+        <button type="button" class="t-btn hidden" id="t-skip">Show all</button>
+        <button type="button" class="t-btn hidden" id="t-replay">Replay</button>
+        <button type="button" class="t-btn go hidden" id="t-golive">Watch live</button>
+      </span>
+    </div>
+    <div class="t-body" id="t-body" aria-live="polite">
+      <div class="t-cmd" id="t-cmd"></div>
+      <dl class="t-meta" id="t-meta"></dl>
+      <ol class="t-steps" id="t-steps"></ol>
+      <div class="t-now hidden" id="t-now"></div>
+      <div class="t-answer hidden" id="t-answer"></div>
+      <div class="t-empty hidden" id="t-empty"></div>
+    </div>
+    <div class="t-foot" id="t-foot">
+      <div class="t-meter" id="t-meter" aria-hidden="true"><i class="thinking"></i><i class="tools"></i></div>
+      <div class="t-bill" id="t-bill"></div>
+      <div class="t-paid" id="t-paid"></div>
+    </div>
+  </section>
+
+  <section class="t-section" id="how">
+    <p class="kicker">How it works</p>
+    <h2>Nothing here runs on an API key</h2>
+    <p class="sub">The agent gets a question, a budget and a wallet with USDC in Circle Gateway on Arc. Everything it uses after that, it pays for as it goes: its own thinking included.</p>
+    <ol class="t-flow" aria-label="The loop">
+      <li><b>Task</b><span>a question and a budget</span></li>
+      <li><b>Think</b><span>pays its brain, per thought</span></li>
+      <li><b>Search</b><span>the bazaar, free</span></li>
+      <li><b>Buy</b><span>one call, at the listed price</span></li>
+      <li><b>Answer</b><span>with the bill</span></li>
+    </ol>
+    <div class="grid-4">
+      <div class="cell"><span class="n">01</span><h3>The brain is bought</h3><p>Each thought is one call to a language model sold on Arc, paid in USDC before the model answers. BlockRun sells it per call, from $0.003; the price grows with what the agent sends it to read, so the agent keeps its notes short.</p><span class="k">Claude Haiku 4.5 by default · any chat model in the bazaar works</span></div>
+      <div class="cell"><span class="n">02</span><h3>Tools come from the bazaar</h3><p>When it needs to know something, the agent searches the <a href="/bazaar">bazaar</a> for an API that can tell it, reads what each one does, costs and takes, and buys a single call. Searching is free. It pays for what it calls, nothing else.</p><span class="k">web search, prices, chain data, 480+ endpoints</span></div>
+      <div class="cell"><span class="n">03</span><h3>Limits it cannot talk past</h3><p>A budget for the whole task and a ceiling for one thought. It can buy only a URL its own searches returned, never above the listed price. Then the wallet's policy checks every payment, thinking included, before anything is signed.</p><span class="k">checked in code, not asked of the model</span></div>
+      <div class="cell"><span class="n">04</span><h3>A receipt for every payment</h3><p>Each payment settles through Circle Gateway on Arc and is kept in the agent's ledger with its settlement id. The run ends with the bill: so much for thinking, so much for tools, and who got paid.</p><span class="k">x402 · Circle Gateway · USDC on Arc</span></div>
+    </div>
+  </section>
+
+  <section class="chart-card wide" id="t-history-card">
+    <div class="head"><div><h2>Recent runs</h2><div class="sub" id="t-history-sub">Every run on this page, newest first. Pick one to replay it.</div></div></div>
+    <div class="tbl-wrap"><table class="data t-history">
+      <thead><tr><th>When</th><th>Question</th><th>Outcome</th><th class="num">Thoughts</th><th class="num">Bought</th><th class="num">Spent</th></tr></thead>
+      <tbody id="t-history"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <section class="chart-card wide t-yours" id="run">
+    <div class="head"><div><h2>Run it yourself</h2><div class="sub">The same agent, from your terminal, with your wallet and your limits.</div></div></div>
+    <pre class="code"><span class="c"># once: a key for your agent, your limits, and $1 of USDC into Circle Gateway on Arc</span>
+<span class="k">npx</span> -p @cra-agent/mcp cra-agent init
+<span class="k">npx</span> -p @cra-agent/mcp cra-agent deposit 1
+
+<span class="c"># then ask it anything; it stops at the budget</span>
+<span class="k">npx</span> -p @cra-agent/mcp cra-agent think <span class="s">"When did Arc mainnet go live? Two sentences, with a source."</span> --budget 0.05</pre>
+    <div class="t-flags">
+      <div><code>--budget 0.10</code><span>what the whole task may spend, thinking and tools</span></div>
+      <div><code>--ceiling 0.01</code><span>the most one thought may cost</span></div>
+      <div><code>--model anthropic/claude-haiku-4.5</code><span>which model to buy thoughts from</span></div>
+      <div><code>--steps 8</code><span>thoughts before it must answer</span></div>
+      <div><code>--json</code><span>the run, its steps and the bill as JSON</span></div>
+    </div>
+  </section>
+
+  <section class="chart-card wide b-about t-about">
+    <p class="sub"><b>Whose money this is.</b> <span id="t-note">Runs on this page are started by us, with questions we wrote, and paid from CRA AGENT's own agent wallet under its spending policy. The payments are real. They are a demonstration, not customers.</span></p>
+    <p class="sub"><b>What a run costs.</b> A few cents. A thought costs $0.003 to $0.006 with Haiku, depending on how much the agent has to reread; a web search from Exa costs $0.007. A task that needs one search usually ends under $0.03.</p>
+    <p class="sub"><b>What stops it overspending.</b> It is stopped before a thought it could not afford, and it cannot buy what its own searches did not return, above the listed price, or past the budget. The worst a run can do is spend its budget.</p>
+    <p class="sub"><b>When the model gets it wrong.</b> It is told to name only sources it paid to read. When it answers without buying anything, the page says the answer was not checked.</p>
+    <p class="sub"><b>Why BlockRun.</b> It sells language models per call on Arc, with no account and no key. The agent finds its brain in the bazaar like everything else, so any seller of chat completions there would do.</p>
+  </section>
+</main>
+
+<footer class="site light">
+  <span>Runs read from <a data-api href="/v1/think/runs">/v1/think/runs</a> · the live one from <a data-api href="/v1/think/latest">/v1/think/latest</a></span>
+  <span><a href="/">Home</a> · <a href="/bazaar">Bazaar</a> · <a href="/status">Status</a> · <a href="https://github.com/giupy997/arcagentx402/blob/main/packages/mcp/src/think.ts" rel="noopener">think.ts</a></span>
+</footer>
+<script src="/config.js"></script>
+<script type="module" src="/js/think.js"></script>
+</body>
+</html>

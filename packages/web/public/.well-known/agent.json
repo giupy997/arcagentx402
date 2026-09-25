@@ -27,6 +27,10 @@
       "endpoint": "https://cra-agent.tech/bazaar"
     },
     {
+      "name": "think",
+      "endpoint": "https://cra-agent.tech/think"
+    },
+    {
       "name": "x402-facilitator",
       "endpoint": "https://api.cra-agent.tech/facilitator/supported"
     },
