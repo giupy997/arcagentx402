@@ -64,3 +64,8 @@
   from = "/think"
   to = "/think.html"
   status = 200
+
+[[redirects]]
+  from = "/usyc"
+  to = "/usyc.html"
+  status = 200

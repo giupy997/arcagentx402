@@ -6,6 +6,7 @@ import type { Db } from "./db.js";
 import { deployStats, feeEstimate, feeSummary, fxSummary, marketPrices, recentDeploys, recordSettlement, rpcStatus } from "./queries.js";
 import { PAIRS, resolvePair } from "./pairs.js";
 import { PAID_ROUTES, type QueryParam } from "./routes.js";
+import type { UsycReader } from "./usyc.js";
 import { mountToolHandlers } from "./tools.js";
 import { btcUsdRate, LNBTC_MAINNET, LNBTC_TESTNET, msatToUsd6, nwcReceiver, PgReplayStore, readConnection, type ReceiverAdapter } from "@cra-agent/lightning";
 import { lightningMiddleware } from "./lightning.js";
@@ -30,7 +31,7 @@ function querySchema(params: readonly QueryParam[]): Record<string, unknown> {
  * The first paid endpoints on the rail: our own Arc data, priced per call, paid via x402 + Circle Gateway.
  * Enabled only when SELLER_ADDRESS is set; the free /v1 routes stay free.
  */
-export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger): { networks: string[]; plainNetworks: string[] } | null {
+export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger, usyc: UsycReader | null = null): { networks: string[]; plainNetworks: string[] } | null {
   const sellerAddress = process.env.SELLER_ADDRESS;
   if (!sellerAddress) {
     log.warn("SELLER_ADDRESS not set: paid endpoints disabled");
@@ -159,6 +160,14 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger)
   });
 
   function handlersUnder(prefix: string): void {
+  app.get(`${prefix}/arc/usyc`, async (c) => {
+    if (!usyc) return c.json({ error: "USYC is read on Arc mainnet only", charged: false }, 404);
+    try {
+      return c.json(await usyc.read());
+    } catch (err) {
+      return c.json({ error: `could not read USYC on Arc right now: ${(err as Error).message.slice(0, 120)}`, charged: false }, 502);
+    }
+  });
 
 
   app.get(`${prefix}/fees/forecast`, async (c) => {

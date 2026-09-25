@@ -140,6 +140,14 @@ const TOOL_ROUTES: readonly PaidRoute[] = [
     params: [{ name: "hash", type: "string", description: "A transaction hash on Arc.", example: "0x903a75fb579f4f6eb6b7ffb90ff3f7de405f117e9aed78d1f21c23a0f1fa0250", required: true }],
   },
   {
+    path: "/v1/paid/arc/usyc",
+    group: "Arc, read live",
+    plain: { label: "USYC on Arc: price and growth", explain: "What one USYC, Circle's tokenized money market fund, is worth today, how fast that grew over the last week and month, and how much USYC exists on Arc. Read from its own contracts on Arc." },
+    price: "$0.001",
+    summary: "USYC's price, growth and supply on Arc, from the oracle its Teller uses",
+    description: "The price of USYC (Circle's tokenized money market fund) from the oracle its Teller mints and redeems at, the price's growth over 7 and 30 days as a yearly rate, every published price on Arc, and the supply on Arc.",
+  },
+  {
     path: "/v1/paid/web/extract",
     group: "The web",
     plain: { label: "The readable text of any web page", explain: "Give a link and get back the title, the description, the headings and the clean text of the page, without menus, scripts and ads. It is what an AI needs to read a page." },
@@ -288,6 +296,7 @@ export const FREE_ROUTES: readonly FreeRoute[] = [
   { path: "/v1/think/latest", summary: "The thinking agent, live", description: "The run of the agent that pays for its own thinking that is happening now, step by step with the call that is out, or else the last one: every thought paid to its brain, every search, every tool bought, what each cost and the settlement id. The page is cra-agent.tech/think." },
   { path: "/v1/think/runs", summary: "Past runs of the thinking agent", description: "Recent runs with their question, outcome and bill, and the totals. Runs are started by us and paid from our own agent wallet: a demonstration, not customers. One run in full: /v1/think/runs/{id}.", params: [{ name: "limit", type: "integer", description: "How many runs, 1 to 50.", example: 20 }] },
   { path: "/v1/lightning", summary: "Our routes, paid in bitcoin over Lightning", description: "The paid routes again under /v1/lightning, paid with x402's exact scheme on lnbtc: a 402 carries a fresh BOLT11 invoice from our node, bound to the request; pay it and send the preimage. Lists the routes, their dollar prices, the BTC/USD rate they are converted at and our node's key." },
+  { path: "/v1/usyc", summary: "USYC on Arc", description: "Circle's tokenized money market fund on Arc, read from its contracts: the price from the oracle its Teller mints and redeems at, how fast it grew over 7 and 30 days as a yearly rate, every published price, and the supply on Arc. The same data agents buy at /v1/paid/arc/usyc." },
   { path: "/v1/facilitator/lightning", summary: "Our open facilitator for Lightning", description: "Any seller of x402's exact scheme on lnbtc can settle its buyers' proofs at /facilitator/settle, without registration: the proof is checked against the seller's requirements in the spec's order, and its payment hash is claimed once in a durable store. Nothing moves and no payer is returned. Says the limits (invoices up to an hour, calls per minute, a daily cap) and how many settlements it made, those for our own node counted apart." },
   { path: "/v1/labels", summary: "Address labels by source", description: "How many addresses each public source names (Circle's x402 catalogue, the CRA market, our own, the ERC-8004 registry, public facilitators) and when each was last read. Look one address up at /v1/labels/{address}." },
   { path: "/v1/payments/direct/services", summary: "Known sellers reached by direct payments", description: "Payees that a public source names as a seller (Circle's catalogue, the CRA market, the ERC-8004 registry, our own), with the direct payments each received and from how many distinct payers. Sellers paid only through Circle Gateway settle in batches and do not appear." },
