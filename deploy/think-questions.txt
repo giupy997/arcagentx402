@@ -1,8 +1,27 @@
-# Questions the thinking agent on the server answers, one per run, in turn (cra-agent-think.service).
-# Each needs something the model cannot know by itself, so the agent has to find and buy it.
+# Questions the thinking agent on the server answers, one per run, in turn (cra-agent-think.service, every 30 minutes).
+# Each needs something the model cannot know by itself, so the agent has to find and buy it: a web search
+# from Exa, or a live stock price from BlockRun. Lines starting with # are skipped.
 What is the biggest story in crypto today? One sentence, with a source.
+What is Apple's stock price right now, and what moved it today? Two sentences, with a source.
 What did Circle announce most recently? Two sentences, with a source.
-What is new on Arc this week? Two sentences, with a source.
 Which AI model launch is in the news this week? One sentence, with a source.
+What is new on Arc this week? Two sentences, with a source.
+What is Nvidia's stock price right now? One sentence, with the source of the price.
 What is the latest on stablecoin rules in the United States? Two sentences, with a source.
+How much USDC is in circulation right now? One sentence, with a source.
+What is the latest news about x402 or payments by AI agents? Two sentences, with a source.
+What is Circle's stock (CRCL) trading at right now? One sentence, with the source of the price.
+What happened with Ethereum this week? Two sentences, with a source.
+What is the biggest tech story today? One sentence, with a source.
 When did Arc mainnet go live, and which companies run its validators? Two sentences, with a source.
+What is Coinbase's stock price right now, and why did it move? Two sentences, with a source.
+Which crypto company raised money this week, and how much? One sentence, with a source.
+What is the latest news about tokenized stocks? Two sentences, with a source.
+What is Tesla's stock price right now? One sentence, with the source of the price.
+What is the latest news about Solana? One sentence, with a source.
+What is the biggest story in fintech today? One sentence, with a source.
+What is the latest news about Bitcoin ETFs? One sentence, with a source.
+What is Microsoft's stock price right now, and what is in the news about it? Two sentences, with a source.
+What is the latest news about Robinhood Chain? One sentence, with a source.
+What did OpenAI or Anthropic announce most recently? One sentence, with a source.
+What is the latest news about Circle's Cross-Chain Transfer Protocol or Gateway? One sentence, with a source.

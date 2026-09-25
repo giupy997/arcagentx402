@@ -1,9 +1,9 @@
 [Unit]
-Description=the thinking agent answers a question every three hours (it spends from its own wallet: enable on purpose)
+Description=the thinking agent answers a question every 30 minutes (it spends from its own wallet: enable on purpose)
 
 [Timer]
-OnCalendar=*-*-* 00/3:20:00
-RandomizedDelaySec=300
+OnCalendar=*-*-* *:00/30:00
+RandomizedDelaySec=60
 Persistent=false
 
 [Install]

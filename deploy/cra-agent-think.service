@@ -12,8 +12,9 @@ Environment=CRA_NETWORK=arc
 Environment=CRA_AGENT_ID=think
 Environment=CRA_IDENTITY=off
 Environment=CRA_KEY_FILE=/opt/cra-agent/.secrets/think.key
-# Its own wallet and its own limits: a cent a payment, half a dollar a day, and only these sellers.
+# Its own wallet and its own limits: a cent a payment, two dollars a day, and only these sellers. A run every
+# 30 minutes spends about $1.15 a day, most of it on BlockRun (thoughts, stock prices), the rest on Exa.
 # Our own API is left out on purpose: our wallet paying our routes would read as usage.
-Environment=CRA_POLICY=daily=0.5,per_seller=0.4,per_payment=0.01,allow=nano.blockrun.ai|api.exa.ai
+Environment=CRA_POLICY=daily=2,per_seller=1.5,per_payment=0.01,allow=nano.blockrun.ai|api.exa.ai
 ExecStart=/usr/bin/node packages/mcp/dist/cli/rail.js think --record --questions deploy/think-questions.txt --budget 0.05
 TimeoutStartSec=300

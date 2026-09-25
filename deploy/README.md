@@ -50,22 +50,25 @@ curl -s localhost:8790/health
 
 `cra-agent-think.service` runs `cra-agent think --record` once: it answers the next question of
 `think-questions.txt`, paying its brain and its tools from a wallet of its own, and the page shows the run
-live from `think_runs` (migration 014, applied when the collector starts). The timer runs it every three
-hours. Its policy lets it pay only BlockRun and Exa, a cent a payment and half a dollar a day; our own API
-is left out, so our wallet never shows up as usage. Nothing spends until you enable it.
+live from `think_runs` (migration 014, applied when the collector starts). The timer runs it every 30
+minutes. Its policy lets it pay only BlockRun (thoughts, stock prices) and Exa (web search), a cent a payment
+and two dollars a day; our own API is left out, so our wallet never shows up as usage. A run starts only when
+Circle Gateway holds its whole budget, so an empty wallet skips runs instead of failing them. Nothing spends
+until you enable it.
 
 ```bash
 # its own key, made on the server and never shown: prints only the address
-sudo -u craagent bash -lc "cd /opt/cra-agent && node packages/mcp/dist/cli/rail.js init --client terminal --network arc --key-file /opt/cra-agent/.secrets/think.key --policy daily=0.5,per_seller=0.4,per_payment=0.01"
-# send a couple of dollars of USDC on Arc to that address, then move most of it into Circle Gateway
-sudo -u craagent bash -lc "cd /opt/cra-agent && CRA_NETWORK=arc CRA_KEY_FILE=/opt/cra-agent/.secrets/think.key CRA_AGENT_ID=think node packages/mcp/dist/cli/rail.js deposit 1.5"
-# one run now, then every three hours
+sudo -u craagent bash -lc "cd /opt/cra-agent && node packages/mcp/dist/cli/rail.js init --client terminal --network arc --key-file /opt/cra-agent/.secrets/think.key --policy daily=2,per_seller=1.5,per_payment=0.01"
+# send USDC on Arc to that address (a week of runs is about $8), then move most of it into Circle Gateway
+sudo -u craagent bash -lc "cd /opt/cra-agent && CRA_NETWORK=arc CRA_KEY_FILE=/opt/cra-agent/.secrets/think.key CRA_AGENT_ID=think node packages/mcp/dist/cli/rail.js deposit 10"
+# one run now, then every 30 minutes
 cp deploy/cra-agent-think.service deploy/cra-agent-think.timer /etc/systemd/system/ && systemctl daemon-reload
 systemctl start cra-agent-think.service && journalctl -u cra-agent-think -n 30 --no-pager
 systemctl enable --now cra-agent-think.timer
 ```
 
-A run costs two to three cents: about $0.25 a day on the timer.
+A run costs two to three cents: about $1.15 a day on the timer, $35 a month. Check what is left with
+`cra-agent balance` under the same key; `systemctl disable --now cra-agent-think.timer` stops it.
 
 ## Backups
 
