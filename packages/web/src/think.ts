@@ -290,9 +290,10 @@ function end(run: Run): void {
   show(run, run.steps.length);
   const box = $("t-answer");
   if (run.answer !== null && run.status === "answered") {
-    const what = run.steps.filter((s) => s.kind === "buy").map((s) => s.seller ?? "a seller");
+    const ok = (s: Step) => (s.kind === "buy" || s.kind === "fetch") && (s.status ?? 0) >= 200 && (s.status ?? 0) < 300;
+    const what = run.steps.filter(ok).map((s) => s.seller ?? "a seller");
     box.className = `t-answer${run.checked ? "" : " unchecked"}`;
-    box.innerHTML = `<div class="lbl">Answer<span>${run.checked ? `from what it bought: ${esc([...new Set(what)].join(", "))}` : "nothing was bought: the model's own answer, not checked"}</span></div><p>${esc(run.answer)}</p>`;
+    box.innerHTML = `<div class="lbl">Answer<span>${run.checked ? `from what it read: ${esc([...new Set(what)].join(", "))}` : "nothing was bought or read: the model's own answer, not checked"}</span></div><p>${esc(run.answer)}</p>`;
   } else {
     box.className = "t-answer unchecked";
     box.innerHTML = `<div class="lbl">No answer<span>${esc(OUTCOME[run.status])}</span></div><p>${run.status === "budget" ? "The budget could not pay for another thought, so the agent stopped." : run.status === "steps" ? "It ran out of steps before it knew enough." : run.status === "interrupted" ? "The run stopped without finishing: its process went away." : esc(run.error ?? "The run ended without an answer.")}</p>`;

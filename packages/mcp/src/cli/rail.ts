@@ -24,6 +24,7 @@ import { runInit } from "./init.js";
 import { BLOCKRUN_CHAT, DEFAULT_MODEL, think, type Paid } from "../think.js";
 import { ThinkRecorder } from "../think-record.js";
 import { digestFree, freeTools, isFree, toolAllowed, wantsWeb } from "../free-tools.js";
+import { expandQuestions, pickQuestion } from "../think-questions.js";
 
 /** The url and the amount in order, and --method / --body wherever they are. A body means POST. */
 function callOptions(args: readonly string[]): { positional: string[]; method: "GET" | "POST"; body: string | undefined } {
@@ -148,12 +149,13 @@ async function main(): Promise<void> {
       let task = args.filter((a, i) => !a.startsWith("--") && !(i > 0 && VALUED.has(args[i - 1]!))).join(" ").trim();
       const questions = flag("--questions");
       if (!task && questions) {
-        // A server run takes the next question of its list, going round: counted from the runs kept so far
-        // when recording, so every question comes up whatever the schedule; by the hour otherwise.
-        const list = readFileSync(questions, "utf8").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
-        if (list.length === 0) throw new Error(`${questions} has no questions in it`);
-        const n = args.includes("--record") && process.env.DATABASE_URL ? await ThinkRecorder.count(process.env.DATABASE_URL) : Math.floor(Date.now() / 3_600_000);
-        task = list[n % list.length]!;
+        // A server run takes the next question of a shuffled pass through everything the file can ask, and
+        // never one of the last hundred it asked (think-questions.ts). Counted from the runs kept so far.
+        const all = expandQuestions(readFileSync(questions, "utf8"));
+        if (all.length === 0) throw new Error(`${questions} has no questions in it`);
+        const db = args.includes("--record") ? process.env.DATABASE_URL : undefined;
+        const n = db ? await ThinkRecorder.count(db) : Math.floor(Date.now() / 1_800_000);
+        task = pickQuestion(all, n, db ? await ThinkRecorder.recentTasks(db, 100) : new Set());
       }
       if (!task) throw new Error('usage: think "<task>" [--budget 0.10] [--ceiling 0.01] [--model anthropic/claude-haiku-4.5] [--steps 8] [--tokens 350] [--brain <url>] [--json] [--record] [--questions <file>] [--tools <file>]');
       // --tools: URL prefixes the agent may use, one a line; anything else is never shown to it, so never bought.
@@ -251,7 +253,8 @@ async function main(): Promise<void> {
       }
       say("");
       say(r.answer !== null ? `Answer: ${r.answer}` : `No answer: ${r.stoppedBecause === "budget" ? "the budget ran out" : r.stoppedBecause === "steps" ? `no answer within ${maxSteps} steps` : "the brain stopped making sense"}.`);
-      if (r.answer !== null && r.spent.purchases === 0) say("Nothing was bought: that answer is the model's own, and nothing in it was checked.");
+      const read = r.steps.some((s) => (s.kind === "buy" || s.kind === "fetch") && (s.status ?? 0) >= 200 && (s.status ?? 0) < 300);
+      if (r.answer !== null && !read) say("Nothing was bought or read: that answer is the model's own, and nothing in it was checked.");
       say(`Spent $${r.spent.totalUsdc}: thinking $${r.spent.thinkingUsdc} (${r.spent.thoughts} ${r.spent.thoughts === 1 ? "thought" : "thoughts"}), tools $${r.spent.toolsUsdc} (${r.spent.purchases} ${r.spent.purchases === 1 ? "purchase" : "purchases"}). Each payment signed a receipt, in USDC on Arc.`);
       break;
     }

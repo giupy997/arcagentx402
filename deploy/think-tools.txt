@@ -4,7 +4,6 @@
 https://api.exa.ai/search
 https://nano.blockrun.ai/api/v1/usstock/
 https://nano.blockrun.ai/api/v1/pm/
-# AIsa sells many APIs, some that write (email, uploads): only its CoinGecko market data.
-https://api.aisa.one/apis/v2/coingecko/
 # Free public API, nothing paid.
 https://api.dexscreener.com/
+# Not AIsa's CoinGecko: Circle's catalogue lists it at $0.008, its 402 asks $0.10 (checked 2026-09-25).

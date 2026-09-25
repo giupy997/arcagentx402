@@ -49,6 +49,17 @@ export class ThinkRecorder {
     }
   }
 
+  /** The questions of the latest runs, so a timer does not ask one again too soon. */
+  static async recentTasks(databaseUrl: string, limit: number): Promise<Set<string>> {
+    const pool = new pg.Pool({ connectionString: databaseUrl, max: 1 });
+    try {
+      const r = await pool.query<{ task: string }>("SELECT task FROM think_runs ORDER BY started_at DESC LIMIT $1", [limit]);
+      return new Set(r.rows.map((x) => x.task));
+    } finally {
+      await pool.end().catch(() => undefined);
+    }
+  }
+
   phase(p: Phase | null): Promise<void> {
     return this.write("UPDATE think_runs SET phase = $2, phase_at = now() WHERE id = $1", [this.id, p ? JSON.stringify(p) : null]);
   }

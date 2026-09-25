@@ -54,7 +54,7 @@ Creates the agent's key in `~/.cra-agent/agent.key` (readable only by you, never
 
 It also knows a few free public APIs, called without paying and shown as such: DexScreener's pairs, boosted tokens and new token profiles, digested to what answers questions (pairs by 24-hour volume). `--tools <file>` keeps it to a list of URL prefixes: anything else is never shown to it, so never bought.
 
-With `--record` and a `DATABASE_URL`, the run is kept in Postgres as it happens, step by step, which is how the page shows it live and replays it after. `--questions <file>` takes the next question from a list when none is given, which is how our server runs it on a timer.
+With `--record` and a `DATABASE_URL`, the run is kept in Postgres as it happens, step by step, which is how the page shows it live and replays it after. `--questions <file>` picks the question when none is given, which is how our server runs it on a timer: the file combines templates (`What is the price of {coin} right now?`) with lists (`@coin = bitcoin (BTC) | ether (ETH)`), and a recorded run never repeats one of the last hundred questions.
 
 ## The same thing from a terminal
 

@@ -1,45 +1,34 @@
-# Questions the thinking agent on the server answers, one per run, in turn (cra-agent-think.service, every 30 minutes).
-# Each needs something the model cannot know by itself, so the agent has to find it: DEX data from DexScreener
-# (free), market data from CoinGecko, live stock prices from BlockRun, the web from Exa. Lines starting with # are skipped.
+# What the thinking agent on the server is asked, one question a run (cra-agent-think.service, every 30 minutes).
+# "@name = a | b | c" defines a list; a line with {name} is asked once for each item of that list; any other line
+# is a question as it is. The agent goes through all of them in a shuffled order, a new order each pass, and
+# never repeats one of its last hundred. Each question needs something the model cannot know by itself: DEX
+# data from DexScreener (free), live stock prices from BlockRun, the web from Exa, Polymarket from BlockRun.
+
+@coin = bitcoin (BTC) | ether (ETH) | solana (SOL) | XRP | BNB | dogecoin (DOGE) | cardano (ADA) | tron (TRX) | avalanche (AVAX) | chainlink (LINK) | toncoin (TON) | sui (SUI) | shiba inu (SHIB) | polkadot (DOT) | litecoin (LTC) | bitcoin cash (BCH) | near (NEAR) | aptos (APT) | uniswap (UNI) | pepe (PEPE) | hyperliquid (HYPE) | arbitrum (ARB) | optimism (OP) | bonk (BONK) | dogwifhat (WIF) | ethena (ENA) | aave (AAVE) | render (RENDER) | injective (INJ) | sei (SEI) | celestia (TIA) | jupiter (JUP) | pendle (PENDLE) | ondo (ONDO) | fartcoin (FARTCOIN) | pudgy penguins (PENGU) | virtuals protocol (VIRTUAL) | worldcoin (WLD) | stellar (XLM) | hedera (HBAR) | monero (XMR) | ethereum classic (ETC) | internet computer (ICP) | cosmos (ATOM) | algorand (ALGO) | filecoin (FIL) | the graph (GRT) | lido (LDO) | maker (MKR) | curve (CRV) | raydium (RAY) | jito (JTO) | pyth (PYTH) | wormhole (W) | starknet (STRK) | zksync (ZK) | mantle (MNT) | kaspa (KAS) | floki (FLOKI) | popcat (POPCAT)
+@stock = Apple (AAPL) | Nvidia (NVDA) | Microsoft (MSFT) | Amazon (AMZN) | Alphabet (GOOGL) | Meta (META) | Tesla (TSLA) | Broadcom (AVGO) | Netflix (NFLX) | AMD (AMD) | Palantir (PLTR) | Coinbase (COIN) | Circle (CRCL) | Robinhood (HOOD) | MicroStrategy (MSTR) | PayPal (PYPL) | Visa (V) | Mastercard (MA) | JPMorgan (JPM) | Intel (INTC) | Oracle (ORCL) | Salesforce (CRM) | Adobe (ADBE) | Shopify (SHOP) | Uber (UBER) | Disney (DIS) | Nike (NKE) | Walmart (WMT) | Costco (COST) | Block (XYZ) | Marathon Digital (MARA) | Riot Platforms (RIOT) | Taiwan Semiconductor (TSM) | ASML (ASML) | Arm Holdings (ARM) | Super Micro Computer (SMCI) | Snowflake (SNOW) | CrowdStrike (CRWD) | Spotify (SPOT) | Airbnb (ABNB)
+@company = Circle | Coinbase | Binance | Stripe | Visa | Mastercard | PayPal | BlackRock | Robinhood | Kraken | OpenAI | Anthropic | Google DeepMind | Nvidia | Tether | Ripple | Uniswap Labs | the Solana Foundation | the Ethereum Foundation | Polymarket | Hyperliquid | Coinbase's Base | Arbitrum | Chainlink | MicroStrategy | Galaxy Digital | Fidelity Digital Assets | Franklin Templeton | Revolut | Nubank | Mistral AI | xAI | Meta AI | Apple | Microsoft | Amazon Web Services | Cloudflare | Shopify | Ledger | Phantom
+@chain = Solana | Base | Ethereum | BNB Chain | Arbitrum | Hyperliquid | Sui | Avalanche | Polygon | Arc | Robinhood Chain | Tron | TON | Aptos | Sonic
+@topic = stablecoin rules in the United States | stablecoin rules in Europe | tokenized stocks | tokenized US Treasuries | Bitcoin ETFs | Ether ETFs | Solana ETFs | payments by AI agents | the x402 payment standard | crypto hacks and exploits | DeFi lending | real-world assets on chain | prediction markets | the Lightning Network | Bitcoin mining | central bank digital currencies | AI chips | open-source AI models | AI regulation | card networks and stablecoins | cross-border payments with stablecoins | Ethereum's next upgrade | restaking | memecoin launchpads | crypto venture funding | institutional crypto custody | layer-2 networks | onchain payroll | agent wallets | the crypto market structure bill
+@bet = bitcoin's price this week | ether's price this week | solana's price this month | the Fed's next interest rate decision | which company will have the best AI model this year | bitcoin reaching a new all-time high this year
+
+What is the price of {coin} right now, and how much did it move in 24 hours? One sentence, with the source.
+What is the most traded {coin} pair on DexScreener right now, and its 24-hour volume? One sentence.
+How deep is the biggest {coin} pair on DexScreener: its liquidity and 24-hour volume? One sentence.
+What happened with {coin} this week? One sentence, with a source.
+Which tokens on {chain} have the most active boosts on DexScreener right now? Name up to two, or say there are none.
+What is the most traded pair on {chain} on DexScreener right now? One sentence, with its 24-hour volume.
+What is the stock price of {stock} right now? One sentence, with the source of the price.
+What is the stock price of {stock} right now, and what moved it today? Two sentences, with a source.
+What is the latest news about {company}? One sentence, with a source.
+What did {company} announce most recently? One sentence, with a source.
+What are people on X saying about {company} this week? One sentence, with a source.
+What is the latest on {topic}? Two sentences, with a source.
+What does Polymarket say about {bet}? One sentence.
 What is the biggest story in crypto today? One sentence, with a source.
-Which tokens have the most active boosts on DexScreener right now? Name three, with their chains.
-What is Apple's stock price right now, and what moved it today? Two sentences, with a source.
-What are the trending coins on CoinGecko right now? Name three.
-What did Circle announce most recently? Two sentences, with a source.
-What is the most traded PEPE pair on DexScreener right now, and its 24-hour volume? One sentence.
-Which AI model launch is in the news this week? One sentence, with a source.
-What are bitcoin and ether trading at right now? One sentence, with the source of the prices.
-What is new on Arc this week? Two sentences, with a source.
-What is the price of the CRA token on Arc, according to DexScreener? One sentence.
-What is Nvidia's stock price right now? One sentence, with the source of the price.
-Which new token profiles appeared on DexScreener most recently? Name two, with their chains.
-What are people saying about Arc on X this week? Two sentences, with a source.
-What is the biggest WETH/USDC pair on Base by 24-hour volume, according to DexScreener? One sentence.
-What is the latest on stablecoin rules in the United States? Two sentences, with a source.
-What is the price of SOL right now, and how much did it move in 24 hours? One sentence, with the source.
-What did Coinbase announce most recently? One sentence, with a source.
-What is Circle's stock (CRCL) trading at right now? One sentence, with the source of the price.
-Which chain has the most boosted tokens on DexScreener right now? One sentence.
-What is the latest news about x402 or payments by AI agents? Two sentences, with a source.
-What is the most traded Solana memecoin pair on DexScreener right now? One sentence, with its 24-hour volume.
-How much USDC is in circulation right now? One sentence, with a source.
-What happened with Ethereum this week? Two sentences, with a source.
-What is the price of HYPE on DexScreener right now, and its biggest pair? One sentence.
-What is Coinbase's stock price right now, and why did it move? Two sentences, with a source.
-What is new on Base this week? One sentence, with a source.
-Which crypto company raised money this week, and how much? One sentence, with a source.
-What does Polymarket say about bitcoin's price this week? One sentence.
-What is the latest news about tokenized stocks? Two sentences, with a source.
-What is Tesla's stock price right now? One sentence, with the source of the price.
-What is the latest news about Hyperliquid? One sentence, with a source.
 What is the biggest tech story today? One sentence, with a source.
-What is the latest news about Solana? One sentence, with a source.
-What did Circle post or announce on X this week? One sentence, with a source.
-What is MicroStrategy's (MSTR) stock price right now? One sentence, with the source of the price.
 What is the biggest story in fintech today? One sentence, with a source.
-What is the latest news about Bitcoin ETFs? One sentence, with a source.
+What is new on Arc this week? Two sentences, with a source.
+How much USDC is in circulation right now? One sentence, with a source.
+Which chain has the most boosted tokens on DexScreener right now? One sentence.
+What is the price of the CRA token on Arc, according to DexScreener? One sentence.
 When did Arc mainnet go live, and which companies run its validators? Two sentences, with a source.
-What is Microsoft's stock price right now, and what is in the news about it? Two sentences, with a source.
-What is the latest news about Robinhood Chain? One sentence, with a source.
-What did OpenAI or Anthropic announce most recently? One sentence, with a source.
-What is the latest news about Circle's Cross-Chain Transfer Protocol or Gateway? One sentence, with a source.

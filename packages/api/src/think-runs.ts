@@ -43,7 +43,7 @@ export interface ThinkRunView {
   phaseSince: number | null;
   steps: ThinkStepView[];
   answer: string | null;
-  /** Whether the agent bought anything to answer with; an answer from the model alone was not checked. */
+  /** Whether the agent read anything to answer with, bought or free; an answer from the model alone was not checked. */
   checked: boolean;
   spent: Spent;
   /** Who was paid in this run, and how much: the brain's seller and each tool's. */
@@ -173,7 +173,7 @@ export function runView(row: ThinkRunRow, now = Date.now()): ThinkRunView {
     phaseSince: status === "running" ? secs(row.phase_at) : null,
     steps,
     answer: row.answer,
-    checked: steps.some((s) => s.kind === "buy"),
+    checked: steps.some((s) => (s.kind === "buy" || s.kind === "fetch") && (s.status ?? 0) >= 200 && (s.status ?? 0) < 300),
     spent,
     paid: [...paid.values()].map((p) => ({ seller: p.seller, role: p.role, payments: p.payments, usdc: formatUsdc6(usdc6(p.micro)) })),
     error: row.error,

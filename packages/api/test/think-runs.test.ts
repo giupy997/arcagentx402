@@ -39,7 +39,9 @@ describe("a thinking run as the page reads it", () => {
     expect(v.steps.map((s) => s.kind)).toEqual(["think", "search", "think", "fetch"]);
     expect(v.spent).toEqual({ thinkingUsdc: "0.007696", toolsUsdc: "0", totalUsdc: "0.007696", thoughts: 2, purchases: 0 });
     expect(v.paid).toEqual([{ seller: "BlockRun.AI", role: "brain", payments: 2, usdc: "0.007696" }]);
-    expect(v.checked).toBe(false);
+    // It read DexScreener's answer (free, 200): what it says next rests on that, not on the model alone.
+    expect(v.checked).toBe(true);
+    expect(runView(row({ steps: (row().steps as unknown[]).slice(0, 3) }), T0.getTime() + 10_000).checked).toBe(false);
     expect(v.budgetUsdc).toBe("0.05");
   });
 

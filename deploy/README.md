@@ -51,9 +51,10 @@ curl -s localhost:8790/health
 `cra-agent-think.service` runs `cra-agent think --record` once: it answers the next question of
 `think-questions.txt`, paying its brain and its tools from a wallet of its own, and the page shows the run
 live from `think_runs` (migration 014, applied when the collector starts). The timer runs it every 30
-minutes. Its policy lets it pay only BlockRun (thoughts, stock prices, Polymarket), Exa (web search) and AIsa,
-a cent a payment and two dollars a day, and `think-tools.txt` narrows AIsa to its CoinGecko data; DexScreener
-is free. Our own API is left out, so our wallet never shows up as usage. A run starts only when Circle Gateway
+minutes, each time a question it has not asked recently: `think-questions.txt` combines templates with lists
+of coins, stocks, companies, chains and topics into about 500 questions. Its policy lets it pay only BlockRun
+(thoughts, stock prices, Polymarket) and Exa (web search), a cent a payment and two dollars a day, and
+`think-tools.txt` lists what it may call; DexScreener is free. Our own API is left out, so our wallet never shows up as usage. A run starts only when Circle Gateway
 holds its whole budget, so an empty wallet skips runs instead of failing them. Nothing spends until you enable
 it. The questions and the tools are read from the repository at each run; a change to the service file needs
 `cp deploy/cra-agent-think.service /etc/systemd/system/ && systemctl daemon-reload`.
