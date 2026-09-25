@@ -179,7 +179,9 @@ function state(kind: "live" | "replay" | "done" | "example" | "loading", run: Ru
 function stepHtml(run: Run, s: Step, index: number): string {
   const thought = run.steps.slice(0, index + 1).filter((x) => x.kind === "think").length;
   const n = s.kind === "think" ? String(thought).padStart(2, "0") : "";
-  const cost = s.kind === "search" ? `<span class="cost free">free</span>` : s.kind === "refused" ? `<span class="cost free">·</span>` : `<span class="cost">$${esc(s.costUsdc)}</span>`;
+  // A seller that fails is not paid: x402 settles only after it answers.
+  const charged = micro(s.costUsdc) > 0;
+  const cost = s.kind === "search" ? `<span class="cost free">free</span>` : s.kind === "refused" ? `<span class="cost free">·</span>` : s.kind === "buy" && !charged ? `<span class="cost free">$0</span>` : `<span class="cost">$${esc(s.costUsdc)}</span>`;
   const sub: string[] = [];
   let txt = "";
   if (s.kind === "think") {
@@ -199,7 +201,7 @@ function stepHtml(run: Run, s: Step, index: number): string {
     if (bySeller.size) sub.push([...bySeller].map(([seller, g]) => `${logo(seller, "xs")}${esc(seller)}${g.n > 1 ? ` ×${g.n}` : ""} <span class="price">${g.n > 1 ? "from " : ""}$${esc(g.price)}</span>`).join('<i class="sep">·</i>'));
   } else if (s.kind === "buy") {
     txt = `${esc(s.method ?? "")} ${esc(shortUrl(s.url))} <span class="dim">→ ${s.status ?? ""}</span>`;
-    sub.push(`${logo(s.seller, "xs")}paid ${esc(s.seller ?? "the seller")}`);
+    sub.push(charged ? `${logo(s.seller, "xs")}paid ${esc(s.seller ?? "the seller")}` : `${logo(s.seller, "xs")}${esc(s.seller ?? "the seller")} failed, not charged`);
   } else {
     txt = esc(s.detail);
   }
@@ -251,7 +253,7 @@ function bill(run: Run, upTo: number): void {
     if (s.kind === "think") {
       thinking += micro(s.costUsdc);
       thoughts++;
-    } else if (s.kind === "buy") {
+    } else if (s.kind === "buy" && micro(s.costUsdc) > 0) {
       tools += micro(s.costUsdc);
       bought++;
     }

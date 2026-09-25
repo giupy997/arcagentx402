@@ -153,8 +153,9 @@ function forBrain(f: Found): Record<string, unknown> {
     method: f.method,
     priceUsd: f.priceUsd,
     seller: f.name,
-    // "about" carries what a parameter accepts: without it a brain guesses, and a seller may charge for the guess.
-    params: f.params.slice(0, 6).map((p) => ({ name: p.name, in: p.in ?? "query", required: p.required, ...(p.description ? { about: p.description.slice(0, 100) } : {}), ...(small(p.example) ? { example: p.example } : {}) })),
+    // Only what a call needs, with what each parameter accepts: optional parameters are where a brain guesses
+    // wrong, and a seller may charge for the guess (Exa does, for a 400). With nothing required, the first few.
+    params: (f.params.some((p) => p.required) ? f.params.filter((p) => p.required) : f.params.slice(0, 3)).slice(0, 6).map((p) => ({ name: p.name, in: p.in ?? "query", required: p.required, ...(p.description ? { about: p.description.slice(0, 100) } : {}), ...(small(p.example) ? { example: p.example } : {}) })),
     ...(f.body && JSON.stringify(f.body).length <= 200 ? { exampleBody: f.body } : {}),
   };
 }
@@ -318,7 +319,8 @@ export async function think(opts: ThinkOptions, deps: ThinkDeps): Promise<ThinkR
         continue;
       }
       tools = addUsdc6(tools, parseUsdc6(bought.paidUsdc));
-      purchases++;
+      // A call the seller failed is not charged (x402 settles only after the handler answers): not a purchase.
+      if (parseUsdc6(bought.paidUsdc) > 0n) purchases++;
       await add({ kind: "buy", detail: `${listed.method} ${url} -> ${bought.status}`, costUsdc: bought.paidUsdc, ledgerId: bought.ledgerId, tx: bought.tx ?? null, url, method: listed.method, seller: listed.name, status: bought.status, ms: Date.now() - sent });
       deps.say(`      buy    $${bought.paidUsdc}  ${listed.method} ${url.length > 70 ? `${url.slice(0, 67)}...` : url} -> ${bought.status}`);
       const failed = bought.status >= 400 ? `, an error: the seller charged for it anyway, so fix the request from what it says before trying again` : "";

@@ -129,7 +129,7 @@ export function spentFrom(steps: readonly ThinkStepView[]): Spent {
     if (s.kind === "think") {
       thinking = usdc6(thinking + parseUsdc6(s.costUsdc));
       thoughts++;
-    } else if (s.kind === "buy") {
+    } else if (s.kind === "buy" && parseUsdc6(s.costUsdc) > 0n) {
       tools = usdc6(tools + parseUsdc6(s.costUsdc));
       purchases++;
     }

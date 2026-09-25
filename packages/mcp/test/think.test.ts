@@ -167,12 +167,32 @@ describe("an agent that pays for its own thinking", () => {
     expect(r).toMatchObject({ answer: "ok", stoppedBecause: "answered" });
   });
 
-  it("shows the brain what a parameter accepts, so it does not guess", async () => {
+  it("shows the brain what a call needs and what each parameter accepts, and leaves the optional ones out", async () => {
     const w = world([{ thought: "Search.", action: "search", query: "web search" }, { thought: "Done.", action: "answer", text: "ok" }]);
-    const exa = found({ params: [{ name: "type", in: "body", type: "string", description: "Search type: auto, keyword, neural", required: false, example: null }] });
+    const exa = found({
+      params: [
+        { name: "query", in: "body", type: "string", description: "Search query", required: true, example: null },
+        { name: "contents", in: "body", type: "object", description: "Content fields to include: text, highlights, summary", required: false, example: null },
+      ],
+    });
     await think(opts(), { ...w.deps, search: async () => [exa] });
     const shown = (JSON.parse(w.paid[1]!.body!).messages as Array<{ content: string }>).find((m) => m.content.startsWith("Search results"))!;
-    expect(shown.content).toContain('"about":"Search type: auto, keyword, neural"');
+    expect(shown.content).toContain('"name":"query","in":"body","required":true,"about":"Search query"');
+    expect(shown.content).not.toContain("contents");
+  });
+
+  it("does not count a call the seller failed as a purchase: nothing was charged", async () => {
+    const w = world(
+      [
+        { thought: "Search.", action: "search", query: "web search" },
+        { thought: "Buy.", action: "buy", url: EXA, body: { query: "x" } },
+        { thought: "Done.", action: "answer", text: "ok" },
+      ],
+      () => ({ status: 502, body: "bad gateway", paidUsdc: "0", ledgerId: "L-t", refused: null }),
+    );
+    const r = await think(opts(), w.deps);
+    expect(r.spent).toMatchObject({ toolsUsdc: "0", purchases: 0 });
+    expect(r.steps.find((s) => s.kind === "buy")).toMatchObject({ status: 502, costUsdc: "0" });
   });
 
   it("gives an unreadable brain one more chance, then stops", async () => {
