@@ -214,7 +214,8 @@ async function main(): Promise<void> {
           {
             pay,
             say,
-            search: async (q) => (await searchMarket(q, { limit: 6 })).results.filter((x) => x.network === caip2),
+            // Only what this wallet's policy lets it pay: a result it could never buy only costs the brain a thought.
+            search: async (q) => (await searchMarket(q, { limit: 12 })).results.filter((x) => x.network === caip2 && fit(x, policy, caip2, NOTHING_SPENT, null).payable).slice(0, 6),
             ...(recorder ? { onStep: (s) => recorder!.step(s), onPhase: (p) => recorder!.phase(p) } : {}),
           },
         );

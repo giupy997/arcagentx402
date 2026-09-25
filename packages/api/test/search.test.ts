@@ -27,6 +27,14 @@ describe("what an agent finds for a few words", () => {
     expect(top("who is building on arc")).toEqual(["/v1/paid/deploys/history"]);
   });
 
+  it("sends an agent asking for news to the web search that can find it", () => {
+    const base = own.find((i) => i.url.includes("/currency/convert"))!;
+    const web: SearchItem = { ...base, url: "https://api.exa.ai/search", method: "POST", priceUsd: "0.007", name: "Exa", label: "Search the web with Exa and return ranked results optimized for AI agents.", description: "AI web search", host: "api.exa.ai", source: "circle", keywords: "", direct: null };
+    const hits = search([...own, web], "biggest crypto news today", { limit: 5 });
+    expect(hits.map((h) => h.host)).toContain("api.exa.ai");
+    expect(search([...own, web], "headlines", { limit: 1 })[0]!.host).toBe("api.exa.ai");
+  });
+
   it("finds nothing rather than something unrelated", () => {
     expect(search(own, "pizza delivery tomorrow")).toEqual([]);
   });

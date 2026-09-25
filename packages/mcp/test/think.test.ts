@@ -138,6 +138,43 @@ describe("an agent that pays for its own thinking", () => {
     expect(at.every((t, i) => t >= 0 && (i === 0 || t >= at[i - 1]!))).toBe(true);
   });
 
+  it("keeps enough to answer: no purchase that would leave too little for the next thought", async () => {
+    const w = world([
+      { thought: "Search.", action: "search", query: "web search" },
+      { thought: "Buy.", action: "buy", url: EXA, body: { query: "x" } },
+      { thought: "Fine, from what I know.", action: "answer", text: "done" },
+    ]);
+    // $0.012: two thoughts at $0.003 leave $0.006; the $0.007 search would not fit anyway, and a $0.005 one would
+    // leave $0.001, less than one more thought: refused before anything is signed.
+    const cheaper = { ...found(), priceUsd: "0.005" };
+    const r = await think(opts({ budgetUsdc: "0.012" }), { ...w.deps, search: async () => [cheaper] });
+    expect(w.paid.filter((p) => p.url === EXA)).toEqual([]);
+    expect(r.steps.find((s) => s.kind === "refused")?.detail).toBe("not bought: $0.005 would leave too little to answer");
+    expect(r).toMatchObject({ answer: "done", stoppedBecause: "answered" });
+  });
+
+  it("lets the last cents pay for a thought, and tells the brain to answer with them", async () => {
+    const w = world([
+      { thought: "Search.", action: "search", query: "web search" },
+      { thought: "Search again.", action: "search", query: "web search" },
+      { thought: "Answering.", action: "answer", text: "ok" },
+    ]);
+    // A ceiling of $0.01 with $0.007 left, about two thoughts' worth at $0.003: the third is capped at what is
+    // left rather than refused, and the brain is told to answer with it.
+    const r = await think(opts({ budgetUsdc: "0.013", thoughtCeilingUsdc: "0.01" }), w.deps);
+    expect(w.paid.map((p) => p.maxUsdc)).toEqual(["0.01", "0.01", "0.007"]);
+    expect(JSON.parse(w.paid[2]!.body!).messages.at(-1).content).toMatch(/answer now with what you have/);
+    expect(r).toMatchObject({ answer: "ok", stoppedBecause: "answered" });
+  });
+
+  it("shows the brain what a parameter accepts, so it does not guess", async () => {
+    const w = world([{ thought: "Search.", action: "search", query: "web search" }, { thought: "Done.", action: "answer", text: "ok" }]);
+    const exa = found({ params: [{ name: "type", in: "body", type: "string", description: "Search type: auto, keyword, neural", required: false, example: null }] });
+    await think(opts(), { ...w.deps, search: async () => [exa] });
+    const shown = (JSON.parse(w.paid[1]!.body!).messages as Array<{ content: string }>).find((m) => m.content.startsWith("Search results"))!;
+    expect(shown.content).toContain('"about":"Search type: auto, keyword, neural"');
+  });
+
   it("gives an unreadable brain one more chance, then stops", async () => {
     const w = world(["Sure! Let me think about that.", "Still not JSON."]);
     const r = await think(opts(), w.deps);

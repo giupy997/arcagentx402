@@ -115,6 +115,7 @@ Reply with exactly one JSON object and nothing else, in one of these shapes:
 Rules:
 - search is free. It finds paid APIs on Arc by what they do, not the answer itself: search "web search", "bitcoin price" or "arc gas fees", not the question. It returns their url, method, price, and the parameters they take.
 - buy calls one of those APIs and pays its price. You can only buy a url that a search returned. Replace any {placeholder} in it and change example values to what you need.
+- Send only the parameters the task needs, with values a parameter's "about" allows: a seller can charge for a request it rejects.
 - Your memory ends before today and can be wrong about anything recent. Check dates, news and recent facts by buying a web search.
 - Never invent a fact or a source. Name only sources you bought in this task, and say plainly what you could not check.
 - Spend as little as the task allows, and answer as soon as you know enough.`;
@@ -152,7 +153,8 @@ function forBrain(f: Found): Record<string, unknown> {
     method: f.method,
     priceUsd: f.priceUsd,
     seller: f.name,
-    params: f.params.slice(0, 6).map((p) => ({ name: p.name, in: p.in ?? "query", required: p.required, ...(small(p.example) ? { example: p.example } : {}) })),
+    // "about" carries what a parameter accepts: without it a brain guesses, and a seller may charge for the guess.
+    params: f.params.slice(0, 6).map((p) => ({ name: p.name, in: p.in ?? "query", required: p.required, ...(p.description ? { about: p.description.slice(0, 100) } : {}), ...(small(p.example) ? { example: p.example } : {}) })),
     ...(f.body && JSON.stringify(f.body).length <= 200 ? { exampleBody: f.body } : {}),
   };
 }
@@ -221,12 +223,17 @@ export async function think(opts: ThinkOptions, deps: ThinkDeps): Promise<ThinkR
   });
 
   let unreadable = 0;
+  // What the last thought cost: the next one costs about as much, a little more as the notes grow.
+  let lastThought: Usdc6 = usdc6(0n);
   for (let step = 1; step <= opts.maxSteps; step++) {
-    // A thought is only started when the budget can pay for the dearest one.
-    if (compareUsdc6(left(), ceiling) < 0) return result(null, "budget");
-    messages.push({ role: "user", content: `Budget left: $${formatUsdc6(left())}. Reply with one JSON object.` });
+    if (left() === 0n) return result(null, "budget");
+    // A thought may cost up to the ceiling, or whatever is left when that is less: the rail refuses before
+    // signing if the brain asks more, so the last cents can still pay for an answer.
+    const cap = compareUsdc6(left(), ceiling) < 0 ? left() : ceiling;
+    const lastCall = lastThought > 0n && compareUsdc6(left(), usdc6((lastThought * 5n) / 2n)) < 0;
+    messages.push({ role: "user", content: `Budget left: $${formatUsdc6(left())}.${lastCall ? " That pays for about one more reply: answer now with what you have." : ""} Reply with one JSON object.` });
     const asked = await phase({ kind: "think", n: thoughts + 1 });
-    const paid = await deps.pay(opts.brainUrl, { method: "POST", body: JSON.stringify({ model: opts.model, messages: toSend(), max_tokens: opts.maxTokens }) }, formatUsdc6(ceiling));
+    const paid = await deps.pay(opts.brainUrl, { method: "POST", body: JSON.stringify({ model: opts.model, messages: toSend(), max_tokens: opts.maxTokens }) }, formatUsdc6(cap));
     messages.pop();
     if (paid.refused) {
       await add({ kind: "refused", detail: `thought refused before paying: ${paid.refused}`, costUsdc: "0", ledgerId: paid.ledgerId });
@@ -234,6 +241,7 @@ export async function think(opts: ThinkOptions, deps: ThinkDeps): Promise<ThinkR
       return result(null, "budget");
     }
     thinking = addUsdc6(thinking, parseUsdc6(paid.paidUsdc));
+    if (parseUsdc6(paid.paidUsdc) > 0n) lastThought = parseUsdc6(paid.paidUsdc);
     thoughts++;
     const reply = paid.status === 200 ? completionText(paid.body) : null;
     const action = reply ? parseAction(reply) : null;
@@ -290,6 +298,14 @@ export async function think(opts: ThinkOptions, deps: ThinkDeps): Promise<ThinkR
         messages.push({ role: "user", content: `Not bought: it costs $${listed.priceUsd} and only $${formatUsdc6(left())} is left. Answer with what you have, or find something cheaper.` });
         continue;
       }
+      // Enough has to be left after a purchase to think about what it returned.
+      const reserve = usdc6((lastThought * 3n) / 2n);
+      if (compareUsdc6(addUsdc6(price, reserve), left()) > 0) {
+        await add({ kind: "refused", detail: `not bought: $${listed.priceUsd} would leave too little to answer`, costUsdc: "0", ledgerId: null, url, seller: listed.name });
+        deps.say(`      not bought: $${listed.priceUsd} would leave too little to answer`);
+        messages.push({ role: "user", content: `Not bought: after paying $${listed.priceUsd}, too little would be left to answer. Answer with what you have.` });
+        continue;
+      }
       const body = listed.method === "POST" ? JSON.stringify(action.body ?? listed.body ?? {}) : undefined;
       const sent = await phase({ kind: "buy", url, method: listed.method, seller: listed.name, priceUsd: listed.priceUsd });
       // The listed price is the ceiling: a seller that asks more at pay time is refused before signing.
@@ -305,7 +321,8 @@ export async function think(opts: ThinkOptions, deps: ThinkDeps): Promise<ThinkR
       purchases++;
       await add({ kind: "buy", detail: `${listed.method} ${url} -> ${bought.status}`, costUsdc: bought.paidUsdc, ledgerId: bought.ledgerId, tx: bought.tx ?? null, url, method: listed.method, seller: listed.name, status: bought.status, ms: Date.now() - sent });
       deps.say(`      buy    $${bought.paidUsdc}  ${listed.method} ${url.length > 70 ? `${url.slice(0, 67)}...` : url} -> ${bought.status}`);
-      messages.push({ role: "user", content: `Bought ${url} (status ${bought.status}). Response, cut to ${RESULT_CHARS} characters:\n${bought.body.slice(0, RESULT_CHARS)}`, result: true });
+      const failed = bought.status >= 400 ? `, an error: the seller charged for it anyway, so fix the request from what it says before trying again` : "";
+      messages.push({ role: "user", content: `Bought ${url} (status ${bought.status}${failed}). Response, cut to ${RESULT_CHARS} characters:\n${bought.body.slice(0, RESULT_CHARS)}`, result: true });
       continue;
     }
 

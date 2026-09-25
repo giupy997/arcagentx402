@@ -128,6 +128,8 @@ const SYNONYMS: Record<string, readonly string[]> = {
   image: ["images", "picture", "photo"],
   picture: ["image", "images", "photo"],
   stock: ["stocks", "equities", "usstock", "shares"],
+  news: ["headlines"],
+  headlines: ["news"],
   stocks: ["stock", "equities", "usstock", "shares"],
   gpt: ["chat", "completions", "llm", "openai"],
   llm: ["chat", "completions", "model", "models"],
@@ -142,6 +144,9 @@ function hit(words: readonly string[], term: string): boolean {
   return words.some((w) => w === term || (term.length >= 4 && w.startsWith(term)) || (w.length >= 4 && term.startsWith(w) && term.length - w.length <= 2));
 }
 
+/** A search engine for the web: what says it searches the web, not a search of one site like Wikipedia. */
+const WEB_SEARCH = /\bsearch(es)?\b[^.]*\bweb\b|\bweb\b[^.]*\bsearch/i;
+
 export function scoreItem(item: SearchItem, queryTokens: readonly string[]): number {
   if (queryTokens.length === 0) return 0;
   const fields: Array<[readonly string[], number]> = [
@@ -149,6 +154,8 @@ export function scoreItem(item: SearchItem, queryTokens: readonly string[]): num
     [tokens(item.description ?? ""), 2],
     [tokens(item.keywords), 2],
     [tokens(`${item.name} ${item.host}`), 1],
+    // News comes from searching the web: an agent asking for news or headlines should find the web search.
+    [WEB_SEARCH.test(`${item.label ?? ""} ${item.description ?? ""}`) ? ["news", "headlines"] : [], 2],
   ];
   let score = 0;
   let matched = 0;
