@@ -188,6 +188,7 @@ async function main(): Promise<void> {
       }
       say("");
       say(r.answer !== null ? `Answer: ${r.answer}` : `No answer: ${r.stoppedBecause === "budget" ? "the budget ran out" : r.stoppedBecause === "steps" ? `no answer within ${maxSteps} steps` : "the brain stopped making sense"}.`);
+      if (r.answer !== null && r.spent.purchases === 0) say("Nothing was bought: that answer is the model's own, and nothing in it was checked.");
       say(`Spent $${r.spent.totalUsdc}: thinking $${r.spent.thinkingUsdc} (${r.spent.thoughts} ${r.spent.thoughts === 1 ? "thought" : "thoughts"}), tools $${r.spent.toolsUsdc} (${r.spent.purchases} ${r.spent.purchases === 1 ? "purchase" : "purchases"}). Each payment signed a receipt, in USDC on Arc.`);
       break;
     }

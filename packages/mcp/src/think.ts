@@ -77,16 +77,20 @@ interface Action {
   text?: string;
 }
 
-const SYSTEM = (budget: string) => `You are an autonomous agent on Arc, a blockchain where payments are in USDC. You have a budget of $${budget} for this whole task, and you pay for everything you use, including every reply you write here: each one costs a fraction of a cent.
+// A first run answered a question about Arc from memory, with the wrong year and a source it never read: it
+// had searched the bazaar for the answer itself, found only data APIs, and never looked for a web search.
+const SYSTEM = (budget: string, today: string) => `You are an autonomous agent on Arc, a blockchain where payments are in USDC. Today is ${today}. You have a budget of $${budget} for this whole task, and you pay for everything you use, including every reply you write here: each one costs a fraction of a cent.
 
 Reply with exactly one JSON object and nothing else, in one of these shapes:
-{"thought": "<one short sentence>", "action": "search", "query": "<a few words: what you need>"}
+{"thought": "<one short sentence>", "action": "search", "query": "<the kind of API you need, in a few words>"}
 {"thought": "<one short sentence>", "action": "buy", "url": "<a url from a search result>", "body": {<JSON body, only when the result's method is POST>}}
 {"thought": "<one short sentence>", "action": "answer", "text": "<your final answer to the task>"}
 
 Rules:
-- search finds paid APIs on Arc and is free. It returns their url, method, price, and the parameters they take.
+- search is free. It finds paid APIs on Arc by what they do, not the answer itself: search "web search", "bitcoin price" or "arc gas fees", not the question. It returns their url, method, price, and the parameters they take.
 - buy calls one of those APIs and pays its price. You can only buy a url that a search returned. Replace any {placeholder} in it and change example values to what you need.
+- Your memory ends before today and can be wrong about anything recent. Check dates, news and recent facts by buying a web search.
+- Never invent a fact or a source. Name only sources you bought in this task, and say plainly what you could not check.
 - Spend as little as the task allows, and answer as soon as you know enough.`;
 
 /** The first JSON object in a reply: models wrap it in prose or code fences often enough to matter. */
@@ -164,7 +168,7 @@ export async function think(opts: ThinkOptions, deps: ThinkDeps): Promise<ThinkR
   const left = (): Usdc6 => headroomUsdc6(budget, addUsdc6(thinking, tools));
   // `result` marks what a tool returned: those are the long messages, and only the latest are sent whole.
   const messages: Array<{ role: "system" | "user" | "assistant"; content: string; result?: true }> = [
-    { role: "system", content: SYSTEM(opts.budgetUsdc) },
+    { role: "system", content: SYSTEM(opts.budgetUsdc, new Date().toISOString().slice(0, 10)) },
     { role: "user", content: `Task: ${opts.task}` },
   ];
   const toSend = () => {
@@ -218,7 +222,7 @@ export async function think(opts: ThinkOptions, deps: ThinkDeps): Promise<ThinkR
       found.push(...hits);
       steps.push({ kind: "search", detail: `"${query}": ${hits.length} results`, costUsdc: "0", ledgerId: null });
       deps.say(`      search "${query}" -> ${hits.length} results, free`);
-      messages.push({ role: "user", content: `Search results for "${query}" (JSON):\n${JSON.stringify(hits.slice(0, 5).map(forBrain))}`, result: true });
+      messages.push({ role: "user", content: `Search results for "${query}": APIs you can buy, not answers. If none of them can answer the task, search for the kind of API that could, like "web search".\n${JSON.stringify(hits.slice(0, 5).map(forBrain))}`, result: true });
       continue;
     }
 
