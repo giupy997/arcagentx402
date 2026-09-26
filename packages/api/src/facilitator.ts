@@ -169,7 +169,7 @@ export function mountFacilitator(app: Hono, db: Db, network: string, log: Logger
     }
     if (!valid) return c.json({ error: "the signature was not made by that wallet over that message" }, 400);
     const known = await db.query<{ n: string; mine: string }>("SELECT count(*) AS n, count(*) FILTER (WHERE pay_to = $1) AS mine FROM facilitator_sellers", [b.payTo.toLowerCase()]);
-    if (Number(known.rows[0]!.mine) === 0 && Number(known.rows[0]!.n) >= maxSellers) return c.json({ error: "registration is full for now: write to us at x.com/Craagentarc" }, 503);
+    if (Number(known.rows[0]!.mine) === 0 && Number(known.rows[0]!.n) >= maxSellers) return c.json({ error: "registration is full for now: write to us at craagentarc@gmail.com or x.com/Craagentarc" }, 503);
     await db.query("INSERT INTO facilitator_sellers (pay_to, issued_at, signature) VALUES ($1, $2, $3) ON CONFLICT (pay_to) DO NOTHING", [b.payTo.toLowerCase(), b.issuedAt, b.signature]);
     const pushed = await push(b.payTo.toLowerCase());
     log.info({ payTo: b.payTo.toLowerCase(), pushed }, "facilitator: seller registered");

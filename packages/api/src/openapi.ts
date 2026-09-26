@@ -109,7 +109,7 @@ export function buildOpenApi(opts: OpenApiOptions): Record<string, unknown> {
       description:
         "Arc chain data by the call, paid in USDC over x402: base fees, contract deploys, RPC health, and executed prices for a pair against USDC. Free summaries under /v1, priced detail under /v1/paid.",
       "x-guidance": GUIDANCE,
-      contact: { name: "CRA AGENT", url: "https://cra-agent.tech" },
+      contact: { name: "CRA AGENT", url: "https://cra-agent.tech", email: "craagentarc@gmail.com" },
       license: { name: "MIT", url: "https://github.com/giupy997/arcagentx402/blob/main/LICENSE" },
     },
     servers: [{ url: opts.origin }],

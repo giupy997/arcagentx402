@@ -14,6 +14,10 @@
       "endpoint": "https://cra-agent.tech"
     },
     {
+      "name": "email",
+      "endpoint": "craagentarc@gmail.com"
+    },
+    {
       "name": "x402",
       "endpoint": "https://api.cra-agent.tech/.well-known/x402",
       "version": "2"
