@@ -34,6 +34,28 @@ A caller who has not paid gets `402 Payment Required` with the price; a caller w
 
 What is for sale is published, free to read, at `/.well-known/x402`. Payments settle through Circle Gateway and add up in the Gateway balance of `--pay-to`; collect them with `cra-agent withdraw <usdc>` from [`@cra-agent/mcp`](https://www.npmjs.com/package/@cra-agent/mcp). [CRA Factory](https://cra-agent.tech/factory#sell) writes the command for you.
 
+### Moving what you earn on Solana to Arc
+
+With `--pay-to-solana`, buyers on Solana pay you there. One command moves that USDC to your wallet on Arc:
+
+```bash
+npx -y @cra-agent/seller sweep --solana-key-file ./solana.key --to 0xYourArcWallet --dry-run
+```
+
+It asks [Eco Routes](https://eco.com) for a quote. You deposit the USDC into Eco's Portal on Solana, a solver burns it with Circle's CCTP V2 with Arc as the destination, and it is minted to your Arc address a few seconds later. Nobody holds it in between.
+
+Nothing is signed until the quote says exactly what was asked: the amount, your Arc address as the recipient, a fee under the cap, Eco's program, your wallet as the only signer, and inside it a CCTP burn to Arc's domain (26) for your address. `--dry-run` stops after those checks and a simulation. Without it, the command sends, then waits until the USDC shows up on Arc.
+
+| Option | Meaning |
+|---|---|
+| `--solana-key-file <path>` | The Solana wallet's key: a 32-byte seed in hex, or the JSON array `solana-keygen` writes. Keep it readable only by you. |
+| `--to <0x…>` | Your wallet on Arc. |
+| `--amount <usdc>` | How much to move. All of it by default. |
+| `--max-fee <usdc>` | Refuse a quote whose fee is higher. Default: 0.01 USDC or 0.5% of the amount, whichever is more. Eco charges about 0.02% today. |
+| `--dry-run` | Check and simulate only. |
+
+The wallet needs a little SOL for the network fee.
+
 ### Paid in sats, on your own node
 
 With `--pay-to-lightning`, every 402 also offers x402 `exact` on `lnbtc` ([the scheme](https://github.com/x402-foundation/x402/blob/main/specs/schemes/exact/scheme_exact_lnbtc.md)), next to Arc and Solana. The offer carries a fresh invoice from your node for the route's dollar price in sats, at the BTC/USD rate of the moment (the median of Coinbase, Kraken and Bitstamp), rounded up to a whole sat and at least 1. The invoice's description hash commits to the request: its method, URL and body. A buyer pays it and retries with the preimage. The proof is checked and claimed once before the call goes to your API.

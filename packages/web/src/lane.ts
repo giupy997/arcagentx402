@@ -7,7 +7,7 @@ interface Lane {
   note: string;
   solana: { payTo: string | null; usdcWaiting: string | null; balanceAt: number | null };
   payments: { count: number; volumeUsdc: string; payers: number; first: number | null; last: number | null };
-  arc: { payTo: string | null; movedUsdc: string; moves: number; lastMove: number | null; floatUsdc: string | null };
+  arc: { payTo: string | null; movedUsdc: string; moves: number; lastMove: number | null; floatUsdc: string | null; recentMoves?: Array<{ at: number; amountUsdc: string; solanaTx: string }> };
   route: { provider: string; status: "open" | "closed" | "unknown"; checkedAt: number; quote: { amountOut: string; feeUsdc: string; etaSeconds: number } | null; detail: string | null; requestId: string | null } | null;
   recent: Array<{ at: number; payer: string | null; amountUsdc: string; tx: string | null; route: string | null }>;
 }
@@ -35,7 +35,13 @@ async function refresh(): Promise<void> {
     $("l-waiting").textContent = usd(d.solana.usdcWaiting);
     $("l-waiting-note").textContent = d.solana.payTo ? `${short(d.solana.payTo, 4)} on Solana${d.solana.balanceAt ? `, read ${ago(d.solana.balanceAt)}` : ""}` : "no Solana address configured";
     $("l-moved").textContent = usd(d.arc.movedUsdc);
-    $("l-moved-note").textContent = d.arc.moves ? `${d.arc.moves} moves, last ${ago(d.arc.lastMove!)}` : "nothing yet: the road is not open";
+    $("l-moved-note").textContent = d.arc.moves ? `${d.arc.moves} ${d.arc.moves === 1 ? "move" : "moves"}, last ${ago(d.arc.lastMove!)}` : r?.status === "open" ? "nothing moved yet" : "nothing yet: the road is not open";
+    const moves = d.arc.recentMoves ?? [];
+    $("lane-moves").innerHTML = moves.length
+      ? `<table class="data"><thead><tr><th>When</th><th class="num">Amount</th><th>To, on Arc</th><th>Solana transaction</th></tr></thead><tbody>${moves
+          .map((m) => `<tr><td>${ago(m.at)}</td><td class="num">$${esc(m.amountUsdc)}</td><td class="mono">${esc(d.arc.payTo ? short(d.arc.payTo, 4) : "—")}</td><td class="mono"><a href="https://solscan.io/tx/${esc(m.solanaTx)}" rel="noopener">${esc(short(m.solanaTx, 6))}</a></td></tr>`)
+          .join("")}</tbody></table>`
+      : '<div class="empty">Nothing moved to Arc yet.</div>';
     $("l-float").textContent = d.arc.floatUsdc === null ? "$0" : usd(d.arc.floatUsdc);
     $("l-last").textContent = d.payments.last ? ago(d.payments.last) : "—";
     $("l-last-note").textContent = d.payments.first ? `first one ${ago(d.payments.first)}` : "";

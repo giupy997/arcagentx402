@@ -54,7 +54,7 @@
   <div class="wrap">
     <p class="kicker" style="color:rgba(255,255,255,.8)">Solana Lane</p>
     <h1>Pay on Solana, settle on Arc</h1>
-    <div class="meta">Most x402 buyers are on Solana · what they paid, what is waiting there, and whether the road to Arc is open today · every figure measured</div>
+    <div class="meta">Most x402 buyers are on Solana · what they paid, what is waiting there, and what moved on to Arc through Circle's CCTP · every figure measured</div>
   </div>
 </section>
 
@@ -92,9 +92,15 @@
       <div class="tbl-wrap" id="lane-table"></div>
     </div>
     <div class="chart-card wide">
-      <div class="head"><div><h2>How the lane works, and what is not built yet</h2></div></div>
-      <p class="sub"><b>Live today.</b> A seller on CRA gives a Solana address and the same routes go on sale to buyers on Solana, in the same 402. The buyer pays USDC on Solana, an open facilitator completes the transaction and covers its fee, and the seller is paid on Solana. Nothing crosses chains and nobody holds anything in between.</p>
-      <p class="sub"><b>Not yet.</b> Moving what sellers earn on Solana to Arc. The road we picked is <a href="https://eco.com" rel="noopener">Eco Routes</a>, an intent network where a solver delivers on Arc and is repaid from a vault on Solana: no float of ours, no bridge to babysit. Eco is live on Arc, and quotes Solana → Base and Base → Arc in about seven seconds each. Solana → Arc has no solver yet: this page asks for a real quote every hour and shows Eco's answer above. When it opens, this is where the figures will appear.</p>
+      <div class="head"><div><h2>Moved to Arc</h2><div class="sub">newest first · each one a deposit into Eco's Portal on Solana, signed by the seller's wallet · the hash opens it on Solscan</div></div></div>
+      <div class="tbl-wrap" id="lane-moves"></div>
+    </div>
+    <div class="chart-card wide">
+      <div class="head"><div><h2>How the lane works</h2></div></div>
+      <p class="sub"><b>Paid on Solana.</b> A seller on CRA gives a Solana address and the same routes go on sale to buyers on Solana, in the same 402. The buyer pays USDC on Solana, an open facilitator completes the transaction and covers its fee, and the seller is paid on Solana.</p>
+      <p class="sub"><b>Moved to Arc.</b> What a seller earned there moves on to its wallet on Arc through <a href="https://eco.com" rel="noopener">Eco Routes</a>. The seller deposits the USDC into Eco's Portal on Solana; a solver burns it with Circle's CCTP, with Arc as the destination and the seller's Arc address as the recipient, and it is minted on Arc a few seconds later. No float of ours, no bridge to babysit. One command does it, and checks Eco's quote before it signs anything: the amount, the Arc recipient, the fee, the program, and inside it the burn itself.</p>
+      <pre class="json" style="overflow-x:auto;max-width:100%">npx -y @cra-agent/seller sweep --solana-key-file ./solana.key --to 0xYourArcWallet --dry-run</pre>
+      <p class="sub">Without <span class="mono">--dry-run</span> it sends, then waits until the USDC shows up on Arc. The wallet needs a little SOL for the network fee.</p>
       <p class="sub"><b>Honest count.</b> Payments from our own wallets are listed on <a href="/status">the status page</a> as ours. The first payment on this lane was one of them.</p>
     </div>
   </div>

@@ -25,6 +25,11 @@
  *                           instead of on this machine; "cra" is ours, open to anyone, no registration.
  *                           Keep the same choice for a node: the two places do not know each other's proofs.
  *
+ *   npx @cra-agent/seller sweep --solana-key-file <path> --to 0xYourArcWallet [--amount <usdc>] [--max-fee <usdc>] [--dry-run]
+ *                           moves the USDC earned on Solana (--pay-to-solana) to your wallet on Arc, through
+ *                           Eco Routes and Circle's CCTP. The quote is checked before anything is signed; with
+ *                           --dry-run it is only simulated. Needs a little SOL in the wallet for the fee.
+ *
  * Payments go through Circle Gateway: the money lands in the Gateway balance of --pay-to, from
  * where its owner withdraws it. Sats land on the seller's node. This process never holds a key.
  */
@@ -32,8 +37,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { btcUsdRate, FileReplayStore, lnbtcFacilitatorClient, lnbtcNetwork, nwcReceiver, readConnection } from "@cra-agent/lightning";
+import { readSolanaSigner, solanaLane, SweepRefused } from "./lane.js";
 import { createProxyApp, type LightningSale } from "./proxy.js";
-import { parseSellArgs } from "./sell-args.js";
+import { parseSellArgs, parseSweepArgs } from "./sell-args.js";
 
 const MARKET = process.env.CRA_MARKET_URL ?? "https://api.cra-agent.tech/v1/market";
 
@@ -120,7 +126,21 @@ async function main(): Promise<void> {
   });
 }
 
-main().catch((err: unknown) => {
-  console.error(`cra-agent-sell: ${(err as Error).message}`);
+/** `sweep`: the seller's USDC on Solana, moved to its wallet on Arc. */
+async function sweepMain(argv: readonly string[]): Promise<void> {
+  const a = parseSweepArgs(argv);
+  const signer = await readSolanaSigner(a.solanaKeyFile);
+  const lane = solanaLane({ ...(process.env.SOLANA_RPC_URL ? { solanaRpc: process.env.SOLANA_RPC_URL } : {}), ...(process.env.ARC_RPC_URL ? { arcRpc: process.env.ARC_RPC_URL } : {}), log: (line) => console.log(line) });
+  const r = await lane.sweep(signer, a.to, { dryRun: a.dryRun, ...(a.amount === undefined ? {} : { amount: a.amount }), ...(a.maxFee === undefined ? {} : { maxFee: a.maxFee }) });
+  if (r.dryRun) {
+    console.log(r.simulation.ok ? `Dry run: the quote checks out and the transaction simulates cleanly. Nothing was signed or sent.` : `Dry run: the quote checks out, but the simulation failed: ${r.simulation.error}\n${r.simulation.logs.join("\n")}`);
+    return;
+  }
+  const usdc = (v: bigint) => (Number(v) / 1e6).toFixed(6);
+  console.log(r.arrived ? `Arrived on Arc: ${usdc(r.arrivedUsdc)} USDC at ${a.to}, ${r.seconds} s after sending. Solana transaction: ${r.signature}` : `Sent on Solana (${r.signature}) and not seen on Arc after ${r.seconds} s. CCTP usually lands in seconds: check ${a.to} on Arc again later.`);
+}
+
+(process.argv[2] === "sweep" ? sweepMain(process.argv.slice(3)) : main()).catch((err: unknown) => {
+  console.error(`cra-agent-sell: ${err instanceof SweepRefused ? "not moved: " : ""}${(err as Error).message}`);
   process.exit(1);
 });

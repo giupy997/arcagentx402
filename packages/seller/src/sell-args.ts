@@ -73,3 +73,44 @@ export function parseSellArgs(argv: readonly string[]): SellArgs {
   const description = one("description");
   return { target, payTo, network, port, routes, free: many.get("free") ?? [], upstreamHeaders, ...(payToSolana ? { payToSolana } : {}), ...(payToLightning ? { payToLightning } : {}), ...(lightningFacilitatorUrl ? { lightningFacilitatorUrl } : {}), ...(name ? { name } : {}), ...(description ? { description } : {}), ...(facilitatorUrl ? { facilitatorUrl } : {}), ...(list ? { list } : {}) };
 }
+
+export interface SweepArgs {
+  solanaKeyFile: string;
+  to: string;
+  /** Micro-USDC; everything in the wallet when absent. */
+  amount?: bigint;
+  /** Micro-USDC. */
+  maxFee?: bigint;
+  dryRun: boolean;
+}
+
+const microUsdc = (flag: string, v: string): bigint => {
+  if (!/^\d{1,9}(\.\d{1,6})?$/.test(v)) throw new Error(`${flag} is an amount in USDC, like 1.5`);
+  const [whole, frac = ""] = v.split(".");
+  return BigInt(whole!) * 1_000_000n + BigInt(frac.padEnd(6, "0"));
+};
+
+/** `cra-agent-sell sweep`: move USDC earned on Solana to the seller's wallet on Arc. */
+export function parseSweepArgs(argv: readonly string[]): SweepArgs {
+  const one = new Map<string, string>();
+  let dryRun = false;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === "--dry-run") {
+      dryRun = true;
+      continue;
+    }
+    if (!["--solana-key-file", "--to", "--amount", "--max-fee"].includes(a)) throw new Error(`unknown option ${a}`);
+    const v = argv[++i];
+    if (v === undefined) throw new Error(`${a} needs a value`);
+    one.set(a.slice(2), v);
+  }
+  const solanaKeyFile = one.get("solana-key-file");
+  if (!solanaKeyFile) throw new Error("--solana-key-file is required: the file with the Solana wallet's key, the one given as --pay-to-solana");
+  const to = one.get("to");
+  if (!to || !/^0x[0-9a-fA-F]{40}$/.test(to)) throw new Error("--to is required: the 0x address on Arc that receives the USDC");
+  const amount = one.has("amount") ? microUsdc("--amount", one.get("amount")!) : undefined;
+  if (amount === 0n) throw new Error("--amount must be more than 0");
+  const maxFee = one.has("max-fee") ? microUsdc("--max-fee", one.get("max-fee")!) : undefined;
+  return { solanaKeyFile, to, dryRun, ...(amount === undefined ? {} : { amount }), ...(maxFee === undefined ? {} : { maxFee }) };
+}

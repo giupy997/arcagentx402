@@ -225,6 +225,13 @@ export function sellNextSteps(i: SellInput): Step[] {
       explain: "The first line shows what is for sale. The second must answer 402 Payment Required: that is the price tag. If you installed the agent, the third pays for a call and shows the receipt.",
       code: `curl ${i.publicUrl || "https://pay.example.com"}/.well-known/x402\ncurl -i ${i.publicUrl || "https://pay.example.com"}/\ncra-agent pay '${i.publicUrl || "https://pay.example.com"}/'`,
     },
+    ...(i.payToSolana
+      ? [{
+          title: "Move what you earn on Solana to Arc",
+          explain: "Buyers on Solana pay you on Solana. This moves that USDC to your wallet on Arc, through Eco Routes and Circle's CCTP, in a few seconds and without anyone holding it in between. It checks Eco's quote before it signs anything; the first line only checks and simulates. It needs the key of the Solana wallet in a file only you can read, and a little SOL for the network fee.",
+          code: `npx -y @cra-agent/seller sweep --solana-key-file /full/path/to/solana.key --to ${i.payTo} --dry-run\nnpx -y @cra-agent/seller sweep --solana-key-file /full/path/to/solana.key --to ${i.payTo}`,
+        }]
+      : []),
     {
       title: "Collect what you earned",
       explain: "Payments are batched by Circle Gateway, so they add up in the Gateway balance of your wallet instead of arriving one by one. The first line shows that balance, the second moves an amount back to the wallet itself. Both need the key of that wallet in a file on your machine, readable only by you, which is why a wallet made for this is better than your main one. Circle may take a fee on a withdrawal: the command refuses to pay more than 5 cents unless you tell it otherwise.",
