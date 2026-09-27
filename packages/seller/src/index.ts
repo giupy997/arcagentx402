@@ -46,6 +46,8 @@ export interface DiscoveryRail {
   readonly network?: Network;
   readonly iconUrl?: string;
   readonly tags?: readonly string[];
+  /** The least a call costs on this rail, when its facilitator refuses less: "$0.001" for Coinbase's. */
+  readonly minPrice?: string;
 }
 
 /**
@@ -57,6 +59,14 @@ export interface SolanaRail {
   /** The seller's Solana address. Its USDC token account is created by the first payment if missing. */
   readonly payTo: string;
   readonly facilitatorUrl?: string;
+  /** The least a call costs on Solana, when the facilitator that takes it refuses less. */
+  readonly minPrice?: string;
+}
+
+/** A price no lower than a facilitator's minimum, both in x402's "$0.001" form. */
+export function atLeast(price: string, min: string | undefined): string {
+  if (!min) return price;
+  return parseUsdc6(price.replace("$", "")) >= parseUsdc6(min.replace("$", "")) ? price : `$${min.replace("$", "")}`;
 }
 
 export const SOLANA_MAINNET: Network = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
@@ -147,8 +157,8 @@ export function buildRoutes(cfg: SellerConfig, network: Network, pattern: string
   // Arc first: a buyer that can pay there should. Then the catalogued rail, then Solana.
   const accepts = [
     arc,
-    ...(rail ? [{ scheme: "exact", network: rail.network ?? BASE_MAINNET, payTo: rail.payTo, price, ...timeout }] : []),
-    ...(cfg.solana ? [{ scheme: "exact", network: cfg.network === "arc" ? SOLANA_MAINNET : SOLANA_DEVNET, payTo: cfg.solana.payTo, price, ...timeout }] : []),
+    ...(rail ? [{ scheme: "exact", network: rail.network ?? BASE_MAINNET, payTo: rail.payTo, price: atLeast(price, rail.minPrice), ...timeout }] : []),
+    ...(cfg.solana ? [{ scheme: "exact", network: cfg.network === "arc" ? SOLANA_MAINNET : SOLANA_DEVNET, payTo: cfg.solana.payTo, price: atLeast(price, cfg.solana.minPrice), ...timeout }] : []),
   ];
   return {
     accepts: accepts.length === 1 ? arc : accepts,

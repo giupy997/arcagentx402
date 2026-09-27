@@ -32,6 +32,14 @@ describe("what a priced route advertises", () => {
     expect(accepts.every((a) => a.scheme === "exact")).toBe(true);
   });
 
+  it("keeps a rail's price at its facilitator's minimum, and Arc at the route's own", () => {
+    const cdp: SellerConfig = { ...withRail, discovery: { ...withRail.discovery!, minPrice: "$0.001" }, solana: { payTo: "CjNFTjvBhbJJd2B5ePPMHRLx1ELZpa8dwQgGL727eKww", minPrice: "$0.001" } };
+    const cheap = buildRoutes(cdp, arc, "GET /v1/paid/x", "$0.0005", {}).accepts as any[];
+    expect(cheap.map((a) => [a.network, a.price])).toEqual([["eip155:5042", "$0.0005"], [BASE_MAINNET, "$0.001"], ["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", "$0.001"]]);
+    const dear = buildRoutes(cdp, arc, "GET /v1/paid/x", "$0.003", {}).accepts as any[];
+    expect(new Set(dear.map((a) => a.price))).toEqual(new Set(["$0.003"]));
+  });
+
   it("declares for the catalogue what the route takes and returns", () => {
     const inputSchema = { type: "object", properties: { window: { type: "integer" } } };
     const r = buildRoutes(withRail, arc, "GET /v1/paid/fx/execution", "$0.001", { inputSchema, outputExample: { pair: "EURC/USDC" } });
