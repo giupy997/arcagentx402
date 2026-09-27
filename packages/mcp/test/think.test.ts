@@ -239,4 +239,16 @@ describe("reading the brain", () => {
     expect(allowedResult("https://np.orthogonal.com/agentmail/v0/other", list)).toBeNull();
     expect(allowedResult("https://api.exa.ai.evil.example/search", list)).toBeNull();
   });
+
+  it("lets it fill a path parameter that the listing shows filled with its example, as Circle's catalogue does", () => {
+    const stock = found({ url: "https://nano.blockrun.ai/api/v1/usstock/price/AAPL", method: "GET", params: [{ name: "symbol", in: "path", type: "string", description: "ticker", required: true, example: "AAPL" }] });
+    const list = [stock, found()];
+    expect(allowedResult("https://nano.blockrun.ai/api/v1/usstock/price/XYZ", list)?.url).toBe(stock.url);
+    expect(allowedResult("https://nano.blockrun.ai/api/v1/usstock/history/XYZ", list)).toBeNull();
+    expect(allowedResult("https://nano.blockrun.ai/api/v1/usstock/price/XYZ/extra", list)).toBeNull();
+    expect(allowedResult("https://nano.blockrun.ai/api/v1/usstock/price/../../admin", list)).toBeNull();
+    // A segment that only looks like an example is not a parameter unless the listing says it is one.
+    const plain = found({ url: "https://nano.blockrun.ai/api/v1/usstock/price/AAPL", method: "GET", params: [] });
+    expect(allowedResult("https://nano.blockrun.ai/api/v1/usstock/price/XYZ", [plain])).toBeNull();
+  });
 });

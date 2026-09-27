@@ -162,7 +162,11 @@ function forBrain(f: Found): Record<string, unknown> {
   };
 }
 
-/** A url the brain asks to buy, matched to a search result: the same one, or the same path with its placeholders and parameters filled. */
+/**
+ * A url the brain asks to buy, matched to a search result: the same one, or the same path with its placeholders and
+ * parameters filled. A listing may spell a path parameter as {name} or already filled with its example, as Circle's
+ * catalogue does (…/usstock/price/AAPL for {symbol}): the segment holding the example is the brain's to fill too.
+ */
 export function allowedResult(url: string, found: readonly Found[]): Found | null {
   const exact = found.find((f) => f.url === url);
   if (exact) return exact;
@@ -177,8 +181,9 @@ export function allowedResult(url: string, found: readonly Found[]): Found | nul
       try {
         const listed = new URL(f.url.replace(/\{[^}]*\}/g, "_"));
         if (listed.origin !== asked.origin) return false;
+        const examples = new Set(f.params.filter((p) => p.in === "path" && (typeof p.example === "string" || typeof p.example === "number")).map((p) => encodeURIComponent(String(p.example))));
         const a = asked.pathname.split("/");
-        const l = listed.pathname.split("/");
+        const l = listed.pathname.split("/").map((seg) => (examples.has(seg) ? "_" : seg));
         return a.length === l.length && l.every((seg, i) => seg === "_" || seg === a[i]);
       } catch {
         return false;
