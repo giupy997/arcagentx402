@@ -73,6 +73,25 @@ systemctl enable --now cra-agent-think.timer
 A run costs two to three cents: about $1.15 a day on the timer, $35 a month. Check what is left with
 `cra-agent balance` under the same key; `systemctl disable --now cra-agent-think.timer` stops it.
 
+## Coinbase's facilitator and its Bazaar (CDP)
+
+With a Coinbase Developer Platform key in `.env`, payments on Base settle through Coinbase's facilitator,
+which lists what it settles in its x402 Bazaar. It supports Solana too, and comes first in the list of
+facilitators, so Solana payments go through it as well (its fee payer replaces PayAI's in the 402). Arc stays
+with Circle. The key takes precedence over `DISCOVERY_FACILITATOR_URL`.
+
+```bash
+# in /opt/cra-agent/.env: a secret API key (Ed25519) from portal.cdp.coinbase.com,
+# allowlisted to this server's IPv4 and IPv6 only
+CDP_API_KEY_ID=...
+CDP_API_KEY_SECRET=...
+```
+
+A route enters the Bazaar when Coinbase settles a payment for it. `scripts/pay-on-network.mts <url>` buys one
+on Base and prints Coinbase's answer about the catalogue (`EXTENSION-RESPONSES`). What is listed for our address:
+`https://api.cdp.coinbase.com/platform/v2/x402/discovery/merchant?payTo=<address>`, no key needed.
+The first 1,000 settlements a month are free, then $0.001 each.
+
 ## Lightning (x402 exact on lnbtc)
 
 Our routes are also sold under `/v1/lightning/…`, paid in bitcoin: the 402 carries a fresh invoice from our

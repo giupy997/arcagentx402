@@ -52,4 +52,15 @@ if (settle) {
     console.log("settlement header:", settle.slice(0, 200));
   }
 }
+// Whether the catalogue took the resource: CDP answers in this header (processing, rejected), or not at all.
+const ext = res.headers.get("extension-responses");
+if (ext) {
+  let shown = ext;
+  try {
+    shown = Buffer.from(ext, "base64").toString();
+  } catch { /* plain text */ }
+  console.log("extension responses:", shown.slice(0, 400));
+} else {
+  console.log("extension responses: none");
+}
 console.log("body:", (await res.text()).slice(0, 300));

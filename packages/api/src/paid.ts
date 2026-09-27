@@ -226,7 +226,7 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger,
     }),
   );
   app.get("/v1/paid", (c) => c.json({ seller: seller.sellerAddress, network: seller.network, facilitator: seller.facilitatorUrl, routes: Object.entries(seller.routes).map(([k, v]) => ({ route: k, price: String((Array.isArray(v.accepts) ? v.accepts[0] : v.accepts)?.price), description: v.description ?? null })) }));
-  log.info({ seller: sellerAddress, network: seller.network, routes: Object.keys(seller.routes).length, solana: solanaPayTo ?? "off", discovery: discovery ? `${basePayTo} via ${discoveryFacilitator ?? "coinbase"}` : "off" }, "paid endpoints mounted");
+  log.info({ seller: sellerAddress, network: seller.network, routes: Object.keys(seller.routes).length, solana: solanaPayTo ?? "off", discovery: discovery ? `${basePayTo} via ${cdpKeyId && cdpKeySecret ? "coinbase (CDP), which also takes Solana" : discoveryFacilitator}` : "off" }, "paid endpoints mounted");
   // On Arc a /v1/paid route is paid through Circle Gateway; on Base and Solana with a plain transfer.
   return { networks, plainNetworks: networks.filter((n) => n !== seller.network) };
 }
