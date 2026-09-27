@@ -126,9 +126,34 @@ LNBTC_FACILITATOR_DAILY_CAP=20000    # settlements for everyone per UTC day
 
 ## Backups
 
+Every night at 03:30 `cra-agent-backup.timer` runs `deploy/backup.sh`, which writes to `/var/backups/cra-agent`
+(root only) and keeps the newest seven of each:
+
+- `cra_mainnet-<time>.dump`: the whole database, in pg_dump's custom format. It holds what cannot be fetched
+  from a chain again: every payment on /status, the market, the thinking agent's runs, Lightning's replay store,
+  the registered sellers, and live observations such as finality latency.
+- `albyhub-<time>.tgz`: the Lightning node's data. The container is paused for the few seconds the copy takes,
+  so its files agree with each other; nothing restarts.
+
+Install once, then run it now to see it work:
+
 ```bash
-pg_dump -Fc arc_rail > arc_rail_$(date +%F).dump
+cp /opt/cra-agent/deploy/cra-agent-backup.service /opt/cra-agent/deploy/cra-agent-backup.timer /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now cra-agent-backup.timer
+systemctl start cra-agent-backup.service && journalctl -u cra-agent-backup -n 5 --no-pager
 ```
 
-Daily, copied off the server. Live observations (finality latency, per-provider RPC behaviour) cannot be
-re-fetched from the chain.
+Restoring the database, into a new one first:
+
+```bash
+sudo -u postgres createdb cra_restore
+sudo -u postgres pg_restore -d cra_restore /var/backups/cra-agent/cra_mainnet-<time>.dump
+```
+
+**The node's copy is for losing the server, not for going back in time.** A Lightning node brought back from an
+older copy while its channels have moved on can lose what is in them. Never run a copy while the original can
+still run. After losing the server: restore the newest copy once, on the new machine, and follow Alby's own
+recovery guide before anything else. The recovery phrase of the hub, kept off this server, is the fallback.
+
+These copies live on the same disk, so they protect against mistakes and a broken database, not against losing
+the server. Sending them elsewhere is the next step.

@@ -1,0 +1,10 @@
+[Unit]
+Description=cra-agent backup: the database and the Lightning node's data, the newest seven of each
+After=postgresql.service docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/cra-agent/deploy/backup.sh
+# In the background of whatever else the server is doing.
+Nice=10
+IOSchedulingClass=idle
