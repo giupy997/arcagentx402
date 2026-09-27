@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clean, NotListable, probe, readChallenge } from "../src/market.js";
+import { categoryOf, clean, cleanTags, NotListable, probe, readChallenge } from "../src/market.js";
 
 const ARC = "eip155:5042";
 const PAY_TO = "0x33b37c6d7a98b58da3Ccb3F36A4b578053d0Ea74";
@@ -35,5 +35,27 @@ describe("what a listing is allowed to say about itself", () => {
     await expect(probe("https://127.0.0.1/x", ARC)).rejects.toThrow(/public/);
     await expect(probe("https://localhost/x", ARC)).rejects.toThrow(/public/);
     await expect(probe(`https://example.com/${"a".repeat(400)}`, ARC)).rejects.toThrow(/too long/);
+  });
+});
+
+describe("what a seller says about itself for the bazaar", () => {
+  it("reads the tags in its 402's resource, as the x402 Bazaar has them", () => {
+    const header = b64({ x402Version: 2, resource: { url: "https://s.example/x", tags: ["blockchain", "Bridge", "cross chain", "<script>", 7] }, accepts: [{ scheme: "exact", network: ARC, amount: "5000", payTo: PAY_TO }] });
+    expect(readChallenge(header, "", ARC).tags).toEqual(["blockchain", "bridge", "cross-chain"]);
+  });
+
+  it("files it under the category it names when that is one of ours, else under what its tags say", () => {
+    // Argos Bot, as it answers today: a category in its /.well-known/x402 and tags in its 402.
+    const argos = cleanTags(["blockchain", "bridge", "cross-chain", "tokens", "arc", "base", "circle", "cts"]);
+    expect(categoryOf("Blockchain data", argos)).toBe("Blockchain data");
+    expect(categoryOf("blockchain DATA", [])).toBe("Blockchain data");
+    expect(categoryOf("Something new", ["fx", "prices"])).toBe("Financial data");
+    expect(categoryOf(undefined, ["weather"])).toBeNull();
+  });
+
+  it("keeps a dozen short tags at most, without repeats", () => {
+    const many = Array.from({ length: 30 }, (_, i) => `t${i}`);
+    expect(cleanTags(many, ["t1"])).toHaveLength(12);
+    expect(cleanTags(["a".repeat(40), "ok"])).toEqual(["ok"]);
   });
 });

@@ -31,6 +31,51 @@ export interface Probe {
   /** Every network the 402 offers, Arc first. */
   networks: string[];
   routes: Array<{ pattern: string; priceUsd: string; description: string | null }> | null;
+  /** One of the bazaar's categories: the one the seller names, or the one its tags point to. */
+  category: string | null;
+  /** The seller's own tags, from its 402's resource and its /.well-known/x402. */
+  tags: string[];
+}
+
+/** The bazaar's categories: a seller naming one of these, in any case, is filed under it. */
+export const CATEGORIES = ["Blockchain data", "Financial data", "Web search & research", "Developer tools", "Data enrichment", "Social data", "Infrastructure", "Prediction markets", "Creative AI"] as const;
+
+/** Tags that clearly belong to a category, for sellers who give tags and no category. */
+const TAG_CATEGORY: Record<string, (typeof CATEGORIES)[number]> = {
+  blockchain: "Blockchain data", onchain: "Blockchain data", "on-chain": "Blockchain data", "chain-data": "Blockchain data", tokens: "Blockchain data", token: "Blockchain data", bridge: "Blockchain data", "cross-chain": "Blockchain data", defi: "Blockchain data", nft: "Blockchain data", wallet: "Blockchain data",
+  finance: "Financial data", financial: "Financial data", fx: "Financial data", prices: "Financial data", price: "Financial data", "market-data": "Financial data", trading: "Financial data", stocks: "Financial data",
+  search: "Web search & research", web: "Web search & research", research: "Web search & research", news: "Web search & research",
+  developer: "Developer tools", dev: "Developer tools", packages: "Developer tools", code: "Developer tools",
+  enrichment: "Data enrichment", company: "Data enrichment", people: "Data enrichment",
+  social: "Social data", twitter: "Social data",
+  rpc: "Infrastructure", infrastructure: "Infrastructure", storage: "Infrastructure", compute: "Infrastructure",
+  "prediction-markets": "Prediction markets", polymarket: "Prediction markets",
+  ai: "Creative AI", image: "Creative AI", video: "Creative AI", audio: "Creative AI",
+};
+
+/** A seller's tags, as it gave them, made safe to show and search: short lowercase words, a dozen at most. */
+export function cleanTags(...lists: unknown[]): string[] {
+  const out: string[] = [];
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const t of list) {
+      if (typeof t !== "string") continue;
+      const tag = t.trim().toLowerCase().replace(/\s+/g, "-");
+      if (/^[a-z0-9][a-z0-9.&+-]{0,31}$/.test(tag) && !out.includes(tag)) out.push(tag);
+      if (out.length === 12) return out;
+    }
+  }
+  return out;
+}
+
+/** The category a seller names, when it is one of ours; otherwise the first its tags point to. */
+export function categoryOf(named: unknown, tags: readonly string[]): string | null {
+  if (typeof named === "string") {
+    const hit = CATEGORIES.find((c) => c.toLowerCase() === named.trim().toLowerCase());
+    if (hit) return hit;
+  }
+  for (const t of tags) if (TAG_CATEGORY[t]) return TAG_CATEGORY[t]!;
+  return null;
 }
 
 export class NotListable extends Error {}
@@ -45,8 +90,8 @@ interface Accept {
 }
 
 /** What a 402 asks for on the given network, from the v2 header or the v1 body. */
-export function readChallenge(header: string | undefined, body: string, network: string): { accept: Accept; description: string | null; networks: string[] } {
-  let doc: { accepts?: Accept[]; resource?: { description?: string }; description?: string } | null = null;
+export function readChallenge(header: string | undefined, body: string, network: string): { accept: Accept; description: string | null; networks: string[]; tags: string[] } {
+  let doc: { accepts?: Accept[]; resource?: { description?: string; tags?: unknown }; description?: string } | null = null;
   for (const source of [header ? Buffer.from(header, "base64").toString("utf8") : null, body]) {
     if (doc || !source) continue;
     try {
@@ -61,7 +106,7 @@ export function readChallenge(header: string | undefined, body: string, network:
   const amount = accept.amount ?? accept.maxAmountRequired;
   if (!accept.payTo || !/^0x[0-9a-fA-F]{40}$/.test(accept.payTo) || !amount || !/^\d{1,12}$/.test(amount)) throw new NotListable("its payment requirements are malformed");
   const networks = [network, ...[...new Set(doc.accepts.map((a) => a.network).filter((n): n is string => typeof n === "string" && n !== network))].slice(0, 8)];
-  return { accept: { ...accept, amount }, description: clean(doc.resource?.description ?? doc.description, 240), networks };
+  return { accept: { ...accept, amount }, description: clean(doc.resource?.description ?? doc.description, 240), networks, tags: cleanTags(doc.resource?.tags) };
 }
 
 export async function probe(rawUrl: string, network: string): Promise<Probe> {
@@ -73,19 +118,23 @@ export async function probe(rawUrl: string, network: string): Promise<Probe> {
     throw err instanceof UnsafeUrl ? err : new NotListable(`could not reach it: ${err.message}`);
   });
   if (res.status !== 402) throw new NotListable(`it answered ${res.status}, not 402 Payment Required. List the address of a paid route, called without paying`);
-  const { accept, description, networks } = readChallenge(res.headers["payment-required"], res.body.toString("utf8"), network);
+  const { accept, description, networks, tags: challengeTags } = readChallenge(res.headers["payment-required"], res.body.toString("utf8"), network);
 
   // A seller running our proxy, or anyone who cares to, names itself here. Optional: a miss changes nothing.
   // What this one route says about itself in its 402 comes first; the site-wide blurb is the fallback.
   let name: string | null = null;
   let about: string | null = null;
   let routes: Probe["routes"] = null;
+  let named: unknown = null;
+  let siteTags: unknown = null;
   try {
     const wk = await safeFetch(`${url.origin}/.well-known/x402`, { maxBytes: 64_000, timeoutMs: 6000 });
     if (wk.status === 200) {
-      const doc = JSON.parse(wk.body.toString("utf8")) as { name?: unknown; description?: unknown; routes?: Array<{ pattern?: unknown; priceUsd?: unknown; description?: unknown }> };
+      const doc = JSON.parse(wk.body.toString("utf8")) as { name?: unknown; description?: unknown; category?: unknown; tags?: unknown; routes?: Array<{ pattern?: unknown; priceUsd?: unknown; description?: unknown }> };
       name = clean(doc.name, 80);
       about = clean(doc.description, 240);
+      named = doc.category;
+      siteTags = doc.tags;
       if (Array.isArray(doc.routes)) {
         routes = doc.routes.slice(0, 40).flatMap((r) => {
           const pattern = clean(r.pattern, 120);
@@ -97,7 +146,8 @@ export async function probe(rawUrl: string, network: string): Promise<Probe> {
   } catch {
     /* no self-description: the 402 is enough */
   }
-  return { url: url.toString(), host: url.host, name, description: description ?? about, payTo: accept.payTo!.toLowerCase(), network, amountUsdc6: accept.amount!, rail: accept.extra?.name === "GatewayWalletBatched" ? "gateway" : "direct", networks, routes };
+  const tags = cleanTags(challengeTags, siteTags);
+  return { url: url.toString(), host: url.host, name, description: description ?? about, payTo: accept.payTo!.toLowerCase(), network, amountUsdc6: accept.amount!, rail: accept.extra?.name === "GatewayWalletBatched" ? "gateway" : "direct", networks, routes, category: categoryOf(named, tags), tags };
 }
 
 interface Row {
@@ -111,6 +161,8 @@ interface Row {
   rail: string;
   routes: Probe["routes"];
   networks: string[] | null;
+  category: string | null;
+  tags: string[] | null;
   added_at: string;
   checked_at: string;
   ok: boolean;
@@ -146,10 +198,10 @@ export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opt
   const circle = opts.circle === undefined ? defaultCircle(network, caip2, log) : opts.circle;
   const upsert = (p: Probe): Promise<unknown> =>
     db.query(
-      `INSERT INTO market_listings (url, host, name, description, pay_to, network, amount_usdc6, rail, routes, networks)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       ON CONFLICT (url) DO UPDATE SET name = $3, description = $4, pay_to = $5, amount_usdc6 = $7, rail = $8, routes = $9, networks = $10, checked_at = now(), ok = true, fails = 0`,
-      [p.url, p.host, p.name, p.description, p.payTo, p.network, p.amountUsdc6, p.rail, p.routes ? JSON.stringify(p.routes) : null, p.networks],
+      `INSERT INTO market_listings (url, host, name, description, pay_to, network, amount_usdc6, rail, routes, networks, category, tags)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       ON CONFLICT (url) DO UPDATE SET name = $3, description = $4, pay_to = $5, amount_usdc6 = $7, rail = $8, routes = $9, networks = $10, category = $11, tags = $12, checked_at = now(), ok = true, fails = 0`,
+      [p.url, p.host, p.name, p.description, p.payTo, p.network, p.amountUsdc6, p.rail, p.routes ? JSON.stringify(p.routes) : null, p.networks, p.category, p.tags],
     );
 
   /** One submitter cannot flood the page: a handful of tries an hour per address. */
@@ -207,13 +259,13 @@ export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opt
     void refresh();
     // A listing that has failed two days of checks is gone, not offline.
     const rows = await db.query<Row>(
-      `SELECT url, host, name, description, pay_to, amount_usdc6, rail, routes, networks, extract(epoch FROM added_at)::bigint AS added_at, extract(epoch FROM checked_at)::bigint AS checked_at, ok
+      `SELECT url, host, name, description, pay_to, amount_usdc6, rail, routes, networks, category, tags, extract(epoch FROM added_at)::bigint AS added_at, extract(epoch FROM checked_at)::bigint AS checked_at, ok
        FROM market_listings WHERE NOT hidden AND fails < 48 ORDER BY ok DESC, added_at DESC LIMIT 500`,
     );
     return c.json({
       network: caip2,
       note: "Everything shown about a listing was read from the endpoint itself, called without paying. We do not vouch for what it sells: check the price your wallet or your agent shows before paying.",
-      listings: rows.rows.map((r) => ({ url: r.url, host: r.host, name: r.name, description: r.description, priceUsd: usd(r.amount_usdc6), payTo: r.pay_to, rail: r.rail, networks: r.networks ?? [r.network ?? caip2], routes: r.routes, online: r.ok, addedAt: Number(r.added_at), checkedAt: Number(r.checked_at) })),
+      listings: rows.rows.map((r) => ({ url: r.url, host: r.host, name: r.name, description: r.description, priceUsd: usd(r.amount_usdc6), payTo: r.pay_to, rail: r.rail, networks: r.networks ?? [r.network ?? caip2], routes: r.routes, category: r.category ?? null, tags: r.tags ?? [], online: r.ok, addedAt: Number(r.added_at), checkedAt: Number(r.checked_at) })),
     });
   });
 
@@ -223,7 +275,7 @@ export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opt
     if (Date.now() - listed.at < 30_000) return listed.items;
     const exists = await db.query<{ t: string | null }>("SELECT to_regclass('public.market_listings')::text AS t");
     if (!exists.rows[0]?.t) return [];
-    const rows = await db.query<Row>(`SELECT url, host, name, description, pay_to, amount_usdc6, rail, routes, networks, ok FROM market_listings WHERE NOT hidden AND fails < 48 LIMIT 2000`);
+    const rows = await db.query<Row>(`SELECT url, host, name, description, pay_to, amount_usdc6, rail, routes, networks, category, tags, ok FROM market_listings WHERE NOT hidden AND fails < 48 LIMIT 2000`);
     const items: SearchItem[] = rows.rows.map((r) => ({
       url: r.url,
       method: "GET",
@@ -239,13 +291,13 @@ export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opt
       direct: null,
       body: null,
       source: "market",
-      category: null,
+      category: r.category ?? null,
       site: new URL(r.url).origin,
       networks: r.networks?.length ? r.networks : [caip2],
       // The probe knows how a listing takes payment on Arc; on its other networks it is not asked.
       plainNetworks: r.rail === "direct" ? [caip2] : [],
       online: r.ok,
-      keywords: `${new URL(r.url).pathname.replace(/[/_-]+/g, " ")} ${(r.routes ?? []).map((x) => `${x.pattern} ${x.description ?? ""}`).join(" ")}`,
+      keywords: `${new URL(r.url).pathname.replace(/[/_-]+/g, " ")} ${(r.routes ?? []).map((x) => `${x.pattern} ${x.description ?? ""}`).join(" ")} ${(r.tags ?? []).join(" ").replace(/-/g, " ")}`,
     }));
     listed = { at: Date.now(), items };
     return items;
