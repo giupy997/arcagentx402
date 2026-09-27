@@ -45,7 +45,7 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger,
   // An open facilitator needs no credentials, so either of the two switches the rail on.
   const discoveryFacilitator = process.env.DISCOVERY_FACILITATOR_URL;
   const basePayTo = process.env.BASE_SELLER_ADDRESS ?? sellerAddress;
-  const shared = { payTo: basePayTo, iconUrl: "https://cra-agent.tech/brand/favicon-32.png", tags: ["arc", "chain-data", "fx", "gas"] };
+  const shared = { payTo: basePayTo, iconUrl: "https://cra-agent.tech/brand/icon-512.png", tags: ["arc", "chain-data", "fx", "gas"] };
   // Coinbase's facilitator refuses a payment under $0.001 (it answers amount_too_low), and it takes Solana too.
   const cdp = Boolean(cdpKeyId && cdpKeySecret);
   const cdpMin = cdp ? { minPrice: "$0.001" } : {};
