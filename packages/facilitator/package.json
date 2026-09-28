@@ -1,8 +1,8 @@
 {
   "name": "@cra-agent/facilitator",
   "version": "0.0.16",
-  "description": "A private x402 facilitator for Arc: verifies EIP-3009 USDC authorizations and settles them on chain, only for the payout addresses you list.",
-  "keywords": ["x402", "arc", "usdc", "facilitator", "eip-3009", "agent-payments", "micropayments"],
+  "description": "A private x402 facilitator for Arc: settles exact (EIP-3009) and upto (Permit2, gasless with an EIP-2612 permit) USDC payments on chain, only for the payout addresses you list.",
+  "keywords": ["x402", "arc", "usdc", "facilitator", "eip-3009", "upto", "permit2", "agent-payments", "micropayments"],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

@@ -10,6 +10,7 @@ import type { UsycReader } from "./usyc.js";
 import { mountToolHandlers } from "./tools.js";
 import { btcUsdRate, LNBTC_MAINNET, LNBTC_TESTNET, msatToUsd6, nwcReceiver, PgReplayStore, readConnection, type ReceiverAdapter } from "@cra-agent/lightning";
 import { lightningMiddleware } from "./lightning.js";
+import { mountUptoRoutes } from "./upto.js";
 
 /** What a route costs on the direct rail: its own price, but never below the floor that covers our gas. */
 export function directPriceOf(price: string): string {
@@ -106,7 +107,12 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger,
     app.use("/v1/direct/*", direct.middleware());
     handlersUnder("/v1/direct");
     log.info({ facilitator: directFacilitator, routes: PAID_ROUTES.length }, "direct settlement routes mounted");
+    // Billed by use, settled by the same facilitator: on when the think worker runs on this host (upto.ts).
+    const thinkWorker = process.env.THINK_WORKER_URL?.replace(/\/+$/, "");
+    if (thinkWorker) mountUptoRoutes(app, { sellerAddress, network: network === "mainnet" ? "arc" : "arcTestnet", facilitatorUrl: directFacilitator, workerUrl: thinkWorker, onSettlement: record("direct"), log });
   }
+  // Listed in the catalogue whether or not it is on here, so it answers either way.
+  if (!directFacilitator || !process.env.THINK_WORKER_URL) app.get("/v1/upto", (c) => c.json({ upto: "off" }));
 
   // The same routes paid in bitcoin over Lightning, when our node's receive-only connection is on this host.
   // The route that fails on purpose is left out: a Lightning payment cannot be handed back.

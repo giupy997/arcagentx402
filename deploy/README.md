@@ -73,6 +73,24 @@ systemctl enable --now cra-agent-think.timer
 A run costs two to three cents: about $1.15 a day on the timer, $35 a month. Check what is left with
 `cra-agent balance` under the same key; `systemctl disable --now cra-agent-think.timer` stops it.
 
+### Hired, and billed by use (x402 upto)
+
+`GET /v1/upto/think?task=…` sells the same agent to anyone. The buyer signs once, for up to $0.10: a Permit2
+authorization bound to our facilitator, with an EIP-2612 permit for Arc's USDC, so no approval transaction
+and no gas on their side. The API hands the task to `cra-agent-think-worker.service`, which runs it on
+127.0.0.1:8793 with the think wallet under a policy of its own (agent id `ask`, three dollars a day), one task
+at a time and at most 150 seconds. The buyer is charged what the run spent plus $0.005 for the gas of settling,
+never more than the ceiling, and nothing when the run could not start; the facilitator settles it through the
+Upto proxy x402 deployed on Arc (`0x4020A4f3b7b90ccA423B9fabCc0CE57C6C240002`). Paid runs are not kept in
+`think_runs`: the question is the buyer's. The route is on only when `THINK_WORKER_URL` is in `.env`.
+
+```bash
+cp deploy/cra-agent-think-worker.service /etc/systemd/system/ && systemctl daemon-reload
+systemctl enable --now cra-agent-think-worker && journalctl -u cra-agent-think-worker -n 5 --no-pager
+grep -q '^THINK_WORKER_URL=' /opt/cra-agent/.env || echo 'THINK_WORKER_URL=http://127.0.0.1:8793' >> /opt/cra-agent/.env
+systemctl restart cra-agent-facilitator cra-agent-api
+```
+
 ## Coinbase's facilitator and its Bazaar (CDP)
 
 With a Coinbase Developer Platform key in `.env`, payments on Base settle through Coinbase's facilitator,

@@ -167,6 +167,18 @@ describe("an agent that pays for its own thinking", () => {
     expect(r).toMatchObject({ answer: "ok", stoppedBecause: "answered" });
   });
 
+  it("keeps to a deadline when someone is waiting: warns the brain near the end, stops at it without paying", async () => {
+    const w = world([{ thought: "Search.", action: "search", query: "web search" }, { thought: "Answering.", action: "answer", text: "ok" }]);
+    const near = await think(opts({ deadline: Date.now() + 20_000 }), w.deps);
+    expect(JSON.parse(w.paid[0]!.body!).messages.at(-1).content).toMatch(/Time is almost up: answer now/);
+    expect(near).toMatchObject({ answer: "ok", stoppedBecause: "answered" });
+
+    const late = world([{ thought: "Answering.", action: "answer", text: "ok" }]);
+    const r = await think(opts({ deadline: Date.now() - 1 }), late.deps);
+    expect(r).toMatchObject({ answer: null, stoppedBecause: "time", spent: { totalUsdc: "0" } });
+    expect(late.paid).toHaveLength(0);
+  });
+
   it("shows the brain what a call needs and what each parameter accepts, and leaves the optional ones out", async () => {
     const w = world([{ thought: "Search.", action: "search", query: "web search" }, { thought: "Done.", action: "answer", text: "ok" }]);
     const exa = found({

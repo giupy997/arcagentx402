@@ -1,0 +1,25 @@
+[Unit]
+Description=cra-agent think worker: the thinking agent, hired through /v1/upto/think, one task at a time (127.0.0.1:8793)
+After=network-online.target
+Before=cra-agent-api.service
+
+[Service]
+User=craagent
+WorkingDirectory=/opt/cra-agent
+# DATABASE_URL comes from here: every payment the agent makes is kept in rail_payments, under the agent id below.
+EnvironmentFile=/opt/cra-agent/.env
+Environment=CRA_NETWORK=arc
+Environment=CRA_AGENT_ID=ask
+Environment=CRA_IDENTITY=off
+# The same wallet as the timer's runs, with limits of its own: a cent a payment, three dollars a day, only these
+# sellers, and within them only the tools in think-tools.txt. Buyers pay for what a run spends, but a buyer whose
+# settlement fails after the run has still made it spend: the daily limit is what bounds that.
+Environment=CRA_KEY_FILE=/opt/cra-agent/.secrets/think.key
+Environment=CRA_POLICY=daily=3,per_seller=2.5,per_payment=0.01,allow=nano.blockrun.ai|api.exa.ai
+# --max-budget is the API's ceiling less its fee ($0.10 - $0.005). The API waits 180 s for a run of at most 150.
+ExecStart=/usr/bin/node packages/mcp/dist/cli/rail.js serve-think --port 8793 --tools deploy/think-tools.txt --max-budget 0.095 --max-seconds 150
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -17,6 +17,7 @@ import { GatewayClient, registerBatchScheme } from "@circle-fin/x402-batching/cl
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import type { PaymentPayload, PaymentRequired, PaymentRequirements } from "@x402/core/types";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { UptoEvmScheme } from "@x402/evm/upto/client";
 import { wrapFetchWithPayment } from "@x402/fetch";
 import { checkLnbtcChallenge, msatToUsd6, payLnbtcChallenge, type PayerAdapter } from "@cra-agent/lightning";
 import { createPublicClient, http, type Address, type Hex } from "viem";
@@ -198,6 +199,12 @@ export function createRail(cfg: RailConfig): Rail {
   // One x402 client; policy enforcement is a hook that runs BEFORE any signature exists.
   const client = new x402Client();
   registerBatchScheme(client, { signer, fallbackScheme: new ExactEvmScheme(signer) });
+  // Billed by use (upto): a Permit2 authorization for the seller's ceiling. The RPC reads whether Permit2 may
+  // already move this wallet's USDC; when it may not, an EIP-2612 permit goes with the payment, never a transaction.
+  // Registered under the same wildcard as exact: the SDK looks a network up by one key, so an entry for Arc alone
+  // would hide exact there. The RPC is given for our chain only, so no other chain's permit is read from it.
+  const chain = CHAINS[cfg.network];
+  client.register("eip155:*", new UptoEvmScheme(signer, { [chain.id]: { rpcUrl: cfg.rpcUrl ?? chain.rpcUrls.default.http[0]! } }));
   // The core SDK only knows USDC on the chains it ships with; declare Arc's USDC explicitly so its own
   // spend control does not reject it. Our policy layer is the real limit; this is a second belt.
   // Uncapped here on purpose: the cap must come from OUR policy hook so the rejection is recorded in the ledger.
@@ -311,7 +318,9 @@ export function createRail(cfg: RailConfig): Rail {
     const req = ctx.selectedRequirements;
     const inflight = current;
     const url = inflight?.url ?? ctx.paymentRequired.resource.url;
-    const rec = await cfg.ledger.record({ agentId: cfg.agentId, rail: "nanopayment", url, host: hostOf(url), method: inflight?.method ?? "GET", network: req.network, scheme: req.scheme, asset: req.asset, payTo: req.payTo, amount: usdc6(BigInt(req.amount)), status: "signed", meta: { batching: supportsBatching(req) } });
+    // An upto payment is written down at its ceiling, which it may all take, until the settlement says what it took.
+    const upto = req.scheme === "upto" ? { upto: { ceilingUsdc: formatUsdc6(usdc6(BigInt(req.amount))) } } : {};
+    const rec = await cfg.ledger.record({ agentId: cfg.agentId, rail: "nanopayment", url, host: hostOf(url), method: inflight?.method ?? "GET", network: req.network, scheme: req.scheme, asset: req.asset, payTo: req.payTo, amount: usdc6(BigInt(req.amount)), status: "signed", meta: { batching: supportsBatching(req), ...upto } });
     if (inflight) inflight.record = rec;
     log("payment.signed", { url, amount: req.amount, payTo: req.payTo, ledgerId: rec.id });
   });
@@ -330,7 +339,11 @@ export function createRail(cfg: RailConfig): Rail {
       log("payment.not_charged", { ledgerId: rec.id, url: inflight?.url });
       return;
     }
+    // upto: only what was taken counts as spent. A settlement that does not say keeps the ceiling, the most it could be.
+    const said = ctx.settleResponse?.amount;
+    const taken = settled && rec.scheme === "upto" && typeof said === "string" && /^\d{1,30}$/.test(said) ? usdc6(BigInt(said)) : null;
     await cfg.ledger.update(rec.id, {
+      ...(taken === null ? {} : { amount: taken }),
       status: settled ? "settled" : "failed",
       reason: settled ? null : ctx.settleResponse?.errorReason ?? ctx.error?.message ?? "settlement not confirmed",
       txHash: ctx.settleResponse?.transaction || null,
@@ -338,6 +351,7 @@ export function createRail(cfg: RailConfig): Rail {
       settledAt: settled ? new Date() : null,
       latencyMs: inflight ? Date.now() - inflight.startedAt : null,
     });
+    if (taken !== null) rec.amount = taken;
     rec.status = settled ? "settled" : "failed";
     rec.txHash = ctx.settleResponse?.transaction || null;
     rec.reason = settled ? null : ctx.settleResponse?.errorReason ?? null;

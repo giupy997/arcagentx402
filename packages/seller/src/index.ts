@@ -10,17 +10,21 @@
  *
  * Payments are verified and settled by Circle Gateway (batched, gas-free for the buyer); the
  * x402 "exact" scheme is what gets registered, so any x402 buyer can pay, not only CRA AGENT agents.
+ *
+ * A route can also bill by use, on a seller that settles directly: the buyer authorizes a ceiling,
+ * the handler says what the call cost with charge(c, "$0.012"), and only that is taken (x402 `upto`).
  */
 import { parseUsdc6 } from "@cra-agent/accounting";
 import { createFacilitatorConfig } from "@coinbase/x402";
 import { BatchFacilitatorClient, GatewayEvmScheme } from "@circle-fin/x402-batching/server";
-import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
+import { paymentMiddleware, setSettlementOverrides, x402ResourceServer } from "@x402/hono";
 import { HTTPFacilitatorClient, type FacilitatorClient, type RouteConfig } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
-import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions";
+import { bazaarResourceServerExtension, declareDiscoveryExtension, declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import type { Network } from "@x402/core/types";
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 
 export type SellerNetwork = "arc" | "arcTestnet";
 const CAIP2: Record<SellerNetwork, Network> = { arc: "eip155:5042", arcTestnet: "eip155:5042002" };
@@ -104,7 +108,7 @@ export interface SettlementEvent {
   readonly network: string;
   readonly payer: string | null;
   readonly payTo: string;
-  /** In the asset's base units, as the requirements spelled it. */
+  /** In the asset's base units: the price, or on an upto route what was taken (the ceiling, when nothing was). */
   readonly amount: string;
   /** A transaction hash on a direct rail, the facilitator's transfer id on a batched one. */
   readonly transaction: string | null;
@@ -126,6 +130,23 @@ export interface RouteOptions {
   readonly inputSchema?: Record<string, unknown>;
   /** An example of what the route answers, published to the discovery catalogue. */
   readonly outputExample?: unknown;
+  /**
+   * Bill by use: the price becomes the most a call can cost, which the buyer authorizes, and the
+   * handler says what this call did cost with charge(). Only that is taken; a handler that says
+   * nothing takes the whole ceiling, and one that fails takes nothing. Settled by x402's `upto`
+   * scheme, on Arc only and on a seller that settles directly: Circle Gateway settles set prices.
+   */
+  readonly upto?: boolean;
+}
+
+/**
+ * What a call to an `upto` route cost: "$0.012", "0.012", or USDC's base units as a bigint. Called in the
+ * handler, before it answers. Anything above the ceiling the buyer signed fails to settle, so cap it there.
+ */
+export function charge(c: Context, amount: string | bigint): void {
+  const units = typeof amount === "bigint" ? amount : parseUsdc6(amount.replace("$", ""));
+  if (units < 0n) throw new Error("a charge cannot be negative");
+  setSettlementOverrides(c, { amount: units.toString() });
 }
 
 export interface Seller {
@@ -149,6 +170,7 @@ export const BASE_MAINNET: Network = "eip155:8453";
 
 export function buildRoutes(cfg: SellerConfig, network: Network, pattern: string, price: string, opts: RouteOptions): RouteConfig {
   const timeout = opts.maxTimeoutSeconds ? { maxTimeoutSeconds: opts.maxTimeoutSeconds } : {};
+  if (opts.upto) return uptoRoute(cfg, network, price, opts);
   // Settled directly, the amount has to be spelled out in base units with the token's signing domain.
   const arcPrice = cfg.settlement === "direct" ? { ...ARC_USDC_ASSET, amount: parseUsdc6(price.replace("$", "")).toString() } : price;
   const arc = { scheme: "exact", network, payTo: cfg.sellerAddress, price: arcPrice, ...timeout };
@@ -182,6 +204,24 @@ export function buildRoutes(cfg: SellerConfig, network: Network, pattern: string
 }
 
 /**
+ * A route billed by use. The buyer signs a Permit2 authorization for the ceiling, which only our
+ * facilitator can settle, and with it an EIP-2612 permit that lets Permit2 move Arc's USDC: no
+ * approval transaction first, no gas on the buyer's side. Arc only: the other rails sell set prices.
+ */
+function uptoRoute(cfg: SellerConfig, network: Network, ceiling: string, opts: RouteOptions): RouteConfig {
+  if (cfg.settlement !== "direct") throw new Error('an upto route needs settlement: "direct", a facilitator that settles upto on Arc');
+  const amount = parseUsdc6(ceiling.replace("$", "")).toString();
+  return {
+    accepts: { scheme: "upto", network, payTo: cfg.sellerAddress, price: { ...ARC_USDC_ASSET, amount }, ...(opts.maxTimeoutSeconds ? { maxTimeoutSeconds: opts.maxTimeoutSeconds } : {}) },
+    extensions: declareEip2612GasSponsoringExtension(),
+    ...(opts.description ? { description: opts.description } : {}),
+    mimeType: opts.mimeType ?? "application/json",
+    ...(cfg.serviceName ? { serviceName: cfg.serviceName } : {}),
+    ...(opts.preview !== undefined ? { unpaidResponseBody: async () => ({ contentType: "application/json", body: opts.preview }) } : {}),
+  };
+}
+
+/**
  * The resource server: Circle's batching facilitator for Arc, and when a discovery rail is
  * configured, the CDP facilitator for that network plus the extension that catalogues what it
  * settles.
@@ -196,7 +236,9 @@ export function observed(cfg: Pick<SellerConfig, "onSettlement">, server: x402Re
   if (!sink) return server;
   type Ctx = { paymentPayload: { resource?: { url?: string }; payload: Record<string, unknown> }; requirements: { network: string; payTo: string; amount: string } };
   const tell = (ctx: Ctx, rest: Pick<SettlementEvent, "outcome" | "transaction" | "reason"> & { payer?: string | undefined }): void => {
-    const signedBy = (ctx.paymentPayload.payload.authorization as { from?: unknown } | undefined)?.from;
+    // exact signs an EIP-3009 authorization, upto a Permit2 one: either names the payer.
+    const p = ctx.paymentPayload.payload as { authorization?: { from?: unknown }; permit2Authorization?: { from?: unknown } };
+    const signedBy = p.authorization?.from ?? p.permit2Authorization?.from;
     const event: SettlementEvent = {
       outcome: rest.outcome,
       network: ctx.requirements.network,
@@ -221,7 +263,7 @@ function assembleServer(cfg: SellerConfig, network: Network, facilitatorUrl: str
   // The SDK declares its own structural PaymentPayload/Requirements; identical at runtime, stricter under exactOptionalPropertyTypes.
   if (cfg.settlement === "direct") {
     if (!cfg.facilitatorUrl) throw new Error('settlement: "direct" needs facilitatorUrl, the facilitator that settles the authorizations');
-    return new x402ResourceServer(new HTTPFacilitatorClient({ url: cfg.facilitatorUrl })).register(network, new ExactEvmScheme());
+    return new x402ResourceServer(new HTTPFacilitatorClient({ url: cfg.facilitatorUrl })).register(network, new ExactEvmScheme()).register(network, new UptoEvmScheme());
   }
   const circle = new BatchFacilitatorClient({ url: facilitatorUrl }) as unknown as FacilitatorClient;
   const rail = cfg.discovery;

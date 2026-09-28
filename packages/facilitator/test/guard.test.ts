@@ -19,7 +19,14 @@ describe("what a private facilitator agrees to settle", () => {
   it("refuses another network, another asset and another scheme", () => {
     expect(refuse({ ...ok, network: "eip155:8453" }, rules)).toMatch(/network/);
     expect(refuse({ ...ok, asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" }, rules)).toMatch(/asset/);
-    expect(refuse({ ...ok, scheme: "upto" }, rules)).toMatch(/scheme/);
+    expect(refuse({ ...ok, scheme: "batch-settlement" }, rules)).toMatch(/scheme/);
+  });
+
+  it("settles upto under the same rules, and lets it take nothing when the call cost nothing", () => {
+    expect(refuse({ ...ok, scheme: "upto" }, rules)).toBeNull();
+    expect(refuse({ ...ok, scheme: "upto", amount: "0" }, rules)).toBeNull();
+    expect(refuse({ ...ok, scheme: "upto", amount: "1000001" }, rules)).toMatch(/above/);
+    expect(refuse({ ...ok, scheme: "upto", payTo: "0x000000000000000000000000000000000000dEaD" }, rules)).toMatch(/does not settle for/);
   });
 
   it("keeps the amount inside the range, and rejects anything that is not a plain integer", () => {

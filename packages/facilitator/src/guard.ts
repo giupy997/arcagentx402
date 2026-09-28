@@ -6,6 +6,10 @@
  * one is private: it settles payments to the payout addresses it was told about, in the asset and
  * on the networks it was told about, inside an amount range, and refuses everything else before a
  * single RPC call is made.
+ *
+ * Two schemes: `exact`, an authorization for the price, and `upto`, an authorization for a ceiling
+ * of which the seller settles what the call actually cost. For `upto` the amount checked at verify
+ * is the ceiling, and at settle the part taken, which can be nothing.
  */
 import { compareUsdc6, usdc6, type Usdc6 } from "@cra-agent/accounting";
 
@@ -29,14 +33,18 @@ export interface GuardedRequirements {
 }
 
 /** null when the payment may go ahead, otherwise the reason it may not. */
+const SCHEMES = new Set(["exact", "upto"]);
+
 export function refuse(req: GuardedRequirements, rules: GuardRules): string | null {
-  if (req.scheme !== "exact") return `scheme ${req.scheme} is not settled here`;
+  if (!SCHEMES.has(req.scheme)) return `scheme ${req.scheme} is not settled here`;
   const asset = rules.assets.get(req.network);
   if (!asset) return `network ${req.network} is not settled here`;
   if (req.asset.toLowerCase() !== asset) return `asset ${req.asset} is not settled on ${req.network}`;
   if (!rules.payTo.has(req.payTo.toLowerCase()) && !rules.registered?.has(req.payTo)) return `this facilitator does not settle for ${req.payTo}: register the wallet first`;
   if (!/^\d{1,30}$/.test(req.amount)) return "amount is not a whole number of base units";
   const amount = usdc6(BigInt(req.amount));
+  // A call that cost nothing takes nothing: no transfer is sent, so there is no gas to pay.
+  if (req.scheme === "upto" && amount === 0n) return null;
   if (compareUsdc6(amount, rules.minAmount) < 0) return `amount ${req.amount} is below the minimum ${rules.minAmount}`;
   if (compareUsdc6(amount, rules.maxAmount) > 0) return `amount ${req.amount} is above the maximum ${rules.maxAmount}`;
   return null;

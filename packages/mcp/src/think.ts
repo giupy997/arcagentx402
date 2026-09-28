@@ -65,6 +65,8 @@ export interface ThinkOptions {
   thoughtCeilingUsdc: string;
   maxTokens: number;
   maxSteps: number;
+  /** When the run must end, in epoch milliseconds: for someone waiting on the answer, not for a timer. */
+  deadline?: number;
 }
 
 export interface Step {
@@ -91,10 +93,19 @@ export interface Step {
 
 export interface ThinkResult {
   answer: string | null;
-  stoppedBecause: "answered" | "budget" | "steps" | "brain";
+  stoppedBecause: "answered" | "budget" | "steps" | "brain" | "time";
   steps: Step[];
   spent: { thinkingUsdc: string; toolsUsdc: string; totalUsdc: string; thoughts: number; purchases: number };
 }
+
+/** Why a run ended without an answer, in words. */
+export const STOPPED: Record<ThinkResult["stoppedBecause"], (maxSteps: number) => string> = {
+  answered: () => "it answered",
+  budget: () => "the budget ran out",
+  steps: (n) => `no answer within ${n} steps`,
+  brain: () => "the brain stopped making sense",
+  time: () => "the time for the run ran out",
+};
 
 interface Action {
   thought?: string;
@@ -235,11 +246,15 @@ export async function think(opts: ThinkOptions, deps: ThinkDeps): Promise<ThinkR
   let lastThought: Usdc6 = usdc6(0n);
   for (let step = 1; step <= opts.maxSteps; step++) {
     if (left() === 0n) return result(null, "budget");
+    if (opts.deadline !== undefined && Date.now() >= opts.deadline) return result(null, "time");
     // A thought may cost up to the ceiling, or whatever is left when that is less: the rail refuses before
     // signing if the brain asks more, so the last cents can still pay for an answer.
     const cap = compareUsdc6(left(), ceiling) < 0 ? left() : ceiling;
     const lastCall = lastThought > 0n && compareUsdc6(left(), usdc6((lastThought * 5n) / 2n)) < 0;
-    messages.push({ role: "user", content: `Budget left: $${formatUsdc6(left())}.${lastCall ? " That pays for about one more reply: answer now with what you have." : ""} Reply with one JSON object.` });
+    // Someone is waiting: with under half a minute left there is time for one more reply, not for another purchase.
+    const late = opts.deadline !== undefined && opts.deadline - Date.now() < 30_000;
+    const hurry = lastCall ? " That pays for about one more reply: answer now with what you have." : late ? " Time is almost up: answer now with what you have." : "";
+    messages.push({ role: "user", content: `Budget left: $${formatUsdc6(left())}.${hurry} Reply with one JSON object.` });
     const asked = await phase({ kind: "think", n: thoughts + 1 });
     const paid = await deps.pay(opts.brainUrl, { method: "POST", body: JSON.stringify({ model: opts.model, messages: toSend(), max_tokens: opts.maxTokens }) }, formatUsdc6(cap));
     messages.pop();

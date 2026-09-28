@@ -20,7 +20,8 @@ export interface PaymentRecord {
   readonly scheme: string;
   readonly asset: string;
   readonly payTo: string;
-  readonly amount: Usdc6;
+  /** What was signed for, until a settlement says less was taken: an `upto` payment signs a ceiling. */
+  amount: Usdc6;
   status: PaymentStatus;
   reason: string | null;
   httpStatus: number | null;
@@ -36,7 +37,7 @@ export interface PaymentRecord {
 
 export type NewPayment = Omit<PaymentRecord, "id" | "at" | "reason" | "httpStatus" | "latencyMs" | "txHash" | "payer" | "settledAt" | "meta" | "settlementTx" | "settledOnchainAt"> &
   Partial<Pick<PaymentRecord, "reason" | "httpStatus" | "latencyMs" | "txHash" | "payer" | "meta">>;
-export type PaymentPatch = Partial<Pick<PaymentRecord, "status" | "reason" | "httpStatus" | "latencyMs" | "txHash" | "payer" | "settledAt" | "meta" | "settlementTx" | "settledOnchainAt">>;
+export type PaymentPatch = Partial<Pick<PaymentRecord, "amount" | "status" | "reason" | "httpStatus" | "latencyMs" | "txHash" | "payer" | "settledAt" | "meta" | "settlementTx" | "settledOnchainAt">>;
 
 export interface Exposure {
   readonly payTo: string;
@@ -139,6 +140,7 @@ export class PgLedger implements Ledger {
     const sets: string[] = [];
     const vals: unknown[] = [];
     const add = (col: string, v: unknown) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
+    if (patch.amount !== undefined) add("amount_usdc6", toSqlNumeric(patch.amount));
     if (patch.status !== undefined) add("status", patch.status);
     if (patch.reason !== undefined) add("reason", patch.reason);
     if (patch.httpStatus !== undefined) add("http_status", patch.httpStatus);

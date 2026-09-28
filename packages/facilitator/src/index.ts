@@ -1,14 +1,20 @@
 /**
  * @cra-agent/facilitator: a private x402 facilitator.
  *
- * The verification and settlement of the `exact` scheme come from the x402 SDK. What is ours is the
- * service around it: what it agrees to settle (see guard.ts), the three HTTP routes a resource
- * server talks to, and a health route that says how much gas money is left.
+ * The verification and settlement of the `exact` and `upto` schemes come from the x402 SDK. What is
+ * ours is the service around it: what it agrees to settle (see guard.ts), the three HTTP routes a
+ * resource server talks to, and a health route that says how much gas money is left.
+ *
+ * `upto` is a Permit2 authorization for a ceiling, bound to this facilitator's address: only we can
+ * settle it, and only for as much as the seller says the call cost, never more than the ceiling. On
+ * Arc the buyer needs no approval transaction first: USDC there takes EIP-2612 permits, so the buyer
+ * signs one with the payment and we submit both together, paying the gas.
  */
 import { x402Facilitator } from "@x402/core/facilitator";
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 import { toFacilitatorEvmSigner } from "@x402/evm";
 import { ExactEvmScheme } from "@x402/evm/exact/facilitator";
+import { UptoEvmScheme } from "@x402/evm/upto/facilitator";
 import { Hono } from "hono";
 import { createPublicClient, createWalletClient, http, publicActions, type Chain, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -41,7 +47,8 @@ export function createFacilitator(opts: FacilitatorOptions) {
   const pub = createPublicClient({ chain: opts.chain, transport });
   const signer = toFacilitatorEvmSigner({ ...wallet, address: account.address } as unknown as Parameters<typeof toFacilitatorEvmSigner>[0], { confirmationTimeoutMs: 30_000 });
 
-  const facilitator = new x402Facilitator().register(opts.network as `${string}:${string}`, new ExactEvmScheme(signer));
+  const network = opts.network as `${string}:${string}`;
+  const facilitator = new x402Facilitator().register(network, new ExactEvmScheme(signer)).register(network, new UptoEvmScheme(signer));
   const guard = async (ctx: { requirements: PaymentRequirements }) => {
     const reason = refuse(ctx.requirements, opts.rules);
     if (reason) {
@@ -74,7 +81,7 @@ export function createFacilitator(opts: FacilitatorOptions) {
   facilitator.onBeforeVerify(guard).onBeforeVerify(allowance).onBeforeSettle(guard).onBeforeSettle(allowance);
   facilitator.onAfterSettle(async ({ result, requirements }) => {
     if (result.success) opts.sellers?.recordSettlement(requirements.payTo);
-    log(result.success ? "settled" : "settle_failed", { tx: result.transaction, payer: result.payer, amount: requirements.amount, payTo: requirements.payTo, reason: result.errorReason });
+    log(result.success ? "settled" : "settle_failed", { scheme: requirements.scheme, tx: result.transaction, payer: result.payer, amount: requirements.amount, payTo: requirements.payTo, reason: result.errorReason });
   });
 
   const app = new Hono();

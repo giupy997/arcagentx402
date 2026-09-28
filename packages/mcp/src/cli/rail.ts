@@ -12,6 +12,8 @@
  *   cra-agent find <what you need> [--max <usdc>] [--limit <n>]   what can be bought on Arc; needs no key
  *   cra-agent think "<task>" [--budget 0.10] [--model …] [--steps 8]   an agent that pays for its own thinking, and its tools
  *   cra-agent think --record [--questions <file>]   the same, kept in Postgres as it runs (cra-agent.tech/think shows it live)
+ *   cra-agent serve-think [--port 8793] [--tools <file>] [--max-budget 0.10] [--max-seconds 150]   the same agent, hired:
+ *                                  runs one task at a time for the API's /v1/upto/think, on 127.0.0.1 only (think-worker.ts)
  */
 import { compareUsdc6, formatUsdc6, parseUsdc6 } from "@cra-agent/accounting";
 import { describePolicy, parsePolicyString } from "@cra-agent/policy";
@@ -22,9 +24,11 @@ import { CAIP2, registerIdentity, type ArcNetwork } from "@cra-agent/identity";
 import { fit, forAgent, NOTHING_SPENT, searchMarket } from "../search.js";
 import { railFromEnv } from "../rail-from-env.js";
 import { runInit } from "./init.js";
-import { BLOCKRUN_CHAT, DEFAULT_MODEL, think, type Paid } from "../think.js";
+import { DEFAULT_MODEL, STOPPED, think } from "../think.js";
+import { findBrain, payWith, searchWith } from "../think-run.js";
+import { serveLocal, thinkWorker } from "../think-worker.js";
 import { ThinkRecorder } from "../think-record.js";
-import { digestFree, freeTools, isFree, toolAllowed, wantsWeb } from "../free-tools.js";
+import { toolAllowed } from "../free-tools.js";
 import { expandQuestions, pickQuestion } from "../think-questions.js";
 
 /** The url and the amount in order, and --method / --body wherever they are. A body means POST. */
@@ -179,29 +183,11 @@ async function main(): Promise<void> {
         if (!json) console.log(line);
       };
       const caip2 = CAIP2[network];
-      // The brain is bought like anything else: from the bazaar, unless one is named.
-      let brainUrl = flag("--brain");
-      let brainFrom = "given";
-      let brainName: string | null = null;
-      if (!brainUrl) {
-        const found = await searchMarket("chat completions llm", { limit: 10 }).catch(() => null);
-        const hit = found?.results.find((r) => r.network === caip2 && /\/chat\/completions$/.test(new URL(r.url).pathname) && r.method === "POST");
-        brainUrl = hit?.url ?? BLOCKRUN_CHAT;
-        brainName = hit?.name ?? "BlockRun";
-        brainFrom = hit ? `${hit.name}, found in the bazaar, from $${hit.priceUsd} a thought` : "BlockRun (the bazaar did not answer)";
-      }
-      const pay = async (url: string, init: { method: "GET" | "POST"; body?: string }, maxUsdc: string): Promise<Paid> => {
-        try {
-          const { response, receipt } = await rail.fetch(url, { method: init.method, headers: { accept: "application/json", ...(init.body === undefined ? {} : { "content-type": "application/json" }) }, ...(init.body === undefined ? {} : { body: init.body }) }, { maxUsdc });
-          const raw = await response.text();
-          // A free public API's answer is large and unordered: the agent reads its digest (free-tools.ts).
-          const body = (response.ok && isFree(url) ? digestFree(url, raw) : null) ?? raw;
-          return { status: response.status, body, paidUsdc: receipt?.status === "settled" ? receipt.amountUsdc : "0", ledgerId: receipt ? String(receipt.ledgerId) : null, refused: null, tx: receipt?.txHash ?? null };
-        } catch (err) {
-          if (err instanceof PolicyRejected) return { status: 0, body: "", paidUsdc: "0", ledgerId: null, refused: `${err.decision.rule}: ${err.decision.reason}` };
-          return { status: 0, body: `the call failed: ${(err as Error).message.slice(0, 140)}`, paidUsdc: "0", ledgerId: null, refused: null };
-        }
-      };
+      const brain = await findBrain(caip2, flag("--brain"));
+      const brainUrl = brain.url;
+      const brainName = brain.name;
+      const brainFrom = brain.from;
+      const pay = payWith(rail);
       const limits = describePolicy(policy);
       say(`Task: ${task}`);
       say(`Brain: ${model} at ${brainUrl} (${brainFrom})`);
@@ -228,21 +214,7 @@ async function main(): Promise<void> {
           {
             pay,
             say,
-            // Free public APIs first when they fit, then only what this wallet's policy lets it pay: a result it
-            // could never buy only costs the brain a thought. A bazaar that does not answer leaves the free ones.
-            search: async (q) => {
-              // Wide, then filtered: the bazaar's first dozen can all be sellers this wallet may not pay.
-              const usable = async (query: string) =>
-                (await searchMarket(query, { limit: 40 }).then((a) => a.results).catch(() => [])).filter((x) => x.network === caip2 && fit(x, policy, caip2, NOTHING_SPENT, null).payable && allowedTool(x.url));
-              let found = [...freeTools(q, caip2).filter((x) => allowedTool(x.url)), ...(await usable(q))];
-              // News and posts come from the web: when the words ask for them, a web search comes first.
-              const isWeb = (x: { label: string | null }) => /\bweb\b/i.test(x.label ?? "") && /\bsearch/i.test(x.label ?? "");
-              if (wantsWeb(q)) {
-                const web = found.find(isWeb) ?? (await usable("web search")).find(isWeb);
-                if (web) found = [web, ...found.filter((x) => x !== web)];
-              }
-              return found.slice(0, 6);
-            },
+            search: searchWith(policy, caip2, allowedTool),
             ...(recorder ? { onStep: (s) => recorder!.step(s), onPhase: (p) => recorder!.phase(p) } : {}),
           },
         );
@@ -258,10 +230,43 @@ async function main(): Promise<void> {
         break;
       }
       say("");
-      say(r.answer !== null ? `Answer: ${r.answer}` : `No answer: ${r.stoppedBecause === "budget" ? "the budget ran out" : r.stoppedBecause === "steps" ? `no answer within ${maxSteps} steps` : "the brain stopped making sense"}.`);
+      say(r.answer !== null ? `Answer: ${r.answer}` : `No answer: ${STOPPED[r.stoppedBecause](maxSteps)}.`);
       const read = r.steps.some((s) => (s.kind === "buy" || s.kind === "fetch") && (s.status ?? 0) >= 200 && (s.status ?? 0) < 300);
       if (r.answer !== null && !read) say("Nothing was bought or read: that answer is the model's own, and nothing in it was checked.");
       say(`Spent $${r.spent.totalUsdc}: thinking $${r.spent.thinkingUsdc} (${r.spent.thoughts} ${r.spent.thoughts === 1 ? "thought" : "thoughts"}), tools $${r.spent.toolsUsdc} (${r.spent.purchases} ${r.spent.purchases === 1 ? "purchase" : "purchases"}). Each payment signed a receipt, in USDC on Arc.`);
+      break;
+    }
+    case "serve-think": {
+      // The same agent as `think`, run for whoever the API sold a task to. It stays up; each run is logged as one line.
+      const args = process.argv.slice(3);
+      const flag = (name: string): string | undefined => {
+        const i = args.indexOf(name);
+        return i >= 0 ? args[i + 1] : undefined;
+      };
+      const toolsFile = flag("--tools");
+      const allowedTool = toolAllowed(toolsFile ? readFileSync(toolsFile, "utf8").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#")) : null);
+      const port = Number(flag("--port") ?? 8793);
+      const maxBudgetUsdc = flag("--max-budget") ?? "0.10";
+      const maxMs = Math.min(280, Math.max(20, Number(flag("--max-seconds") ?? 150))) * 1000;
+      const model = flag("--model") ?? DEFAULT_MODEL;
+      const maxSteps = Math.min(12, Math.max(1, Number(flag("--steps") ?? 8)));
+      const caip2 = CAIP2[network];
+      const log = (event: string, data: Record<string, unknown>) => console.log(JSON.stringify({ time: new Date().toISOString(), app: "cra-agent-think-worker", event, ...data }));
+      const search = searchWith(policy, caip2, allowedTool);
+      const pay = payWith(rail);
+      const handler = thinkWorker({
+        maxBudgetUsdc,
+        maxMs,
+        log,
+        available: async () => (await rail.balances()).gatewayAvailable,
+        run: async (task, budgetUsdc, deadline) => {
+          const brain = await findBrain(caip2);
+          return think({ task, brainUrl: brain.url, model, budgetUsdc, thoughtCeilingUsdc: "0.01", maxTokens: 350, maxSteps, deadline }, { pay, search, say: () => {} });
+        },
+      });
+      serveLocal(handler, port, () => log("listening", { host: "127.0.0.1", port, agent: rail.address, agentId, network: caip2, maxBudgetUsdc, maxSeconds: maxMs / 1000, policy: describePolicy(policy) }));
+      // Serves until stopped: the ledger stays open for the runs.
+      await new Promise(() => {});
       break;
     }
     case "selftest": {

@@ -1,5 +1,5 @@
 [Unit]
-Description=cra-agent x402 facilitator (settles EIP-3009 USDC on Arc for our addresses and for registered sellers, within a daily allowance)
+Description=cra-agent x402 facilitator (settles exact and upto USDC payments on Arc for our addresses and for registered sellers, within a daily allowance)
 After=network-online.target
 Before=cra-agent-api.service
 
