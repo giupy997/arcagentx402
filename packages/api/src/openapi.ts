@@ -62,8 +62,10 @@ export function buildOpenApi(opts: OpenApiOptions): Record<string, unknown> {
     };
   }
 
+  // The route that fails on purpose stays out: catalogues read this file, and an agent sent there by one would get
+  // an error. It is still served, and /status and /v1/direct say what it is for.
   for (const r of PAID_ROUTES) {
-    if (!opts.sellerAddress) continue;
+    if (!opts.sellerAddress || r.alwaysFails) continue;
     paths[r.path] = {
       get: {
         summary: r.summary,

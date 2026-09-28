@@ -222,7 +222,7 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger,
       ...(solanaPayTo ? { solana: { payTo: solanaPayTo } } : {}),
       networks,
       settlement: directFacilitator ? "circle-gateway on /v1/paid, direct on /v1/direct" : "circle-gateway",
-      routes: PAID_ROUTES.map((r) => ({ pattern: `GET ${r.path}`, priceUsd: r.price.replace("$", ""), description: r.summary })),
+      routes: PAID_ROUTES.filter((r) => !r.alwaysFails).map((r) => ({ pattern: `GET ${r.path}`, priceUsd: r.price.replace("$", ""), description: r.summary })),
       // Registered from the payout address itself, on 2026-09-23 (tx 0xecbd1594…7eff): owner and agentWallet are payTo.
       erc8004: { agentId: 186, agentRegistry: "eip155:5042:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432", card: "https://cra-agent.tech/.well-known/agent.json" },
       poweredBy: "https://cra-agent.tech",

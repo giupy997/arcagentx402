@@ -8,7 +8,7 @@ const spec = (sellerAddress: string | null = "0x33b37c6d7a98b58da3Ccb3F36A4b5780
 describe("the OpenAPI document agents and directories read", () => {
   it("describes every priced route with its price in USDC base units", () => {
     const d = spec();
-    for (const r of PAID_ROUTES) {
+    for (const r of PAID_ROUTES.filter((x) => !x.alwaysFails)) {
       const info = d.paths[r.path]?.get?.["x-payment-info"];
       expect(info, r.path).toBeTruthy();
       expect(info.price.mode).toBe("fixed");
@@ -26,7 +26,7 @@ describe("the OpenAPI document agents and directories read", () => {
     expect(d.info["x-guidance"].length).toBeGreaterThan(200);
     expect(d.info["x-guidance"].length).toBeLessThan(4000); // their budget for zero-hop guidance
     expect(d.servers[0].url).toBe("https://api.cra-agent.tech");
-    for (const r of PAID_ROUTES) expect(d.paths[r.path].get.responses["402"], r.path).toBeTruthy();
+    for (const r of PAID_ROUTES.filter((x) => !x.alwaysFails)) expect(d.paths[r.path].get.responses["402"], r.path).toBeTruthy();
   });
 
   it("never prices a route when there is no seller to pay", () => {
@@ -35,10 +35,10 @@ describe("the OpenAPI document agents and directories read", () => {
     expect(d.paths["/v1/fx"]).toBeTruthy();
   });
 
-  it("marks the deliberately failing route as failing and nothing else", () => {
+  it("leaves the route that fails on purpose out, and nothing else", () => {
     const d = spec();
-    expect(d.paths["/v1/paid/selftest/fail"].get.responses["500"]).toBeTruthy();
-    expect(d.paths["/v1/paid/selftest/fail"].get.responses["200"]).toBeUndefined();
+    // The route that fails on purpose is not offered to catalogues.
+    expect(d.paths["/v1/paid/selftest/fail"]).toBeUndefined();
     expect(d.paths["/v1/paid/fx/execution"].get.responses["200"]).toBeTruthy();
   });
 });
