@@ -93,6 +93,26 @@ const seller = createExpressSeller({ sellerAddress: "0xYourAddress", network: "a
 app.use(seller.middleware());
 ```
 
+## Billed by use (x402 `upto`)
+
+When a call's cost is known only once it is done, the buyer signs for a ceiling and you take what the call cost. It needs a facilitator that settles `upto` on Arc: the CRA one does, once your `sellerAddress` is registered at [cra-agent.tech/register](https://cra-agent.tech/register).
+
+```ts
+import { charge, createSeller } from "@cra-agent/seller";
+
+const seller = createSeller({ sellerAddress: "0xYourAddress", network: "arc", settlement: "direct", facilitatorUrl: "https://api.cra-agent.tech/facilitator" })
+  .route("GET /v1/render", "$0.10", { upto: true, maxTimeoutSeconds: 300 });
+
+app.use("/v1/*", seller.middleware());
+app.get("/v1/render", async (c) => {
+  const job = await render(c.req.query("scene"));
+  charge(c, `$${job.costUsd}`); // what this call cost, at most the ceiling
+  return c.json(job.result);
+});
+```
+
+The buyer signs once: a Permit2 authorization for the ceiling, which only the facilitator it names can settle, with an EIP-2612 permit for Arc's USDC, so there is no approval transaction and no gas on their side. A handler that fails takes nothing; one that never calls `charge` takes the whole ceiling. Arc only: the Base and Solana rails sell set prices. [CRA Think](https://cra-agent.tech/think#hire) is sold this way.
+
 ## Options per route
 
 | Option | Meaning |
@@ -101,6 +121,7 @@ app.use(seller.middleware());
 | `preview` | Body returned next to the 402 to a caller who has not paid. |
 | `inputSchema` / `outputExample` | What the route takes and returns, for discovery. |
 | `maxTimeoutSeconds` | How long the buyer's authorization stays valid. |
+| `upto` | Bill by use: the price is the ceiling, and the handler says what the call cost with `charge()`. Needs `settlement: "direct"`. |
 
 ## Getting listed
 

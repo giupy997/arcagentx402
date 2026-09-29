@@ -56,6 +56,8 @@ It also knows a few free public APIs, called without paying and shown as such: D
 
 With `--record` and a `DATABASE_URL`, the run is kept in Postgres as it happens, step by step, which is how the page shows it live and replays it after. `--questions <file>` picks the question when none is given, which is how our server runs it on a timer: the file combines templates (`What is the price of {coin} right now?`) with lists (`@coin = bitcoin (BTC) | ether (ETH)`), and a recorded run never repeats one of the last hundred questions.
 
+The same agent can be hired by anyone, over x402 `upto`: `GET https://api.cra-agent.tech/v1/upto/think?task=…` asks you to sign for up to $0.10 and charges what the run spent plus $0.005. `arc_pay` and `cra-agent pay` pay routes like this one: your policy is checked against the ceiling, since all of it could be taken, and your ledger keeps what was. The default policy allows $0.05 a payment, so give this one more with `per_payment=0.10`.
+
 ## The same thing from a terminal
 
 ```bash

@@ -1,6 +1,6 @@
 {
   "name": "@cra-agent/seller",
-  "version": "0.0.16",
+  "version": "0.0.17",
   "description": "Put a USDC price on any API with x402, settled on Arc: one command in front of an API you already run, or a middleware for Hono and Express. Optionally also for sale in sats over Lightning.",
   "keywords": [
     "agent-payments",
@@ -40,8 +40,8 @@
   "dependencies": {
     "@circle-fin/x402-batching": "^3.4.0",
     "@coinbase/x402": "^2.1.0",
-    "@cra-agent/accounting": "0.0.16",
-    "@cra-agent/lightning": "0.0.16",
+    "@cra-agent/accounting": "0.0.17",
+    "@cra-agent/lightning": "0.0.17",
     "@hono/node-server": "^1.14.0",
     "@solana/kit": "^5.5.1",
     "@x402/core": "^2.25.0",

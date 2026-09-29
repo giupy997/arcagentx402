@@ -15,6 +15,8 @@ export interface OpenApiOptions {
   readonly sellerAddress: string | null;
   readonly usdcAddress: string;
   readonly version: string;
+  /** The thinking agent billed by use (x402 upto), when it runs on this host: its ceiling and fee in USDC. */
+  readonly upto?: { readonly ceilingUsdc: string; readonly feeUsdc: string } | null;
 }
 
 const GUIDANCE = `CRA AGENT sells Arc chain data by the call over x402, settled in USDC on Arc through Circle Gateway.
@@ -26,6 +28,9 @@ Two things worth knowing before you buy. The payment is settled only after the h
 failing endpoint costs you nothing: GET /v1/paid/selftest/fail always answers 500 and is never charged,
 and it is there so you can check that yourself. And every settled payment ends in a USDC transfer on
 Arc whose hash you can look up.
+
+GET /v1/upto/think?task=... hires our thinking agent over x402 upto: you sign once for up to $0.10 and are charged
+what the run spent plus $0.005, nothing when it could not start.
 
 Prices range from $0.0005 to $0.005 per call. The Arc network routes (fees, deploys, rpc, fx) are read
 from Arc by our own collector. The /arc routes read the chain live. The rest (web, packages, domains,
@@ -98,6 +103,41 @@ export function buildOpenApi(opts: OpenApiOptions): Record<string, unknown> {
             description: `Payment required: ${r.price} in USDC on Arc. Requirements are in the payment-required header.`,
             content: { "application/json": { schema: { type: "object" }, ...(r.preview ? { example: r.preview } : {}) } },
           },
+        },
+      },
+    };
+  }
+
+  // Billed by use: the buyer signs for the ceiling, and the charge is what the run spent plus the fee.
+  if (opts.sellerAddress && opts.upto) {
+    const { ceilingUsdc, feeUsdc } = opts.upto;
+    paths["/v1/upto/think"] = {
+      get: {
+        summary: "Hire the thinking agent, billed by what it spends",
+        description: `Ask the agent of cra-agent.tech/think anything. It buys its thoughts from an LLM paid per call on Arc and its tools from the bazaar, and answers with every payment it made. Paid with x402 upto: you sign once for up to $${ceilingUsdc} and are charged what the run spent plus $${feeUsdc}, nothing when the run could not start. No approval transaction and no gas on your side.`,
+        operationId: "v1_upto_think",
+        tags: ["paid"],
+        parameters: [param({ name: "task", type: "string", required: true, description: "What you want answered, 3 to 500 characters.", example: "What moved EURC against USDC on Arc today?" })],
+        "x-payment-info": {
+          price: { mode: "dynamic", currency: "USD", min: feeUsdc, max: ceilingUsdc },
+          protocols: [
+            {
+              x402: {
+                protocol: "x402",
+                version: 2,
+                scheme: "upto",
+                network: opts.network,
+                asset: opts.usdcAddress,
+                amount: baseUnits(ceilingUsdc),
+                payTo: opts.sellerAddress,
+                maxTimeoutSeconds: 300,
+              },
+            },
+          ],
+        },
+        responses: {
+          "200": { description: "The answer, what was charged, and every payment the agent made.", content: { "application/json": { schema: { type: "object" } } } },
+          "402": { description: `Payment required: up to $${ceilingUsdc} in USDC on Arc, x402 upto. Requirements are in the payment-required header.`, content: { "application/json": { schema: { type: "object" } } } },
         },
       },
     };

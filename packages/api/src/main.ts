@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import pino from "pino";
 import { createPool } from "./db.js";
 import { buildOpenApi } from "./openapi.js";
+import { THINK_CEILING_USDC, THINK_FEE_USDC } from "./upto.js";
 import { PAIRS, resolvePair } from "./pairs.js";
 import { PAID_ROUTES } from "./routes.js";
 import { activity, deployStats, feeEstimate, feeSummary, fxSummary, networkSummary, recentDeploys, rpcStatus, selftestSummary, settlementsSummary, tokenSummary } from "./queries.js";
@@ -162,6 +163,7 @@ app.get("/openapi.json", (c) =>
       sellerAddress: process.env.SELLER_ADDRESS ?? null,
       usdcAddress: "0x3600000000000000000000000000000000000000",
       version: API_VERSION,
+      upto: process.env.DIRECT_FACILITATOR_URL && process.env.THINK_WORKER_URL ? { ceilingUsdc: THINK_CEILING_USDC, feeUsdc: THINK_FEE_USDC } : null,
     }),
   ),
 );

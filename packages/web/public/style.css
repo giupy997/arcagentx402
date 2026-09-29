@@ -555,3 +555,6 @@ footer.site a { word-break: break-all; }
   .t-step, .t-answer { opacity: 1; transform: none; transition: none; }
   .t-state.live i { animation: none; }
 }
+
+/* A link to a section (#hire, #run) lands with its heading below the fixed bar, not under it. */
+section[id] { scroll-margin-top: 88px; }

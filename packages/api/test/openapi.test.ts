@@ -41,4 +41,15 @@ describe("the OpenAPI document agents and directories read", () => {
     expect(d.paths["/v1/paid/selftest/fail"]).toBeUndefined();
     expect(d.paths["/v1/paid/fx/execution"].get.responses["200"]).toBeTruthy();
   });
+
+  it("prices the thinking agent as a range, paid with upto, only when it runs here", () => {
+    const off = spec();
+    expect(off.paths["/v1/upto/think"]).toBeUndefined();
+    const on = buildOpenApi({ origin: "https://api.cra-agent.tech", network: "eip155:5042", sellerAddress: "0x33b37c6d7a98b58da3Ccb3F36A4b578053d0Ea74", usdcAddress: "0x3600000000000000000000000000000000000000", version: "0.1.0", upto: { ceilingUsdc: "0.10", feeUsdc: "0.005" } }) as any;
+    const op = on.paths["/v1/upto/think"].get;
+    expect(op["x-payment-info"].price).toEqual({ mode: "dynamic", currency: "USD", min: "0.005", max: "0.10" });
+    expect(op["x-payment-info"].protocols[0].x402).toMatchObject({ scheme: "upto", amount: "100000", maxTimeoutSeconds: 300 });
+    expect(op.parameters[0]).toMatchObject({ name: "task", required: true });
+    expect(op.responses["402"]).toBeTruthy();
+  });
 });
