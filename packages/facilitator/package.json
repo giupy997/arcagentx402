@@ -1,6 +1,6 @@
 {
   "name": "@cra-agent/facilitator",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "description": "A private x402 facilitator for Arc: settles exact (EIP-3009) and upto (Permit2, gasless with an EIP-2612 permit) USDC payments on chain, only for the payout addresses you list.",
   "keywords": ["x402", "arc", "usdc", "facilitator", "eip-3009", "upto", "permit2", "agent-payments", "micropayments"],
   "type": "module",
@@ -12,8 +12,8 @@
     "start": "node --env-file-if-exists=../../.env --import tsx src/main.ts"
   },
   "dependencies": {
-    "@cra-agent/accounting": "0.0.17",
-    "@cra-agent/identity": "0.0.17",
+    "@cra-agent/accounting": "0.0.18",
+    "@cra-agent/identity": "0.0.18",
     "@hono/node-server": "^1.13.0",
     "@x402/core": "^2.25.0",
     "@x402/evm": "^2.25.0",

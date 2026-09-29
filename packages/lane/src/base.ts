@@ -7,12 +7,13 @@
  * is minted on Arc seconds later. Nobody holds the money in between, us included.
  *
  * The quote is data from a server, so nothing is signed until the transaction itself says what was asked: its
- * calldata is decoded here, not read from the summary beside it. The vault the funder lets take its USDC is the
- * one the Portal derives for that very intent, asked of the Portal on Base. Arrival is read on Arc.
+ * calldata is decoded here, not read from the summary beside it, and the vault it names must be the one the Portal
+ * derives for that very intent. The funder approves the Portal, which pulls the USDC into the vault inside
+ * publishAndFund: the Portal spends that allowance only for its caller, so nobody else can. Arrival is read on Arc.
  *
  * Base needs ETH for gas: two transactions, the approval and the Portal's, about a cent together.
  */
-import { createPublicClient, createWalletClient, decodeAbiParameters, decodeFunctionData, erc20Abi, http, parseAbi, type Account, type Address, type Hex } from "viem";
+import { BaseError, createPublicClient, createWalletClient, decodeAbiParameters, decodeErrorResult, decodeFunctionData, erc20Abi, http, parseAbi, type Account, type Address, type Hex } from "viem";
 import { base } from "viem/chains";
 import { ARC_CCTP_DOMAIN, ARC_CHAIN_ID, arrivalOnArc, ECO_QUOTES, no, SweepRefused, USDC_ARC, usdcOnArc } from "./common.js";
 
@@ -29,7 +30,28 @@ export const PORTAL_ABI = parseAbi([
   "struct Reward { uint64 deadline; address creator; address prover; uint256 nativeAmount; TokenAmount[] tokens; }",
   "function publishAndFund(uint64 destination, bytes route, Reward reward, bool allowPartial) payable returns (bytes32, address)",
   "function intentVaultAddress(uint64 destination, bytes route, Reward reward) view returns (address)",
+  "error InsufficientFunds(bytes32 intentHash)",
+  "error IntentAlreadyExists(bytes32 intentHash)",
+  "error IntentExpired()",
+  "error InvalidPortal(address portal)",
+  "error InvalidStatusForFunding(uint8 status)",
+  "error InsufficientNativeAmount(uint256 sent, uint256 required)",
+  "error SafeERC20FailedOperation(address token)",
 ]);
+
+/** Why the Portal refused, by its own error's name when the revert carries one. */
+function portalReason(err: unknown): string {
+  let data: unknown;
+  if (err instanceof BaseError) err.walk((e) => ((data ??= (e as { data?: unknown }).data), false));
+  if (typeof data === "string" && data.startsWith("0x") && data.length >= 10) {
+    try {
+      return decodeErrorResult({ abi: PORTAL_ABI, data: data as Hex }).errorName;
+    } catch {
+      return `error ${data.slice(0, 10)}`;
+    }
+  }
+  return err instanceof BaseError ? err.shortMessage : (err as Error).message;
+}
 /** The Route struct inside publishAndFund's `route` bytes. */
 export const ROUTE_ABI = [
   {
@@ -209,14 +231,16 @@ export function baseLane(o: BaseLaneOptions = {}) {
       // Eco charges about 0.013% from Base today; the cap refuses anything far above that: 0.01 USDC or 0.5%, whichever is more.
       const maxFee = opts.maxFee ?? (amount / 200n > 10_000n ? amount / 200n : 10_000n);
       const checked = checkEcoQuoteEvm(await quote(funder, to, amount), { funder, recipient: to, amount, maxFee, now: Math.floor(Date.now() / 1000) });
-      // The vault is where the approval goes: it must be the one the Portal itself derives for this intent.
+      // The vault is where the USDC goes: it must be the one the Portal itself derives for this intent.
       const { destination, route, reward } = checked.intent;
       const derived = await pub.readContract({ address: ECO_PORTAL_BASE, abi: PORTAL_ABI, functionName: "intentVaultAddress", args: [destination, route, reward] });
       if (!same(derived, checked.vault)) throw new SweepRefused(`the quote names vault ${checked.vault}, but the Portal derives ${derived} for this intent`);
       log(`Eco quote ${checked.quoteId}: ${Number(amount) / 1e6} USDC in, at least ${Number(checked.minAmountOut) / 1e6} on Arc, fee ${Number(checked.fee) / 1e6}, about ${checked.etaSeconds} s`);
 
-      // Two transactions on Base: the approval, when the vault may not already take this much, and the Portal's.
-      const allowance = await pub.readContract({ address: USDC_BASE, abi: erc20Abi, functionName: "allowance", args: [funder, checked.vault] });
+      // Two transactions on Base: the approval, when the Portal may not already take this much, and the Portal's.
+      // publishAndFund pulls the USDC with transferFrom on the funder's allowance to the Portal, into the vault.
+      const portalAllowance = () => pub.readContract({ address: USDC_BASE, abi: erc20Abi, functionName: "allowance", args: [funder, ECO_PORTAL_BASE] });
+      const allowance = await portalAllowance();
       const fees = await pub.estimateFeesPerGas();
       const gasBudget = 400_000n * fees.maxFeePerGas * 2n + 5_000_000_000_000n; // plus the L1 data fee Base adds, generously
       if (eth < gasBudget) throw new SweepRefused(`the wallet has ${Number(eth) / 1e18} ETH on Base, less than the ${Number(gasBudget) / 1e18} its two transactions may need: send a little ETH on Base to ${funder}`);
@@ -226,10 +250,19 @@ export function baseLane(o: BaseLaneOptions = {}) {
       const before = await usdcOnArc(arcRpc, to, doFetch);
       let approvalTx: Hex | null = null;
       if (allowance < amount) {
-        approvalTx = await wallet.writeContract({ address: USDC_BASE, abi: erc20Abi, functionName: "approve", args: [checked.vault, amount], chain: base, account });
+        approvalTx = await wallet.writeContract({ address: USDC_BASE, abi: erc20Abi, functionName: "approve", args: [ECO_PORTAL_BASE, amount], chain: base, account });
         const r = await pub.waitForTransactionReceipt({ hash: approvalTx, timeout: 90_000 });
         if (r.status !== "success") throw new SweepRefused(`the approval failed on Base: ${approvalTx}`);
-        log(`approved the intent's vault for ${Number(amount) / 1e6} USDC: ${approvalTx}`);
+        log(`approved Eco's Portal for ${Number(amount) / 1e6} USDC: ${approvalTx}`);
+        // A public RPC is several nodes behind one name: the next one asked may not have seen the approval yet.
+        const seenBy = Date.now() + 30_000;
+        while ((await portalAllowance().catch(() => 0n)) < amount && Date.now() < seenBy) await new Promise((w) => setTimeout(w, 2000));
+      }
+      // Tried first without sending, so a refusal comes back with the Portal's own reason and costs nothing.
+      try {
+        await pub.call({ account, to: checked.transaction.to, data: checked.transaction.data });
+      } catch (err) {
+        throw new SweepRefused(`Eco's Portal would refuse the transaction (${portalReason(err)}); nothing was sent after the approval, which only the funder's own transactions can use`);
       }
       const hash = await wallet.sendTransaction({ to: checked.transaction.to, data: checked.transaction.data, value: 0n, chain: base, account });
       const sentAt = Date.now();

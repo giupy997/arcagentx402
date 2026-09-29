@@ -84,8 +84,9 @@ describe("the lane from Base, up to the point of signing", () => {
   afterEach(() => void vi.useRealTimers());
 
   /** Base as far as the lane asks it, and Eco answering with the real quote. */
-  function chain(o: { vault?: string; eth?: bigint } = {}) {
+  function chain(o: { vault?: string; eth?: bigint; allowance?: bigint; portalRefuses?: boolean } = {}) {
     const sent: string[] = [];
+    const spenders: string[] = [];
     const word = (v: bigint | string) => `0x${(typeof v === "bigint" ? v.toString(16) : v.slice(2).toLowerCase()).padStart(64, "0")}`;
     const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -100,15 +101,20 @@ describe("the lane from Base, up to the point of signing", () => {
         if (method === "eth_call") {
           const data: string = params[0].data;
           if (data.startsWith("0x70a08231")) return word(2_000_000n); // USDC balanceOf
-          if (data.startsWith("0xdd62ed3e")) return word(0n); // allowance
+          if (data.startsWith("0xdd62ed3e")) {
+            spenders.push(`0x${data.slice(98, 138)}`);
+            return word(o.allowance ?? 0n); // allowance
+          }
+          if (data.startsWith("0xdf00f8fa") && o.portalRefuses) return { error: { code: 3, message: "execution reverted", data: `0x07b90620${"82".repeat(32)}` } }; // InsufficientFunds(bytes32)
           return word(o.vault ?? quote.execution.vault); // the Portal's intentVaultAddress
         }
         throw new Error(`unexpected ${method}`);
       })();
+      if (result && typeof result === "object" && "error" in result) return Response.json({ jsonrpc: "2.0", id, error: result.error });
       return Response.json({ jsonrpc: "2.0", id, result });
     }) as typeof fetch;
     vi.stubGlobal("fetch", fetchImpl);
-    return { lane: baseLane({ baseRpc: "http://base.test", arcRpc: "http://arc.test", fetchImpl }), sent };
+    return { lane: baseLane({ baseRpc: "http://base.test", arcRpc: "http://arc.test", fetchImpl }), sent, spenders };
   }
   const account = privateKeyToAccount("0x0000000000000000000000000000000000000000000000000000000000000003");
   const as = (addr: string) => ({ ...account, address: addr as Hex });
@@ -116,9 +122,20 @@ describe("the lane from Base, up to the point of signing", () => {
   it("checks the quote, the vault against the Portal and the gas, and sends nothing on a dry run", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime((quote.expiresAt - 30) * 1000);
-    const { lane, sent } = chain();
+    const { lane, sent, spenders } = chain();
     const r = await lane.move(as(AGENT), AGENT, { amount: 1_000_000n, dryRun: true });
     expect(r).toMatchObject({ dryRun: true, vault: quote.execution.vault, needsApproval: true });
+    // The Portal is what takes the USDC in publishAndFund, on an allowance only the funder's own calls can spend.
+    expect(spenders).toEqual([ECO_PORTAL_BASE.toLowerCase()]);
+    expect(sent).not.toContain("eth_sendRawTransaction");
+    vi.unstubAllGlobals();
+  });
+
+  it("tries the Portal's transaction before sending it, and refuses with the Portal's own reason", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime((quote.expiresAt - 30) * 1000);
+    const { lane, sent } = chain({ allowance: 1_000_000n, portalRefuses: true });
+    await expect(lane.move(as(AGENT), AGENT, { amount: 1_000_000n })).rejects.toThrow(/Portal would refuse the transaction \(InsufficientFunds\)/);
     expect(sent).not.toContain("eth_sendRawTransaction");
     vi.unstubAllGlobals();
   });
