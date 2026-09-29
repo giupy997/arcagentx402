@@ -58,6 +58,18 @@ With `--record` and a `DATABASE_URL`, the run is kept in Postgres as it happens,
 
 The same agent can be hired by anyone, over x402 `upto`: `GET https://api.cra-agent.tech/v1/upto/think?task=…` asks you to sign for up to $0.10 and charges what the run spent plus $0.005. `arc_pay` and `cra-agent pay` pay routes like this one: your policy is checked against the ceiling, since all of it could be taken, and your ledger keeps what was. The default policy allows $0.05 a payment, so give this one more with `per_payment=0.10`.
 
+## Fund the agent from Base or Solana
+
+Paying on Arc takes USDC in Circle Gateway on Arc, and most agents hold theirs on Base or Solana. One command brings it over and deposits it:
+
+```bash
+cra-agent fund 5 --from base                                    # from this agent's own wallet on Base, same key and address
+cra-agent fund 5 --from solana --solana-key-file ~/sol.json     # from a Solana wallet: our hex seed or solana-keygen's JSON
+cra-agent fund 5 --from base --dry-run                          # everything checked, nothing signed
+```
+
+It asks [Eco](https://eco.com) for a route, and checks the quote before signing anything, from the transaction's own calldata: a CCTP burn of exactly that amount to Arc's domain, minting to this agent, a fee under the cap (`--max-fee`, default 0.5% or $0.01), the refund to the same wallet. From Base, the vault the USDC goes into must be the one Eco's Portal derives for that intent. It then waits for the USDC on Arc, usually seconds, and deposits it into Gateway, leaving $0.01 in the wallet for Arc's gas (`--keep`, or `--no-deposit` to keep it all in the wallet). From Base the wallet needs a little ETH for two transactions, about a cent; from Solana, a little SOL. The model has no tool for this: moving money between chains is the owner's call, from a terminal.
+
 ## The same thing from a terminal
 
 ```bash
@@ -65,6 +77,7 @@ cra-agent find bitcoin price    # what is for sale on Arc; needs no key (in a br
 cra-agent balance
 cra-agent quote https://api.cra-agent.tech/v1/paid/rpc/health
 cra-agent quote https://api.exa.ai/search --body '{"query":"x402 on Arc"}'           # the price of a POST, with its body
+cra-agent fund 5 --from base   # USDC from Base to this agent on Arc, into Gateway
 cra-agent deposit 1
 cra-agent withdraw 1            # Gateway balance back to the wallet; how a seller collects
 cra-agent pay   https://api.cra-agent.tech/v1/paid/rpc/health
@@ -85,6 +98,7 @@ Every receipt carries the limits the payment passed under and is signed with the
 | `CRA_POLICY` | `daily=5,per_seller=0.5,per_payment=0.05,rate=120/60s,allow=a.com\|b.com,deny=c.com` |
 | `CRA_RPC_URL` | Optional, one or several separated by commas, in priority order. Tried before the public Arc endpoints. |
 | `CRA_RPC_STRICT` | `1` to never fall back to a public endpoint. |
+| `CRA_BASE_RPC_URL` / `SOLANA_RPC_URL` | Optional, for `fund`: the Base and Solana endpoints. Public ones by default. |
 | `DATABASE_URL` | Optional Postgres for the ledger. Without it the ledger lives in memory. |
 
 Two things worth knowing. A payment is settled only after the seller's handler succeeds, so a failing endpoint costs nothing: `https://api.cra-agent.tech/v1/paid/selftest/fail` always answers 500 so you can check. And `identity=required` pays only sellers with an ERC-8004 identity on Arc: the address that gets paid must own an agent in the registry, or be the wallet an agent declared for payments. It proves an identity exists, not that the seller is honest; registering costs only gas.

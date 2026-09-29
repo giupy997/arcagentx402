@@ -19,7 +19,7 @@ who="$(npm whoami 2>/dev/null)" || { echo "not logged in: run 'npm login', or pu
 [ "$who" = "cra-agent" ] || { echo "logged in to npm as $who: these packages are published only as cra-agent"; exit 1; }
 
 npm run -s build
-for p in accounting policy ledger identity lightning router escrow seller mcp; do
+for p in accounting policy ledger identity lightning lane router escrow seller mcp; do
   v="$(node -p "require('./packages/$p/package.json').version")"
   if [ "$(npm view "@cra-agent/$p@$v" version 2>/dev/null || true)" = "$v" ]; then
     echo "==> @cra-agent/$p@$v is already on npm, skipped"

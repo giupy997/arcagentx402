@@ -12,10 +12,12 @@
  *   cra-agent find <what you need> [--max <usdc>] [--limit <n>]   what can be bought on Arc; needs no key
  *   cra-agent think "<task>" [--budget 0.10] [--model …] [--steps 8]   an agent that pays for its own thinking, and its tools
  *   cra-agent think --record [--questions <file>]   the same, kept in Postgres as it runs (cra-agent.tech/think shows it live)
+ *   cra-agent fund <usdc> --from base|solana [--solana-key-file <file>]   USDC from Base or Solana to this agent on Arc,
+ *                                  through Eco and CCTP, then into Circle Gateway (fund.ts)
  *   cra-agent serve-think [--port 8793] [--tools <file>] [--max-budget 0.10] [--max-seconds 150]   the same agent, hired:
  *                                  runs one task at a time for the API's /v1/upto/think, on 127.0.0.1 only (think-worker.ts)
  */
-import { compareUsdc6, formatUsdc6, parseUsdc6 } from "@cra-agent/accounting";
+import { compareUsdc6, formatUsdc6, parseUsdc6, usdc6 } from "@cra-agent/accounting";
 import { describePolicy, parsePolicyString } from "@cra-agent/policy";
 import { readFileSync } from "node:fs";
 import type { Address } from "viem";
@@ -27,6 +29,8 @@ import { runInit } from "./init.js";
 import { DEFAULT_MODEL, STOPPED, think } from "../think.js";
 import { findBrain, payWith, searchWith } from "../think-run.js";
 import { serveLocal, thinkWorker } from "../think-worker.js";
+import { depositAmount, parseFundArgs } from "../fund.js";
+import { baseLane, readSolanaSigner, solanaLane, SweepRefused } from "@cra-agent/lane";
 import { ThinkRecorder } from "../think-record.js";
 import { toolAllowed } from "../free-tools.js";
 import { expandQuestions, pickQuestion } from "../think-questions.js";
@@ -128,6 +132,58 @@ async function main(): Promise<void> {
       break;
     }
     case "balance": out({ network, ...(await rail.balances()) }); break;
+    case "fund": {
+      // USDC from Base or Solana to this agent on Arc, then into Gateway: see fund.ts. Every line of the way is printed.
+      const f = parseFundArgs(process.argv.slice(3));
+      const say = (line: string) => console.log(line);
+      const to = rail.address;
+      let moved: { arrived: boolean; arrivedUsdc: bigint; seconds: number; source: Record<string, unknown> } | null = null;
+      try {
+        if (f.from === "base") {
+          const lane = baseLane({ ...(process.env.CRA_BASE_RPC_URL ? { baseRpc: process.env.CRA_BASE_RPC_URL } : {}), arcRpc: rpcUrl, log: say });
+          const r = await lane.move(signer.account, to, { amount: f.amount, ...(f.maxFee === undefined ? {} : { maxFee: f.maxFee }), dryRun: f.dryRun });
+          if (r.dryRun) {
+            out({ dryRun: true, from: "base", to, amountUsdc: formatUsdc6(usdc6(f.amount)), feeUsdc: formatUsdc6(usdc6(r.checked.fee)), atLeastOnArcUsdc: formatUsdc6(usdc6(r.checked.minAmountOut)), etaSeconds: r.checked.etaSeconds, vault: r.vault, needsApproval: r.needsApproval, note: "checked and not sent" });
+            break;
+          }
+          moved = { arrived: r.arrived, arrivedUsdc: r.arrivedUsdc, seconds: r.seconds, source: { chain: "base", approvalTx: r.approvalTx, tx: r.hash, quote: r.checked.quoteId, intentHash: r.checked.intentHash, feeUsdc: formatUsdc6(usdc6(r.checked.fee)) } };
+        } else {
+          const solana = await readSolanaSigner(f.solanaKeyFile!);
+          const lane = solanaLane({ ...(process.env.SOLANA_RPC_URL ? { solanaRpc: process.env.SOLANA_RPC_URL } : {}), arcRpc: rpcUrl, log: say });
+          const r = await lane.sweep(solana, to, { amount: f.amount, ...(f.maxFee === undefined ? {} : { maxFee: f.maxFee }), dryRun: f.dryRun });
+          if (r.dryRun) {
+            out({ dryRun: true, from: "solana", solanaWallet: solana.address, to, amountUsdc: formatUsdc6(usdc6(f.amount)), feeUsdc: formatUsdc6(usdc6(r.checked.fee)), atLeastOnArcUsdc: formatUsdc6(usdc6(r.checked.minAmountOut)), etaSeconds: r.checked.etaSeconds, simulation: r.simulation, note: "checked and not sent" });
+            break;
+          }
+          moved = { arrived: r.arrived, arrivedUsdc: r.arrivedUsdc, seconds: r.seconds, source: { chain: "solana", wallet: solana.address, tx: r.signature, quote: r.checked.quoteId, intentHash: r.checked.intentHash, feeUsdc: formatUsdc6(usdc6(r.checked.fee)) } };
+        }
+      } catch (err) {
+        if (err instanceof SweepRefused) {
+          out({ refused: true, reason: err.message, note: "nothing was signed after the refusal" });
+          process.exit(1);
+        }
+        throw err;
+      }
+      const summary = { from: f.from, to, amountUsdc: formatUsdc6(usdc6(f.amount)), arrivedUsdc: formatUsdc6(usdc6(moved.arrivedUsdc)), seconds: moved.seconds, source: moved.source };
+      if (!moved.arrived) {
+        out({ ...summary, arrived: false, note: "not on Arc yet: the transfer is out and will land; deposit it into Gateway later with: cra-agent deposit <usdc>" });
+        process.exit(1);
+      }
+      if (!f.deposit) {
+        out({ ...summary, arrived: true, gateway: "not deposited (--no-deposit)" });
+        break;
+      }
+      // Arc's gas is USDC: what goes into Gateway leaves `keep` in the wallet for the deposit's own two transactions.
+      const walletNow = parseUsdc6((await rail.balances()).wallet);
+      const amount = depositAmount(moved.arrivedUsdc, walletNow, f.keep);
+      if (amount === 0n) {
+        out({ ...summary, arrived: true, gateway: `nothing deposited: the wallet on Arc has ${formatUsdc6(usdc6(walletNow))} USDC, and ${formatUsdc6(usdc6(f.keep))} stays for gas` });
+        break;
+      }
+      const d = await rail.deposit(formatUsdc6(amount));
+      out({ ...summary, arrived: true, gateway: { depositedUsdc: d.amount, tx: d.txHash }, keptForGasUsdc: formatUsdc6(usdc6(f.keep)) });
+      break;
+    }
     case "deposit": {
       if (!arg) throw new Error("usage: deposit <usdc>");
       out(await rail.deposit(arg));
@@ -327,7 +383,7 @@ async function main(): Promise<void> {
       break;
     }
     default:
-      console.error("usage: cra-agent <init|find|think|quote|pay|balance|deposit|withdraw|ledger|policy|proof|verify|selftest> [arg]");
+      console.error("usage: cra-agent <init|find|think|quote|pay|balance|fund|deposit|withdraw|ledger|policy|proof|verify|selftest> [arg]");
       process.exit(2);
   }
   await ledger.close();

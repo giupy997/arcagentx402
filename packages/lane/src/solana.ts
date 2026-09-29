@@ -1,5 +1,5 @@
 /**
- * Solana Lane, second half: USDC a seller earned on Solana, moved to its wallet on Arc.
+ * From Solana: USDC a seller earned there, or an agent holds there, moved to a wallet on Arc.
  *
  * The road is Eco Routes. Eco quotes the move and hands back one Solana instruction for its Portal program:
  * the seller deposits USDC there, and a solver burns it through Circle's CCTP V2 with Arc as the destination
@@ -29,21 +29,15 @@ import {
   type KeyPairSigner,
 } from "@solana/kit";
 
+import { ARC_CCTP_DOMAIN, ARC_CHAIN_ID, arrivalOnArc, ECO_QUOTES, no, SweepRefused, USDC_ARC, usdcOnArc as readUsdcOnArc } from "./common.js";
+
 export const SOLANA_CHAIN_ID = 1399811149;
-export const ARC_CHAIN_ID = 5042;
 export const USDC_SOLANA = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-export const USDC_ARC = "0x3600000000000000000000000000000000000000";
 /** Eco's Portal program on Solana: where the deposit goes. */
 export const ECO_PORTAL = "EcooswwC1NggsckZyF5SeAL9WsgJs3UhPbrqY1apV73F";
-/** Circle's CCTP V2 token messenger on Solana, and Arc's CCTP domain. */
+/** Circle's CCTP V2 token messenger on Solana. */
 export const CCTP_V2_SOLANA = "CCTPV2vPZJS2u2BBsUoscuikbYjnpFmbFsvVuJdgUMQe";
-export const ARC_CCTP_DOMAIN = 26;
 const DEPOSIT_FOR_BURN = createHash("sha256").update("global:deposit_for_burn").digest().subarray(0, 8).toString("hex");
-const ECO_QUOTES = "https://api.eco.com/v1/quotes";
-
-export class SweepRefused extends Error {
-  override readonly name = "SweepRefused";
-}
 
 interface EcoAccount {
   pubkey: string;
@@ -70,9 +64,6 @@ export interface CheckedQuote {
 
 type Q = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-const no = (reason: string): never => {
-  throw new SweepRefused(reason);
-};
 const isEvm = (a: unknown): a is string => typeof a === "string" && /^0x[0-9a-fA-F]{40}$/.test(a);
 
 /** The CCTP V2 burn one of the route's calls makes: amount, destination domain, recipient, fee cap. */
@@ -170,11 +161,7 @@ export function solanaLane(o: LaneOptions = {}) {
     return r.value.reduce((s, a) => s + BigInt((a.account.data as unknown as { parsed: { info: { tokenAmount: { amount: string } } } }).parsed.info.tokenAmount.amount), 0n);
   };
   const solOnSolana = async (owner: string): Promise<bigint> => BigInt((await rpc.getBalance(address(owner)).send()).value);
-  const usdcOnArc = async (owner: string): Promise<bigint> => {
-    const res = await doFetch(arcRpc, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: USDC_ARC, data: `0x70a08231${owner.slice(2).toLowerCase().padStart(64, "0")}` }, "latest"] }), signal: AbortSignal.timeout(15_000) });
-    const d = (await res.json()) as { result?: string };
-    return BigInt(d.result && d.result !== "0x" ? d.result : "0x0");
-  };
+  const usdcOnArc = (owner: string): Promise<bigint> => readUsdcOnArc(arcRpc, owner, doFetch);
   const quote = async (funder: string, recipient: string, amount: bigint): Promise<Q> => {
     const res = await doFetch(ECO_QUOTES, {
       method: "POST",
@@ -249,15 +236,8 @@ export function solanaLane(o: LaneOptions = {}) {
         await new Promise((r) => setTimeout(r, 2000));
       }
       log("confirmed on Solana; waiting for the USDC on Arc");
-      const deadline = sentAt + (opts.waitMs ?? 300_000);
-      let after = before;
-      while (Date.now() < deadline) {
-        after = await usdcOnArc(to).catch(() => after);
-        if (after - before >= checked.minAmountOut) break;
-        await new Promise((r) => setTimeout(r, 3000));
-      }
-      const arrived = after - before >= checked.minAmountOut;
-      return { dryRun: false as const, checked, signature, arrived, arrivedUsdc: after - before, seconds: Math.round((Date.now() - sentAt) / 1000) };
+      const { arrived, grew } = await arrivalOnArc(() => usdcOnArc(to), before, checked.minAmountOut, sentAt + (opts.waitMs ?? 300_000));
+      return { dryRun: false as const, checked, signature, arrived, arrivedUsdc: grew, seconds: Math.round((Date.now() - sentAt) / 1000) };
     },
   };
 }

@@ -37,7 +37,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { btcUsdRate, FileReplayStore, lnbtcFacilitatorClient, lnbtcNetwork, nwcReceiver, readConnection } from "@cra-agent/lightning";
-import { readSolanaSigner, solanaLane, SweepRefused } from "./lane.js";
+import { readSolanaSigner, solanaLane, SweepRefused } from "@cra-agent/lane";
 import { createProxyApp, type LightningSale } from "./proxy.js";
 import { parseSellArgs, parseSweepArgs } from "./sell-args.js";
 

@@ -2,8 +2,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { checkEcoQuote, readBurn, readSolanaSigner, SweepRefused, ARC_CCTP_DOMAIN } from "../src/lane.js";
-import { parseSweepArgs } from "../src/sell-args.js";
+import { ARC_CCTP_DOMAIN, SweepRefused } from "../src/common.js";
+import { checkEcoQuote, readBurn, readSolanaSigner } from "../src/solana.js";
 import quote from "./fixtures/eco-quote-solana-arc.json";
 
 // A real quote from Eco (27 Sep 2026): 1.5 USDC from our Solana wallet to our wallet on Arc.
@@ -62,15 +62,7 @@ describe("checking Eco's quote before anything is signed", () => {
   });
 });
 
-describe("the sweep command", () => {
-  it("reads its options", () => {
-    expect(parseSweepArgs(["--solana-key-file", "/k", "--to", ARC, "--amount", "1.5", "--max-fee", "0.001", "--dry-run"])).toEqual({ solanaKeyFile: "/k", to: ARC, amount: 1_500_000n, maxFee: 1000n, dryRun: true });
-    expect(parseSweepArgs(["--solana-key-file", "/k", "--to", ARC])).toEqual({ solanaKeyFile: "/k", to: ARC, dryRun: false });
-    expect(() => parseSweepArgs(["--to", ARC])).toThrow(/--solana-key-file/);
-    expect(() => parseSweepArgs(["--solana-key-file", "/k", "--to", "26SsHut3dRbK9cWUJcrMfkKn3TKXSFMw61zyqm6tgWjK"])).toThrow(/0x address on Arc/);
-    expect(() => parseSweepArgs(["--solana-key-file", "/k", "--to", ARC, "--amount", "all"])).toThrow(/amount in USDC/);
-  });
-
+describe("a Solana key file", () => {
   it("takes a key as our hex seed or as solana-keygen's array, to the same wallet", async () => {
     const dir = mkdtempSync(join(tmpdir(), "sweep-"));
     const seed = Buffer.alloc(32, 7);
