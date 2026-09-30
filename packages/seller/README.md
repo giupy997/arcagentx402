@@ -28,11 +28,22 @@ A caller who has not paid gets `402 Payment Required` with the price; a caller w
 | `--upstream-header "Name: value"` | Added to requests sent to your API, e.g. its own key. Never sent back to buyers. |
 | `--network`, `--port` | `arc` (default) or `arcTestnet`; port 8402 by default. |
 | `--facilitator cra` | Settle through the CRA facilitator instead of Circle Gateway: browser wallets can then pay you, and it pays the gas. The `--pay-to` wallet registers once, with a signature, at [cra-agent.tech/register](https://cra-agent.tech/register); each wallet gets 200 settlements a day. |
+| `--upto` | Bill by use: each price becomes the most a call can cost, and your API says what a call did cost in an `X-Charge-USD` response header. See below. Needs `--facilitator cra`. |
 | `--list <public-url>` | Once running, add this public https address to the [CRA market](https://cra-agent.tech/market). |
 | `--pay-to-lightning <file>` | Also sell in sats over Lightning, paid to your own node. The file holds a receive-only Nostr Wallet Connect string (in Alby Hub, a connection with the Read Only permissions). See below. |
 | `--lightning-facilitator <url\|cra>` | Have Lightning proofs checked and remembered by this x402 facilitator instead of a file on your machine. `cra` is ours: open to anyone, no registration, free. |
 
 What is for sale is published, free to read, at `/.well-known/x402`. Payments settle through Circle Gateway and add up in the Gateway balance of `--pay-to`; collect them with `cra-agent withdraw <usdc>` from [`@cra-agent/mcp`](https://www.npmjs.com/package/@cra-agent/mcp). [CRA Factory](https://cra-agent.tech/factory#sell) writes the command for you.
+
+### Billed by use
+
+When one call can cost a cent and the next a dime, price by the most a call can cost and charge what it did:
+
+```bash
+npx -y @cra-agent/seller --target https://api.example.com --pay-to 0xYourWallet --price 0.10 --upto --facilitator cra
+```
+
+The buyer signs once for up to $0.10, with no approval transaction and no gas. Your API answers as usual and adds one header saying what the call cost, like `X-Charge-USD: 0.0123`; only that is taken, never more than the ceiling, and the header never reaches the buyer. When it is missing, the whole ceiling is taken: it is the most the buyer agreed to. A call your API fails takes nothing. It runs on Arc through the x402 `upto` scheme, settled by the CRA facilitator for wallets registered at [cra-agent.tech/register](https://cra-agent.tech/register); Solana and Lightning sell set prices, so they stay out of an upto paywall.
 
 ### Moving what you earn on Solana to Arc
 

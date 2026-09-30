@@ -9,6 +9,10 @@
  * What is ours here is the forwarding and the catalogue. Pricing, verification and settlement are
  * the same seller the rest of this package exposes.
  *
+ * With `upto`, a route's price is the most a call can cost: the buyer signs for that ceiling once, the API behind
+ * says what the call did cost in an `X-Charge-USD` response header, and only that is taken (never above the ceiling,
+ * and the whole ceiling when the API says nothing). Settled on Arc by a facilitator that settles upto, like ours.
+ *
  * With a Lightning node the same routes are also for sale in sats: the 402 then carries an `exact` offer on
  * `lnbtc` next to the others, with a fresh invoice from the seller's node bound to the request. That scheme is
  * paid up front: the proof is checked and claimed before the call goes upstream, and the sats stay with the
@@ -17,6 +21,7 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { lnbtcPaywall, paymentNetwork, type BtcUsd, type LnbtcFacilitatorClient, type ReceiverAdapter, type ReplayStore } from "@cra-agent/lightning";
+import { parseUsdc6 } from "@cra-agent/accounting";
 import { createSeller, type SellerConfig, type SettlementEvent } from "./index.js";
 
 export interface PricedPath {
@@ -48,6 +53,11 @@ export interface ProxyOptions {
   readonly facilitatorUrl?: string;
   /** Also sell for bitcoin over Lightning, paid to the seller's own node. */
   readonly lightning?: LightningSale;
+  /**
+   * Bill by use (x402 upto): each route's price becomes its ceiling, and the API behind says what a call cost in an
+   * `X-Charge-USD` response header. Needs `facilitatorUrl`, a facilitator that settles upto on Arc.
+   */
+  readonly upto?: boolean;
   readonly fetch?: typeof fetch;
 }
 
@@ -80,8 +90,12 @@ export interface LightningSettlement {
 const AMOUNT = /^\$?\d{1,6}(\.\d{1,6})?$/;
 /** Headers that belong to one hop, or to the payment, and must not travel upstream. */
 const NOT_FORWARDED = new Set(["host", "connection", "keep-alive", "transfer-encoding", "upgrade", "te", "trailer", "proxy-authorization", "proxy-authenticate", "content-length", "payment-signature", "x-payment", "accept-encoding"]);
-/** Headers of the upstream response that describe its transport, not its content. */
-const NOT_RETURNED = new Set(["connection", "keep-alive", "transfer-encoding", "content-encoding", "content-length"]);
+/**
+ * Headers of the upstream response that describe its transport, not its content, or that speak to the paywall: the
+ * charge an upto call reports, and the settlement override only this process may set, never the API behind it.
+ */
+const NOT_RETURNED = new Set(["connection", "keep-alive", "transfer-encoding", "content-encoding", "content-length", "x-charge-usd", "settlement-overrides"]);
+export const CHARGE_HEADER = "X-Charge-USD";
 const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64");
 
 export function normalisePrice(raw: string): string {
@@ -97,6 +111,18 @@ export function parseRouteFlag(flag: string): PricedPath {
   const pattern = flag.slice(0, eq).trim();
   if (!/^([A-Za-z]+\s+)?\/\S*$/.test(pattern)) throw new Error(`--route "${flag}": the pattern must be a path, optionally after a method`);
   return { pattern, price: normalisePrice(flag.slice(eq + 1)) };
+}
+
+/**
+ * What an upto call takes, in USDC's base units, from the charge the API reported: "0.0123" or "$0.0123", capped at
+ * the route's ceiling. null when it reported nothing usable, which takes the whole ceiling, the most the buyer signed.
+ */
+export function uptoCharge(said: string | null, ceilingUsd: string): bigint | null {
+  const v = said?.trim().replace(/^\$/, "");
+  if (!v || !/^\d{1,9}(\.\d{1,6})?$/.test(v)) return null;
+  const charge = parseUsdc6(v);
+  const ceiling = parseUsdc6(ceilingUsd.replace("$", ""));
+  return charge > ceiling ? ceiling : charge;
 }
 
 function matcher(pattern: string): (method: string, path: string) => boolean {
@@ -117,6 +143,7 @@ export function upstreamUrl(target: string, pathAndQuery: string): string {
 export function createProxyApp(opts: ProxyOptions): Hono {
   if (!/^https?:\/\//i.test(opts.target)) throw new Error("target must be an http(s) URL");
   if (opts.routes.length === 0) throw new Error("nothing to sell: give a price");
+  if (opts.upto && !opts.facilitatorUrl) throw new Error("billing by use needs a facilitator that settles upto on Arc: --facilitator cra");
   const doFetch = opts.fetch ?? fetch;
   const routes = opts.routes.map((r) => ({ ...r, price: normalisePrice(r.price) }));
   const freeMatchers = (opts.free ?? []).map(matcher);
@@ -129,12 +156,14 @@ export function createProxyApp(opts: ProxyOptions): Hono {
     ...(opts.onSettlement ? { onSettlement: opts.onSettlement } : {}),
     ...(opts.facilitatorUrl ? { settlement: "direct" as const, facilitatorUrl: opts.facilitatorUrl } : {}),
   });
-  for (const r of routes) seller.route(r.pattern, r.price, { description: r.description ?? opts.description ?? `${opts.name ?? "API"}: ${r.pattern}`, maxTimeoutSeconds: 120 });
+  // An upto authorization waits for the answer and then for the settlement: it is given longer than an exact one.
+  for (const r of routes) seller.route(r.pattern, r.price, { description: r.description ?? opts.description ?? `${opts.name ?? "API"}: ${r.pattern}`, ...(opts.upto ? { upto: true, maxTimeoutSeconds: 300 } : { maxTimeoutSeconds: 120 }) });
 
   const ln = opts.lightning;
   const sats = ln ? lnbtcPaywall({ receiver: async () => ln.receiver, network: ln.network, ...(ln.facilitator ? { facilitator: ln.facilitator } : {}), ...(ln.replay ? { replay: ln.replay } : {}), rate: ln.rate, ...(ln.minMsat ? { minMsat: ln.minMsat } : {}) }) : null;
-  // The first pattern that matches sets the price, as it does for the other rails.
+  // The first pattern that matches sets the price, as it does for the other rails, and the ceiling of an upto call.
   const priced = routes.map((r) => ({ priceUsd: r.price.replace("$", ""), matches: matcher(r.pattern) }));
+  const priceOf = (method: string, path: string): string | undefined => priced.find((r) => r.matches(method, path))?.priceUsd;
 
   const app = new Hono();
   /** What is for sale here, free to read: directories and agents look for it before paying. */
@@ -149,7 +178,8 @@ export function createProxyApp(opts: ProxyOptions): Hono {
       ...(ln ? { lightning: { network: ln.network, payTo: ln.receiver.pubkey, scheme: "exact", asset: "BTC", pricing: "each route's dollar price in sats at the BTC/USD rate when the 402 is made, rounded up to a whole sat, at least 1", settledBy: ln.facilitator ? ln.facilitator.url : "this server" } } : {}),
       networks: [seller.network, ...(opts.payToSolana ? [opts.network === "arc" ? "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" : "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"] : []), ...(ln ? [ln.network] : [])],
       settlement: opts.facilitatorUrl ? "direct" : "circle-gateway",
-      routes: routes.map((r) => ({ pattern: r.pattern, priceUsd: r.price.replace("$", ""), description: r.description ?? null })),
+      billing: opts.upto ? `upto: each route's price is the most a call costs; the API reports what a call cost in ${CHARGE_HEADER}, and only that is taken` : "exact",
+      routes: routes.map((r) => ({ pattern: r.pattern, ...(opts.upto ? { scheme: "upto", ceilingUsd: r.price.replace("$", "") } : { priceUsd: r.price.replace("$", "") }), description: r.description ?? null })),
       free: [...(opts.free ?? [])],
       poweredBy: "https://cra-agent.tech",
     }),
@@ -168,7 +198,8 @@ export function createProxyApp(opts: ProxyOptions): Hono {
   app.use("*", async (c, next) => {
     if (c.req.path === "/.well-known/x402") return next();
     if (freeMatchers.some((m) => m(c.req.method, c.req.path))) return next();
-    const priceUsd = sats ? priced.find((r) => r.matches(c.req.method, c.req.path))?.priceUsd : undefined;
+    // Sats are a set price: billed by use, the routes are sold on Arc only.
+    const priceUsd = sats && !opts.upto ? priceOf(c.req.method, c.req.path) : undefined;
     if (!sats || !ln || !priceUsd) return paywall(c, next);
     const payment = c.req.header("payment-signature") ?? c.req.header("x-payment");
 
@@ -234,6 +265,13 @@ export function createProxyApp(opts: ProxyOptions): Hono {
     res.headers.forEach((v, k) => {
       if (!NOT_RETURNED.has(k.toLowerCase())) out.set(k, v);
     });
+    if (opts.upto) {
+      // What this call cost, as the API says, capped at the route's ceiling. The paywall reads it, settles it and
+      // takes the header off before the answer goes to the buyer.
+      const ceiling = priceOf(c.req.method, c.req.path);
+      const charge = ceiling ? uptoCharge(res.headers.get(CHARGE_HEADER), ceiling) : null;
+      if (charge !== null) out.set("Settlement-Overrides", JSON.stringify({ amount: charge.toString() }));
+    }
     return new Response(res.body, { status: res.status, headers: out });
   });
   return app;

@@ -18,6 +18,8 @@ export interface SellArgs {
   upstreamHeaders: Record<string, string>;
   facilitatorUrl?: string;
   list?: string;
+  /** Bill by use: each price is a ceiling, and the API reports what a call cost. */
+  upto: boolean;
 }
 
 export function parseSellArgs(argv: readonly string[]): SellArgs {
@@ -25,12 +27,16 @@ export function parseSellArgs(argv: readonly string[]): SellArgs {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === "proxy" && i === 0) continue; // `npx @cra-agent/seller proxy …` reads naturally; the word is optional
+    if (a === "--upto") {
+      many.set("upto", ["yes"]); // the one option that takes no value
+      continue;
+    }
     if (!a.startsWith("--")) throw new Error(`unexpected "${a}"`);
     const eq = a.indexOf("=");
     const [key, value] = eq > 0 && !a.startsWith("--route") && !a.startsWith("--upstream-header") ? [a.slice(2, eq), a.slice(eq + 1)] : [a.slice(2), argv[++i] ?? ""];
     many.set(key, [...(many.get(key) ?? []), value]);
   }
-  const known = ["target", "pay-to", "pay-to-solana", "pay-to-lightning", "lightning-facilitator", "price", "route", "free", "name", "description", "network", "port", "upstream-header", "facilitator", "list"];
+  const known = ["target", "pay-to", "pay-to-solana", "pay-to-lightning", "lightning-facilitator", "price", "route", "free", "name", "description", "network", "port", "upstream-header", "facilitator", "list", "upto"];
   for (const k of many.keys()) if (!known.includes(k)) throw new Error(`unknown option --${k}`);
   const one = (k: string): string | undefined => many.get(k)?.at(-1);
 
@@ -71,7 +77,10 @@ export function parseSellArgs(argv: readonly string[]): SellArgs {
   if (list && !/^https:\/\/\S+$/i.test(list)) throw new Error("--list takes the public https URL buyers will call");
   const name = one("name");
   const description = one("description");
-  return { target, payTo, network, port, routes, free: many.get("free") ?? [], upstreamHeaders, ...(payToSolana ? { payToSolana } : {}), ...(payToLightning ? { payToLightning } : {}), ...(lightningFacilitatorUrl ? { lightningFacilitatorUrl } : {}), ...(name ? { name } : {}), ...(description ? { description } : {}), ...(facilitatorUrl ? { facilitatorUrl } : {}), ...(list ? { list } : {}) };
+  const upto = many.has("upto");
+  if (upto && !facilitatorUrl) throw new Error("--upto needs a facilitator that settles upto on Arc: add --facilitator cra (and register --pay-to at cra-agent.tech/register)");
+  if (upto && (payToSolana || payToLightning)) throw new Error("--upto bills by use on Arc only: Solana and Lightning sell set prices. Leave --pay-to-solana and --pay-to-lightning out, or run them in a second paywall");
+  return { target, payTo, network, port, routes, upto, free: many.get("free") ?? [], upstreamHeaders, ...(payToSolana ? { payToSolana } : {}), ...(payToLightning ? { payToLightning } : {}), ...(lightningFacilitatorUrl ? { lightningFacilitatorUrl } : {}), ...(name ? { name } : {}), ...(description ? { description } : {}), ...(facilitatorUrl ? { facilitatorUrl } : {}), ...(list ? { list } : {}) };
 }
 
 export interface SweepArgs {

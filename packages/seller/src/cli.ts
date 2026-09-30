@@ -16,6 +16,10 @@
  *   --upstream-header "Name: value"   added to requests sent to your API, repeatable (e.g. its own key)
  *   --facilitator <url|cra> settle directly through this x402 facilitator instead of Circle Gateway; "cra" is
  *                           ours: browser wallets can then pay, after --pay-to registers at cra-agent.tech/register
+ *   --upto                  bill by use (x402 upto): each price becomes the most a call costs, and your API says
+ *                           what a call did cost in an X-Charge-USD response header ("0.0123"); only that is taken,
+ *                           never above the ceiling, the whole ceiling when the header is missing. Arc only, with
+ *                           --facilitator cra (or another facilitator that settles upto)
  *   --list <public-url>     once running, add this public URL to the CRA marketplace
  *   --pay-to-lightning <file>  also sell in sats over Lightning, paid to your own node: the file holds
  *                           a receive-only Nostr Wallet Connect string (Alby Hub: a connection with the
@@ -55,6 +59,18 @@ async function checkRegistered(payTo: string, facilitatorUrl: string): Promise<v
   }
 }
 
+/** Billed by use, the facilitator must settle upto on this network: checked before the first buyer, not by them. */
+async function checkUpto(facilitatorUrl: string, network: "arc" | "arcTestnet"): Promise<void> {
+  const caip2 = network === "arc" ? "eip155:5042" : "eip155:5042002";
+  let kinds: Array<{ scheme?: string; network?: string }> = [];
+  try {
+    kinds = ((await (await fetch(`${facilitatorUrl.replace(/\/+$/, "")}/supported`, { signal: AbortSignal.timeout(10_000) })).json()) as { kinds?: typeof kinds }).kinds ?? [];
+  } catch {
+    throw new Error(`${facilitatorUrl} did not answer /supported: start again when it does`);
+  }
+  if (!kinds.some((k) => k.scheme === "upto" && k.network === caip2)) throw new Error(`${facilitatorUrl} does not settle upto on ${caip2}: --upto needs one that does, like --facilitator cra`);
+}
+
 async function addToMarket(url: string): Promise<void> {
   try {
     const res = await fetch(MARKET, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(20_000) });
@@ -85,6 +101,7 @@ async function lightningSale(file: string, facilitatorUrl: string | undefined): 
 async function main(): Promise<void> {
   const a = parseSellArgs(process.argv.slice(2));
   const lightning = a.payToLightning ? await lightningSale(a.payToLightning, a.lightningFacilitatorUrl) : undefined;
+  if (a.upto) await checkUpto(a.facilitatorUrl!, a.network);
   const app = createProxyApp({
     target: a.target,
     payTo: a.payTo,
@@ -97,6 +114,7 @@ async function main(): Promise<void> {
     ...(a.description ? { description: a.description } : {}),
     ...(a.facilitatorUrl ? { facilitatorUrl: a.facilitatorUrl } : {}),
     ...(lightning ? { lightning } : {}),
+    ...(a.upto ? { upto: true } : {}),
     onSettlement: (e) => console.log(`${new Date().toISOString()} ${e.outcome} ${(Number(e.amount) / 1e6).toFixed(6)} USDC from ${e.payer ?? "unknown"}${e.transaction ? ` (${e.transaction})` : ""}${e.reason ? `: ${e.reason}` : ""}`),
   });
   // Behind a TLS proxy the request arrives as http, and the 402 would advertise an http URL buyers cannot use.
@@ -114,7 +132,7 @@ async function main(): Promise<void> {
   };
   serve({ fetch: fetchWithRealScheme, port: a.port }, () => {
     console.log(`Selling ${a.target} on http://localhost:${a.port}`);
-    for (const r of a.routes) console.log(`  ${r.pattern.padEnd(28)} ${r.price} per call`);
+    for (const r of a.routes) console.log(`  ${r.pattern.padEnd(28)} ${a.upto ? `up to ${r.price} a call, billed by what your API reports in X-Charge-USD` : `${r.price} per call`}`);
     for (const f of a.free) console.log(`  ${f.padEnd(28)} free`);
     if (a.payToSolana) console.log(`Also for sale on Solana, paid to ${a.payToSolana} there.`);
     if (lightning) console.log(`Also for sale in sats over Lightning, paid to your node ${lightning.receiver.pubkey}. Proofs are checked and remembered ${lightning.facilitator ? `by ${lightning.facilitator.url}` : `here, in ${(lightning.replay as FileReplayStore).path}`}.`);

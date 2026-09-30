@@ -7,6 +7,8 @@
  */
 export type Client = "claude-desktop" | "claude-code" | "cursor" | "terminal";
 export type Network = "arc" | "arcTestnet";
+/** Where the visitor's USDC is now: the agent pays on Arc, and `cra-agent fund` brings it over from Base or Solana. */
+export type FundFrom = "arc" | "base" | "solana";
 
 export interface FactoryInput {
   readonly client: Client;
@@ -21,6 +23,8 @@ export interface FactoryInput {
   readonly allow: readonly string[];
   /** Absolute path of the key file on the visitor's machine. */
   readonly keyFile: string;
+  /** Where the money comes from. Arc when absent. */
+  readonly fundFrom?: FundFrom;
 }
 
 export interface Preset {
@@ -114,6 +118,40 @@ export function oneCommand(i: FactoryInput, defaultKeyFile: string): Step {
   };
 }
 
+/** What the one-line setup cannot do: putting money where the agent pays from, from wherever it is now. */
+export function afterInit(i: FactoryInput): string {
+  const from = i.fundFrom ?? "arc";
+  if (from === "base") return "Then two things the command cannot do for you: send a few dollars of USDC on Base to the address it prints, the same address on Base, with a little ETH on Base for gas, and run the fund line shown in the steps below. After that, ask your AI to buy something.";
+  if (from === "solana") return "Then two things the command cannot do for you: have USDC and a little SOL in a Solana wallet whose key is in a file only you can read, and run the fund line shown in the steps below. After that, ask your AI to buy something.";
+  return "Then two things the command cannot do for you: send a few dollars of USDC on Arc to the address it prints, and run the deposit line it shows. After that, ask your AI to buy something.";
+}
+
+/** The money step, from where the visitor's USDC is. Moving it across chains is theirs to run, never the AI's. */
+function moneyStep(i: FactoryInput): Step {
+  const env = shellEnv(i);
+  if (i.fundFrom === "base")
+    return {
+      title: "Give it a little money, from Base",
+      explain: "The first command prints the agent's address, which is the same on Base. Send a few dollars of USDC on Base to it, with a little ETH on Base for gas: about a cent covers the two transactions. The second line checks the route without signing anything. The third brings one dollar to Arc through Eco and Circle's CCTP, in seconds, and puts it in Circle Gateway, where payments are made from. Keep it small: the agent can never spend more than what you put there.",
+      code: `${env} cra-agent balance
+${env} cra-agent fund 1 --from base --dry-run
+${env} cra-agent fund 1 --from base`,
+    };
+  if (i.fundFrom === "solana")
+    return {
+      title: "Give it a little money, from Solana",
+      explain: "Solana has its own keys: point the command at the key file of a Solana wallet that holds a few dollars of USDC and a little SOL for the fee, readable only by you (solana-keygen's JSON works). The first line checks the route and simulates it without signing anything. The second brings one dollar to the agent on Arc through Eco and Circle's CCTP, in seconds, and puts it in Circle Gateway, where payments are made from.",
+      code: `${env} cra-agent fund 1 --from solana --solana-key-file /full/path/to/solana.json --dry-run
+${env} cra-agent fund 1 --from solana --solana-key-file /full/path/to/solana.json`,
+    };
+  return {
+    title: "Give it a little money",
+    explain: `The first command prints the agent's address. Send a few dollars of USDC on ${i.network === "arc" ? "Arc mainnet" : "Arc testnet"} to that address, from your own wallet. The second command moves one dollar of it into Circle Gateway, which is where payments are made from. Keep it small: the agent can never spend more than what you put there.`,
+    code: `${env} cra-agent balance
+${env} cra-agent deposit 1`,
+  };
+}
+
 export function steps(i: FactoryInput): Step[] {
   const dir = i.keyFile.replace(/[/\\][^/\\]*$/, "");
   const firstUrl = "https://api.cra-agent.tech/v1/paid/market/prices";
@@ -125,11 +163,7 @@ export function steps(i: FactoryInput): Step[] {
       code: `mkdir -p '${dir}' && { test -e '${i.keyFile}' && echo "there is already a key here, keeping it" || { (printf 0x; openssl rand -hex 32) > '${i.keyFile}' && chmod 600 '${i.keyFile}'; }; }`,
     },
     clientStep(i),
-    {
-      title: "Give it a little money",
-      explain: `The first command prints the agent's address. Send a few dollars of USDC on ${i.network === "arc" ? "Arc mainnet" : "Arc testnet"} to that address, from your own wallet. The second command moves one dollar of it into Circle Gateway, which is where payments are made from. Keep it small: the agent can never spend more than what you put there.`,
-      code: `${shellEnv(i)} cra-agent balance\n${shellEnv(i)} cra-agent deposit 1`,
-    },
+    moneyStep(i),
     i.client === "terminal"
       ? { title: "Make the first payment", explain: "The first line searches what is for sale on Arc and says which results your limits allow. The second reads the price without paying. The third pays and prints the data with its receipt.", code: `cra-agent find bitcoin price\ncra-agent quote '${firstUrl}'\ncra-agent pay '${firstUrl}'` }
       : { title: "Give it a first job", explain: "Paste this to your AI. It searches what is for sale on Arc, picks what your limits allow, checks the price, pays, and shows you the receipt. Nobody tells it the address: it finds it.", code: "Use the cra-agent tools. Find the price of Bitcoin on Arc: search for it, pick the cheapest result my spending policy allows, quote it, pay for it, then tell me the price and show me the receipt." },
@@ -159,7 +193,12 @@ export interface SellInput {
   readonly publicUrl: string;
   /** Settle through our facilitator, so browser wallets can pay. Needs the wallet registered. */
   readonly browserWallets: boolean;
+  /** Bill by use (x402 upto): the price is the most a call costs, and the API reports what each one did. */
+  readonly upto?: boolean;
 }
+
+/** Settled directly by our facilitator, rather than batched by Circle Gateway: browser wallets, or billing by use. */
+const settlesDirect = (i: SellInput): boolean => i.browserWallets || i.upto === true;
 
 export function sellProblems(i: SellInput): string[] {
   const out: string[] = [];
@@ -173,6 +212,7 @@ export function sellProblems(i: SellInput): string[] {
   if (/['"`$\\]/.test(i.name)) out.push("The name cannot contain quotes, backticks, dollar signs or backslashes.");
   for (const f of i.free) if (!/^\/[^\s'"`$]*$/.test(f)) out.push(`\u201c${f}\u201d is not a path. Write it like /health.`);
   if (i.publicUrl && !/^https:\/\/[^\s'"`$]+$/i.test(i.publicUrl)) out.push("The public address must start with https://. Leave it empty if you do not have one yet.");
+  if (i.upto && (i.payToSolana || i.lightningFile)) out.push("Billing by use runs on Arc only: Solana and Lightning sell set prices. Leave the Solana address and the Lightning file empty, or untick billing by use.");
   return out;
 }
 
@@ -185,11 +225,12 @@ export function sellCommand(i: SellInput): Step {
   if (i.name) parts.push(`--name '${i.name}'`);
   for (const f of i.free) parts.push(`--free '${f}'`);
   if (i.network !== "arc") parts.push(`--network ${i.network}`);
-  if (i.browserWallets) parts.push("--facilitator cra");
+  if (i.upto) parts.push("--upto");
+  if (settlesDirect(i)) parts.push("--facilitator cra");
   if (i.publicUrl) parts.push(`--list '${i.publicUrl}'`);
   return {
     title: "Run this where your API runs",
-    explain: `Needs Node 20 or newer. It starts a small server on port 8402 that stands in front of your API: a caller who has not paid gets the price, a caller who has paid gets your API's answer, untouched. Your code does not change, and this process never holds a key. A call your API fails is not charged${i.lightningFile ? " in USDC; in sats the payment comes first, as Lightning's x402 scheme has it, so a failed call is still paid" : ""}.${i.lightningFile ? " With Lightning it reaches your node before it starts, and stops if the connection is wrong." : ""}${i.publicUrl ? " Once it is up, it adds your public address to the market." : ""}`,
+    explain: `Needs Node 20 or newer. It starts a small server on port 8402 that stands in front of your API: a caller who has not paid gets the price${i.upto ? ", as the most a call can cost" : ""}, a caller who has paid gets your API's answer, untouched.${i.upto ? " Your API says what each call cost in an X-Charge-USD header, and only that is taken." : ""} Your code does not change, and this process never holds a key. A call your API fails is not charged${i.lightningFile ? " in USDC; in sats the payment comes first, as Lightning's x402 scheme has it, so a failed call is still paid" : ""}.${i.lightningFile ? " With Lightning it reaches your node before it starts, and stops if the connection is wrong." : ""}${i.publicUrl ? " Once it is up, it adds your public address to the market." : ""}`,
     code: parts.join(" "),
   };
 }
@@ -197,9 +238,12 @@ export function sellCommand(i: SellInput): Step {
 export function sellInWords(i: SellInput): string {
   const free = i.free.length ? ` These paths stay free: ${i.free.join(", ")}.` : "";
   const browser = i.browserWallets ? " Browser wallets can pay too, settled by the CRA facilitator, once the wallet is registered." : "";
+  if (i.upto)
+    return `Every call to ${i.name || "your API"} will cost what your API says it cost, up to $${i.price}, paid in USDC on ${i.network === "arc" ? "Arc mainnet" : "Arc testnet"} to ${i.payTo.slice(0, 6)}\u2026${i.payTo.slice(-4)}.${free} The buyer signs once for the $${i.price} ceiling, with no approval transaction and no gas, and your API reports the real cost in an X-Charge-USD header: without it, the whole ceiling is taken. Settled by the CRA facilitator straight to your wallet, once it is registered.`;
   const solana = i.payToSolana ? ` Buyers on Solana can pay too, in USDC on Solana, to ${i.payToSolana.slice(0, 4)}\u2026${i.payToSolana.slice(-4)}.` : "";
   const sats = i.lightningFile ? " Buyers with bitcoin can pay in sats over Lightning, straight to your node: the same price in dollars, turned into sats at the rate of the moment, at least 1 sat." : "";
-  return `Every call to ${i.name || "your API"} will cost $${i.price}, paid in USDC on ${i.network === "arc" ? "Arc mainnet" : "Arc testnet"} to ${i.payTo.slice(0, 6)}\u2026${i.payTo.slice(-4)}.${free}${browser}${solana}${sats} Buyers are AI agents (ours or any x402 client). The money lands in the Circle Gateway balance of that wallet: you collect it with one command, shown below.`;
+  const lands = settlesDirect(i) ? "Each payment lands in that wallet directly, as its own transaction on Arc." : "The money lands in the Circle Gateway balance of that wallet: you collect it with one command, shown below.";
+  return `Every call to ${i.name || "your API"} will cost $${i.price}, paid in USDC on ${i.network === "arc" ? "Arc mainnet" : "Arc testnet"} to ${i.payTo.slice(0, 6)}\u2026${i.payTo.slice(-4)}.${free}${browser}${solana}${sats} Buyers are AI agents (ours or any x402 client). ${lands}`;
 }
 
 export function sellNextSteps(i: SellInput): Step[] {
@@ -211,7 +255,14 @@ export function sellNextSteps(i: SellInput): Step[] {
           code: `install -m 600 /dev/null '${i.lightningFile}'\nnano '${i.lightningFile}'`,
         }]
       : []),
-    ...(i.browserWallets
+    ...(i.upto
+      ? [{
+          title: "Have your API say what each call cost",
+          explain: "When your API has done the work, it adds one header to its answer: the call's cost in dollars. The paywall takes that, never more than your price, and removes the header before the answer reaches the buyer. Without it the whole price is taken, since that is what the buyer agreed to at most.",
+          code: `// Node, Express\nres.set("X-Charge-USD", cost.toFixed(6));\n\n# Python, FastAPI\nresponse.headers["X-Charge-USD"] = f"{cost:.6f}"`,
+        }]
+      : []),
+    ...(settlesDirect(i)
       ? [{ title: "Register the wallet that gets paid", explain: "Once, with the wallet you gave as --pay-to: connect it on the page below and sign a message. No transaction, nothing moves. Until it is registered, the facilitator refuses payments to it and the command tells you so at start.", code: "https://cra-agent.tech/register" }]
       : []),
     {
@@ -222,8 +273,8 @@ export function sellNextSteps(i: SellInput): Step[] {
     },
     {
       title: "Check it as a buyer would",
-      explain: "The first line shows what is for sale. The second must answer 402 Payment Required: that is the price tag. If you installed the agent, the third pays for a call and shows the receipt.",
-      code: `curl ${i.publicUrl || "https://pay.example.com"}/.well-known/x402\ncurl -i ${i.publicUrl || "https://pay.example.com"}/\ncra-agent pay '${i.publicUrl || "https://pay.example.com"}/'`,
+      explain: `The first line shows what is for sale. The second must answer 402 Payment Required: that is the price tag. If you installed the agent, the third pays for a call and shows the receipt.${i.upto ? " The agent's policy is checked against the ceiling, since all of it could be taken: the line gives it room for this one call." : ""}`,
+      code: `curl ${i.publicUrl || "https://pay.example.com"}/.well-known/x402\ncurl -i ${i.publicUrl || "https://pay.example.com"}/\n${i.upto ? `CRA_POLICY='per_payment=${i.price}' ` : ""}cra-agent pay '${i.publicUrl || "https://pay.example.com"}/'`,
     },
     ...(i.payToSolana
       ? [{
@@ -232,7 +283,13 @@ export function sellNextSteps(i: SellInput): Step[] {
           code: `npx -y @cra-agent/seller sweep --solana-key-file /full/path/to/solana.key --to ${i.payTo} --dry-run\nnpx -y @cra-agent/seller sweep --solana-key-file /full/path/to/solana.key --to ${i.payTo}`,
         }]
       : []),
-    {
+    settlesDirect(i)
+      ? {
+          title: "See what you earned",
+          explain: "Settled directly by the CRA facilitator, each payment arrives in your wallet on Arc as its own transaction: there is nothing to collect and no key to use. Every payment shows on the explorer, on your wallet's page.",
+          code: `${i.network === "arc" ? "https://explorer.arc.io" : "https://testnet.arcscan.app"}/address/${i.payTo}`,
+        }
+      : {
       title: "Collect what you earned",
       explain: "Payments are batched by Circle Gateway, so they add up in the Gateway balance of your wallet instead of arriving one by one. The first line shows that balance, the second moves an amount back to the wallet itself. Both need the key of that wallet in a file on your machine, readable only by you, which is why a wallet made for this is better than your main one. Circle may take a fee on a withdrawal: the command refuses to pay more than 5 cents unless you tell it otherwise.",
       code: `npm i -g @cra-agent/mcp\nCRA_NETWORK=${i.network} CRA_KEY_FILE=/full/path/to/seller.key cra-agent balance\nCRA_NETWORK=${i.network} CRA_KEY_FILE=/full/path/to/seller.key cra-agent withdraw 1`,

@@ -2,7 +2,7 @@
  * CRA Factory, the page: four questions in, the steps to run a paying agent out. All of it happens
  * in the browser. The logic, and what it promises about keys, is in factory-config.ts.
  */
-import { hostOf, inWords, oneCommand, PRESETS, problems, sellCommand, sellInWords, sellNextSteps, sellProblems, steps, type SellInput, type Client, type FactoryInput, type Network } from "./factory-config.js";
+import { afterInit, hostOf, inWords, oneCommand, PRESETS, problems, sellCommand, sellInWords, sellNextSteps, sellProblems, steps, type SellInput, type Client, type FactoryInput, type FundFrom, type Network } from "./factory-config.js";
 import { initChrome } from "./menu.js";
 
 initChrome();
@@ -21,8 +21,15 @@ const NETWORKS: Array<{ id: Network; label: string; explain: string }> = [
   { id: "arcTestnet", label: "Arc testnet", explain: "Play money, for trying things out." },
 ];
 
+const FUNDS: Array<{ id: FundFrom; label: string; explain: string }> = [
+  { id: "arc", label: "Already on Arc", explain: "Send it to the agent and deposit it." },
+  { id: "base", label: "On Base", explain: "Moved to Arc in seconds. Needs a little ETH for gas." },
+  { id: "solana", label: "On Solana", explain: "Moved to Arc in seconds, from a Solana wallet's key file." },
+];
+
 let client: Client = "claude-desktop";
 let network: Network = "arc";
+let fundFrom: FundFrom = "arc";
 
 /** A row of mutually exclusive buttons. Returns a function that marks one as chosen. */
 function choices<T extends string>(box: HTMLElement, items: Array<{ id: T; label: string; explain: string }>, pick: (id: T) => void): (id: T | null) => void {
@@ -60,6 +67,7 @@ function read(): FactoryInput {
     perMinute: rate === "" ? null : Number(rate),
     allow: [...new Set($<HTMLTextAreaElement>("f-allow").value.split(/[\n,]+/).map(hostOf).filter(Boolean))],
     keyFile: input("f-key").value.trim(),
+    fundFrom,
   };
 }
 
@@ -97,7 +105,7 @@ function render(): void {
   after.className = "chart-card wide";
   const afterText = document.createElement("p");
   afterText.className = "sub";
-  afterText.textContent = "Then two things the command cannot do for you: send a few dollars of USDC on Arc to the address it prints, and run the deposit line it shows. After that, ask your AI to buy something.";
+  afterText.textContent = afterInit(i);
   after.appendChild(afterText);
   out.appendChild(after);
   const byHand = document.createElement("details");
@@ -140,6 +148,7 @@ function stepCard(prefix: string, s: { title: string; explain: string; code: str
 
 const markClient = choices($("clients"), CLIENTS, (id) => { client = id; markClient(id); render(); });
 const markNetwork = choices($("networks"), NETWORKS, (id) => { network = id; markNetwork(id); render(); });
+const markFund = choices($("funds"), FUNDS, (id) => { fundFrom = id; markFund(id); render(); });
 const markPreset = choices($("presets"), PRESETS.map((p) => ({ id: p.id, label: p.label, explain: p.explain })), (id) => {
   const p = PRESETS.find((x) => x.id === id)!;
   input("f-daily").value = p.values.daily;
@@ -160,6 +169,7 @@ for (const id of ["f-daily", "f-seller", "f-payment", "f-rate", "f-allow", "f-ke
 }
 markClient(client);
 markNetwork(network);
+markFund(fundFrom);
 $("presets").querySelector<HTMLButtonElement>("button")?.click();
 
 /* ------------------------------------------------------------------ selling */
@@ -179,6 +189,7 @@ function readSell(): SellInput {
     network: sellNetwork,
     publicUrl: input("s-public").value.trim().replace(/\/+$/, ""),
     browserWallets: input("s-browser").checked,
+    upto: input("s-upto").checked,
   };
 }
 
@@ -210,6 +221,7 @@ function renderSell(): void {
 const markSellNetwork = choices($("s-networks"), NETWORKS, (id) => { sellNetwork = id; markSellNetwork(id); renderSell(); });
 markSellNetwork(sellNetwork);
 $("s-browser").addEventListener("change", renderSell);
+$("s-upto").addEventListener("change", renderSell);
 $("s-lnfac").addEventListener("change", renderSell);
 for (const id of ["s-target", "s-payto", "s-solana", "s-lightning", "s-price", "s-name", "s-free", "s-public"]) $(id).addEventListener("input", renderSell);
 

