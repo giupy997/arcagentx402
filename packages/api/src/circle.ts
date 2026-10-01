@@ -262,15 +262,26 @@ export function circleItems(entries: readonly unknown[], network: string, now: n
   });
 }
 
-/** Every entry Circle lists as payable on this network, page by page. */
-export async function fetchCircleCatalogue(network: string, opts: { url?: string; fetchImpl?: typeof fetch } = {}): Promise<unknown[]> {
+/**
+ * Every entry Circle lists as payable on this network, page by page: a short pause between pages, and a page
+ * Circle answers 429 to is asked again after the wait it names (Retry-After), twice at most.
+ */
+export async function fetchCircleCatalogue(network: string, opts: { url?: string; fetchImpl?: typeof fetch; pauseMs?: number; sleep?: (ms: number) => Promise<void> } = {}): Promise<unknown[]> {
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const entries: unknown[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {
+    if (page > 0) await sleep(opts.pauseMs ?? 300);
     const u = new URL(opts.url ?? CIRCLE_DISCOVERY);
     u.searchParams.set("network", network);
     u.searchParams.set("limit", String(PAGE));
     u.searchParams.set("offset", String(page * PAGE));
-    const res = await (opts.fetchImpl ?? fetch)(u, { headers: { accept: "application/json", "user-agent": "cra-agent (+https://cra-agent.tech)" }, signal: AbortSignal.timeout(20_000) });
+    let res: Response;
+    for (let attempt = 1; ; attempt++) {
+      res = await (opts.fetchImpl ?? fetch)(u, { headers: { accept: "application/json", "user-agent": "cra-agent (+https://cra-agent.tech)" }, signal: AbortSignal.timeout(20_000) });
+      if (res.status !== 429 || attempt > 2) break;
+      const after = Number(res.headers.get("retry-after"));
+      await sleep(Number.isFinite(after) && after > 0 ? Math.min(after, 30) * 1000 : 2000 * attempt);
+    }
     if (!res.ok) throw new Error(`Circle's catalogue answered ${res.status}`);
     const doc = (await res.json()) as { items?: unknown; pagination?: { total?: unknown } };
     const items = Array.isArray(doc.items) ? doc.items : [];
@@ -281,17 +292,25 @@ export async function fetchCircleCatalogue(network: string, opts: { url?: string
   return entries;
 }
 
+/** Where the last good copy is kept, so a restart begins with it instead of with nothing. */
+export interface CatalogueStore {
+  load(): Promise<{ entries: unknown[]; readAt: number } | null>;
+  save(entries: unknown[], readAt: number): Promise<void>;
+}
+
 export interface CircleCatalogue {
-  /** The last copy read. Empty until the first read succeeds. */
+  /** The last copy read. Empty until the first read succeeds, or until a saved copy is restored. */
   items(): readonly SearchItem[];
   status(): { count: number; readAt: number | null; error: string | null };
   /** Read the catalogue again. False when it could not be read; the last copy is kept. */
   refresh(): Promise<boolean>;
-  /** Read it now and every hour after, or again in five minutes when a read fails. */
+  /** Take the saved copy, when there is one and nothing has been read yet. */
+  restore(): Promise<boolean>;
+  /** Restore the saved copy, then read now and every hour after, or again in five minutes when a read fails. */
   start(): void;
 }
 
-export function circleCatalogue(opts: { network: string; url?: string; fetchImpl?: typeof fetch; log?: Logger; everyMs?: number; retryMs?: number; now?: () => number }): CircleCatalogue {
+export function circleCatalogue(opts: { network: string; url?: string; fetchImpl?: typeof fetch; log?: Logger; everyMs?: number; retryMs?: number; now?: () => number; store?: CatalogueStore; sleep?: (ms: number) => Promise<void> }): CircleCatalogue {
   const now = opts.now ?? Date.now;
   let items: readonly SearchItem[] = [];
   let readAt: number | null = null;
@@ -300,7 +319,7 @@ export function circleCatalogue(opts: { network: string; url?: string; fetchImpl
 
   const read = async (): Promise<boolean> => {
     try {
-      const entries = await fetchCircleCatalogue(opts.network, { ...(opts.url ? { url: opts.url } : {}), ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}) });
+      const entries = await fetchCircleCatalogue(opts.network, { ...(opts.url ? { url: opts.url } : {}), ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}), ...(opts.sleep ? { sleep: opts.sleep } : {}) });
       const next = circleItems(entries, opts.network, now());
       // A list of hundreds that comes back empty is more likely a hiccup on their side than the end of it.
       if (next.length === 0 && items.length > 0) throw new Error("Circle's catalogue came back empty");
@@ -308,6 +327,7 @@ export function circleCatalogue(opts: { network: string; url?: string; fetchImpl
       readAt = now();
       error = null;
       opts.log?.info({ entries: entries.length, kept: next.length }, "circle catalogue read");
+      if (next.length > 0) await opts.store?.save(entries, readAt).catch((err: unknown) => opts.log?.warn({ err: (err as Error).message }, "circle catalogue not saved"));
       return true;
     } catch (err) {
       error = (err as Error).message.slice(0, 200);
@@ -322,16 +342,28 @@ export function circleCatalogue(opts: { network: string; url?: string; fetchImpl
     return running;
   };
 
+  const restore = async (): Promise<boolean> => {
+    if (!opts.store || readAt !== null) return false;
+    const saved = await opts.store.load().catch(() => null);
+    if (!saved || readAt !== null) return false;
+    // Entries are kept as Circle sent them, so the week-old ones still drop out by today's date.
+    items = circleItems(saved.entries, opts.network, now());
+    readAt = saved.readAt;
+    opts.log?.info({ kept: items.length, readAt: new Date(saved.readAt).toISOString() }, "circle catalogue restored from the last copy");
+    return items.length > 0;
+  };
+
   return {
     items: () => items,
     status: () => ({ count: items.length, readAt, error }),
     refresh,
+    restore,
     start() {
       const loop = async (): Promise<void> => {
         const ok = await refresh();
         setTimeout(() => void loop(), ok ? (opts.everyMs ?? 3_600_000) : (opts.retryMs ?? 300_000)).unref();
       };
-      void loop();
+      void restore().finally(() => void loop());
     },
   };
 }

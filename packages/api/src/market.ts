@@ -9,7 +9,7 @@
  */
 import type { Context, Hono } from "hono";
 import type { Logger } from "pino";
-import { CIRCLE_DISCOVERY, circleCatalogue, type CircleCatalogue } from "./circle.js";
+import { CIRCLE_DISCOVERY, circleCatalogue, type CatalogueStore, type CircleCatalogue } from "./circle.js";
 import type { Db } from "./db.js";
 import { directPriceOf } from "./paid.js";
 import { PAID_ROUTES } from "./routes.js";
@@ -174,12 +174,40 @@ const usd = (units: string): string => (Number(units) / 1e6).toFixed(6).replace(
  * Circle's catalogue is read on mainnet unless CIRCLE_CATALOGUE is "off"; CIRCLE_CATALOGUE_URL points
  * it at another copy of the discovery API. Tests pass their own.
  */
-function defaultCircle(network: string, caip2: string, log: Logger): CircleCatalogue | null {
+function defaultCircle(network: string, caip2: string, log: Logger, db: Db): CircleCatalogue | null {
   const setting = process.env.CIRCLE_CATALOGUE ?? (network === "mainnet" ? "on" : "off");
   if (setting === "off") return null;
-  const circle = circleCatalogue({ network: caip2, url: process.env.CIRCLE_CATALOGUE_URL ?? CIRCLE_DISCOVERY, log });
+  const circle = circleCatalogue({ network: caip2, url: process.env.CIRCLE_CATALOGUE_URL ?? CIRCLE_DISCOVERY, log, store: pgCatalogueStore(db, `circle-catalogue:${caip2}`, log) });
   circle.start();
   return circle;
+}
+
+/**
+ * The last good copy of a catalogue, kept in Postgres: a restart that meets a 429 starts from it instead of from
+ * nothing. The table is made here when missing; without the right to make it, nothing is kept and nothing breaks.
+ */
+export function pgCatalogueStore(db: Db, key: string, log?: Logger): CatalogueStore {
+  let ready: Promise<boolean> | null = null;
+  const table = (): Promise<boolean> =>
+    (ready ??= db
+      .query("CREATE TABLE IF NOT EXISTS api_cache (key text PRIMARY KEY, value jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())")
+      .then(() => true)
+      .catch((err: unknown) => {
+        log?.warn({ err: (err as Error).message }, "api_cache table not available: catalogues are not kept across restarts");
+        return false;
+      }));
+  return {
+    async load() {
+      if (!(await table())) return null;
+      const r = await db.query<{ value: { entries: unknown[] }; ms: string }>("SELECT value, (extract(epoch FROM updated_at) * 1000)::bigint AS ms FROM api_cache WHERE key = $1", [key]);
+      const row = r.rows[0];
+      return row && Array.isArray(row.value?.entries) ? { entries: row.value.entries, readAt: Number(row.ms) } : null;
+    },
+    async save(entries, readAt) {
+      if (!(await table())) return;
+      await db.query("INSERT INTO api_cache (key, value, updated_at) VALUES ($1, $2, to_timestamp($3 / 1000.0)) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at", [key, JSON.stringify({ entries }), readAt]);
+    },
+  };
 }
 
 /** Everything payable on Arc that search covers, each source once: ours, the market, Circle's catalogue. */
@@ -195,7 +223,7 @@ const NETWORK_ALIASES: Record<string, string> = { arc: "eip155:5042", base: "eip
 
 export function mountMarket(app: Hono, db: Db, network: string, log: Logger, opts: { circle?: CircleCatalogue | null; ourNetworks?: readonly string[]; ourPlainNetworks?: readonly string[] } = {}): { circle: CircleCatalogue | null; catalogue: (origin: string) => Promise<Catalogue> } {
   const caip2 = network === "mainnet" ? "eip155:5042" : "eip155:5042002";
-  const circle = opts.circle === undefined ? defaultCircle(network, caip2, log) : opts.circle;
+  const circle = opts.circle === undefined ? defaultCircle(network, caip2, log, db) : opts.circle;
   const upsert = (p: Probe): Promise<unknown> =>
     db.query(
       `INSERT INTO market_listings (url, host, name, description, pay_to, network, amount_usdc6, rail, routes, networks, category, tags)

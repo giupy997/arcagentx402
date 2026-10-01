@@ -216,6 +216,40 @@ describe("reading the catalogue from Circle", () => {
     expect(catalogue.items()).toHaveLength(3);
   });
 
+  it("asks a page again after a 429, waiting what Circle names, and gives up after three tries", async () => {
+    const waits: number[] = [];
+    const sleep = async (ms: number) => void waits.push(ms);
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls++;
+      if (calls === 1) return new Response("slow down", { status: 429, headers: { "retry-after": "3" } });
+      if (calls === 2) return new Response("slow down", { status: 429 });
+      return new Response(JSON.stringify({ items: pageOf(2, 0), pagination: { total: 2 } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    expect(await fetchCircleCatalogue(ARC, { fetchImpl, sleep })).toHaveLength(2);
+    expect(waits).toEqual([3000, 4000]);
+    const always429 = (async () => new Response("no", { status: 429 })) as unknown as typeof fetch;
+    await expect(fetchCircleCatalogue(ARC, { fetchImpl: always429, sleep })).rejects.toThrow(/429/);
+  });
+
+  it("starts from the last copy kept, and keeps every good read for the next start", async () => {
+    const saved: Array<{ entries: unknown[]; readAt: number }> = [];
+    const store = { load: async () => ({ entries: pageOf(4, 0), readAt: NOW - 3_600_000 }), save: async (entries: unknown[], readAt: number) => void saved.push({ entries, readAt }) };
+    const down = (async () => new Response("no", { status: 429 })) as unknown as typeof fetch;
+    const restarted = circleCatalogue({ network: ARC, fetchImpl: down, now: () => NOW, store, sleep: async () => {} });
+    expect(await restarted.restore()).toBe(true);
+    expect(restarted.status()).toMatchObject({ count: 4, readAt: NOW - 3_600_000 });
+    expect(await restarted.refresh()).toBe(false);
+    expect(restarted.items()).toHaveLength(4);
+    const up = (async () => new Response(JSON.stringify({ items: pageOf(2, 0), pagination: { total: 2 } }), { status: 200 })) as unknown as typeof fetch;
+    const fresh = circleCatalogue({ network: ARC, fetchImpl: up, now: () => NOW, store });
+    expect(await fresh.refresh()).toBe(true);
+    expect(saved).toEqual([{ entries: pageOf(2, 0), readAt: NOW }]);
+    // A copy read now is newer than anything kept: restoring after it changes nothing.
+    expect(await fresh.restore()).toBe(false);
+    expect(fresh.items()).toHaveLength(2);
+  });
+
   it("reads once when asked twice at the same time", async () => {
     let reads = 0;
     const fetchImpl = (async () => {
