@@ -19,6 +19,11 @@ export function directPriceOf(price: string): string {
   return formatUsdc6(compareUsdc6(asked, floor) < 0 ? floor : asked);
 }
 
+/** A query the route takes, from its parameters' examples: the catalogue checks one against the schema, required fields first. */
+export function inputExample(params: readonly QueryParam[]): Record<string, unknown> {
+  return Object.fromEntries(params.filter((p) => p.example !== undefined).map((p) => [p.name, p.example]));
+}
+
 /** The query a route takes, as JSON Schema, for the discovery catalogue. */
 function querySchema(params: readonly QueryParam[]): Record<string, unknown> {
   return {
@@ -85,7 +90,7 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger,
     seller.route(`GET ${r.path}`, r.price, {
       description: r.description,
       ...(r.preview === undefined ? {} : { preview: r.preview }),
-      ...(r.params ? { inputSchema: querySchema(r.params) } : {}),
+      ...(r.params ? { inputSchema: querySchema(r.params), inputExample: inputExample(r.params) } : {}),
     });
   }
   app.use("/v1/paid/*", seller.middleware());
