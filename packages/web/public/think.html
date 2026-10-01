@@ -143,23 +143,28 @@
   </section>
 
   <section class="chart-card wide t-yours" id="hire">
-    <div class="head"><div><h2>Hire it, and pay what it spends</h2><div class="sub">Send it a question over x402 <code>upto</code>: you sign once for up to $0.10, it pays for its own thoughts and tools, and you are charged what the run spent plus $0.005. Nothing when it could not start.</div></div></div>
+    <div class="head"><div><h2>Hire it, and pay what it spends</h2><div class="sub">Send it a question over x402 <code>upto</code>, paying on Arc, Base or Solana: you sign once for up to $0.10, it pays for its own thoughts and tools, and you are charged what the run spent plus $0.005. Nothing when it could not start. It is listed in Coinbase's x402 Bazaar, so agents that shop there find it too.</div></div></div>
     <pre class="code"><span class="c"># with the CRA AGENT CLI: this one call may cost up to $0.10</span>
 CRA_POLICY=<span class="s">"per_payment=0.10"</span> <span class="k">npx</span> -p @cra-agent/mcp cra-agent pay \
   <span class="s">"https://api.cra-agent.tech/v1/upto/think?task=What%20moved%20EURC%20on%20Arc%20today%3F"</span> 0.10
 
-<span class="c"># or any x402 client that speaks upto</span>
+<span class="c"># or any x402 client that speaks upto: here on Arc; on Base give 8453 and a Base RPC, on Solana use UptoSvmScheme</span>
 <span class="k">const</span> client = <span class="k">new</span> x402Client().register(<span class="s">"eip155:*"</span>, <span class="k">new</span> UptoEvmScheme(account, { 5042: { rpcUrl: <span class="s">"https://rpc.mainnet.arc.io"</span> } }));
 client.setSpendControls({ allowedAssets: [{ network: <span class="s">"eip155:5042"</span>, asset: <span class="s">"0x3600000000000000000000000000000000000000"</span> }] });
 <span class="k">const</span> res = <span class="k">await</span> wrapFetchWithPayment(fetch, client)(<span class="s">"https://api.cra-agent.tech/v1/upto/think?task="</span> + encodeURIComponent(task));</pre>
     <div class="t-flags">
       <div><code>$0.10</code><span>the ceiling you sign for; the rest of it never moves</span></div>
       <div><code>spent + $0.005</code><span>what you are charged: the run's thoughts and tools, plus the gas of settling</span></div>
-      <div><code>1 signature</code><span>no approval transaction and no gas: USDC on Arc takes a permit, and our facilitator submits it with the payment</span></div>
+      <div><code>Arc · Base · Solana</code><span>pay where your USDC is: our facilitator settles on Arc, Coinbase's on Base and Solana</span></div>
+      <div><code>1 signature</code><span>no approval transaction and no gas: on Arc and Base a permit goes with the payment; on Solana the ceiling waits in an escrow and what is not charged comes back</span></div>
       <div><code>$0</code><span>when the agent is busy, down, or stopped before spending anything</span></div>
       <div><code>receipts</code><span>the answer comes with every payment the agent made and its settlement id</span></div>
     </div>
-    <p class="sub">The first one, from our own test wallet: $0.023265 of a $0.10 ceiling, for three thoughts and one web search. <a href="https://explorer.arc.io/tx/0xb370750eb1c304911a3237d3d318fd146586be968758a66ed9ac7bbac04fa209" rel="noopener">The settlement on Arc</a> · <a data-api href="/v1/upto">how it bills</a></p>
+    <p class="sub">Tested from our own wallets, on each network, each time with a $0.10 ceiling:
+      on Arc $0.023265 (<a href="https://explorer.arc.io/tx/0xb370750eb1c304911a3237d3d318fd146586be968758a66ed9ac7bbac04fa209" rel="noopener">settlement</a>),
+      on Base $0.015052 (<a href="https://basescan.org/tx/0xf711bed3ca1a6e66b2caebabc99b3f8fa1f35b82ce08f23a15299d9002b7eec2" rel="noopener">settlement</a>),
+      on Solana $0.0233, with $0.0767 back from the escrow (<a href="https://solscan.io/tx/2NsLX62eZDRrHTqU15RMVdZEBP9T2hsfanvUkKKENXokndxwxNRWKuLhheZJigzPEXkHYNmtKJF5qtZ63kQbHuqQ" rel="noopener">claim</a>).
+      <a data-api href="/v1/upto">How it bills</a></p>
   </section>
 
   <section class="chart-card wide b-about t-about">
