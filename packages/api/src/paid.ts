@@ -109,7 +109,18 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger,
     log.info({ facilitator: directFacilitator, routes: PAID_ROUTES.length }, "direct settlement routes mounted");
     // Billed by use, settled by the same facilitator: on when the think worker runs on this host (upto.ts).
     const thinkWorker = process.env.THINK_WORKER_URL?.replace(/\/+$/, "");
-    if (thinkWorker) mountUptoRoutes(app, { sellerAddress, network: network === "mainnet" ? "arc" : "arcTestnet", facilitatorUrl: directFacilitator, workerUrl: thinkWorker, onSettlement: record("direct"), log });
+    // On Base and Solana too, when Coinbase's facilitator is configured: it bills by use there and catalogues what it settles.
+    if (thinkWorker)
+      mountUptoRoutes(app, {
+        sellerAddress,
+        network: network === "mainnet" ? "arc" : "arcTestnet",
+        facilitatorUrl: directFacilitator,
+        workerUrl: thinkWorker,
+        onSettlement: record("direct"),
+        log,
+        ...(discovery ? { discovery: { ...discovery, tags: ["agent", "research", "llm", "arc"] } } : {}),
+        ...(solanaPayTo ? { solana: { payTo: solanaPayTo, ...cdpMin } } : {}),
+      });
   }
   // Listed in the catalogue whether or not it is on here, so it answers either way.
   if (!directFacilitator || !process.env.THINK_WORKER_URL) app.get("/v1/upto", (c) => c.json({ upto: "off" }));

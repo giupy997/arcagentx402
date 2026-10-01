@@ -10,7 +10,7 @@
 import type { Hono } from "hono";
 import type { Logger } from "pino";
 import { addUsdc6, compareUsdc6, formatUsdc6, headroomUsdc6, parseUsdc6 } from "@cra-agent/accounting";
-import { charge, createSeller, type SettlementEvent } from "@cra-agent/seller";
+import { charge, createSeller, type DiscoveryRail, type SettlementEvent, type SolanaRail } from "@cra-agent/seller";
 
 export const THINK_CEILING_USDC = "0.10";
 /** Settling an upto payment with its permit uses about 180,000 gas: $0.0036 at Arc's 20 gwei. */
@@ -42,6 +42,10 @@ export interface UptoOptions {
   workerUrl: string;
   onSettlement: (e: SettlementEvent) => void | Promise<void>;
   log: Logger;
+  /** The same ceiling on Base, settled and catalogued by Coinbase's facilitator. */
+  discovery?: DiscoveryRail;
+  /** And on Solana: an escrow deposit, of which only the charge is claimed. */
+  solana?: SolanaRail;
   fetchImpl?: typeof fetch;
 }
 
@@ -66,9 +70,23 @@ export function mountUptoRoutes(app: Hono, o: UptoOptions): void {
     billing: `you sign for up to $${THINK_CEILING_USDC}; you are charged what the agent spent on its thoughts and tools, plus $${THINK_FEE_USDC}, never more than that; nothing when the run could not start`,
     agent: "the thinking agent of cra-agent.tech/think: it buys its thoughts from an LLM paid per call on Arc and its tools from the bazaar, and answers with every payment it made",
     payment: "one signature: a Permit2 authorization for the ceiling, bound to our facilitator, and an EIP-2612 permit for Arc's USDC. No approval transaction, no gas on your side.",
+    networks: [
+      "Arc, settled by our facilitator",
+      ...(o.discovery ? ["Base, settled by Coinbase's facilitator: Permit2 for the ceiling, with an EIP-2612 permit, so no approval transaction there either"] : []),
+      ...(o.solana ? ["Solana, settled by Coinbase's facilitator: the ceiling goes into an escrow, the charge is claimed from it and the rest refunded"] : []),
+    ],
   };
 
-  const seller = createSeller({ sellerAddress: o.sellerAddress, network: o.network, serviceName: "CRA AGENT think", settlement: "direct", facilitatorUrl: o.facilitatorUrl, onSettlement: o.onSettlement });
+  const seller = createSeller({
+    sellerAddress: o.sellerAddress,
+    network: o.network,
+    serviceName: "CRA AGENT think",
+    settlement: "direct",
+    facilitatorUrl: o.facilitatorUrl,
+    onSettlement: o.onSettlement,
+    ...(o.discovery ? { discovery: o.discovery } : {}),
+    ...(o.solana ? { solana: o.solana } : {}),
+  });
   seller.route("GET /v1/upto/think", `$${THINK_CEILING_USDC}`, {
     upto: true,
     // The run takes up to three minutes and the settlement comes after it: the buyer's signature must outlast both.
@@ -76,6 +94,16 @@ export function mountUptoRoutes(app: Hono, o: UptoOptions): void {
     description: `Ask the thinking agent anything. It pays for its own thoughts and tools on Arc; you pay what it spent plus $${THINK_FEE_USDC}, up to $${THINK_CEILING_USDC}.`,
     preview: about,
     inputSchema: { type: "object", properties: { task: { type: "string", description: `What you want answered, 3 to ${TASK_MAX_CHARS} characters.`, example: "What moved EURC against USDC on Arc today?" } }, required: ["task"] },
+    inputExample: { task: "What moved EURC against USDC on Arc today?" },
+    // The shape of an answer, from a real run (28 Sep 2026), trimmed to one step.
+    outputExample: {
+      task: "What did Circle announce about Arc this week? Two facts with sources.",
+      answer: "1. Circle launched Arc mainnet on September 16, 2026 (Circle press release). 2. Arc uses USDC as its gas token (Cointelegraph).",
+      stoppedBecause: "answered",
+      charged: { totalUsdc: "0.023265", spentUsdc: "0.018265", feeUsdc: THINK_FEE_USDC, ceilingUsdc: THINK_CEILING_USDC },
+      spent: { thinkingUsdc: "0.011265", toolsUsdc: "0.007", totalUsdc: "0.018265", thoughts: 3, purchases: 1 },
+      steps: [{ kind: "buy", detail: "web search", costUsdc: "0.007", seller: "Exa", status: 200 }],
+    },
   });
   app.use("/v1/upto/*", seller.middleware());
 

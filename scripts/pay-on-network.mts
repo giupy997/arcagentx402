@@ -5,12 +5,17 @@
  * facilitator that settles a payment, so the resource has to be bought there at least once.
  *
  *   npx tsx scripts/pay-on-network.mts <url> [caip2 network]
+ *   MAX_USD=0.10 npx tsx scripts/pay-on-network.mts "https://api.cra-agent.tech/v1/upto/think?task=…"   a route billed by use
+ *
+ * A route billed by use (upto) asks for a ceiling: the cap below must cover it, so MAX_USD raises it for that call.
+ * The buyer signs an EIP-2612 permit with it, read from Base, so the wallet needs no Permit2 approval first.
  */
 import { readFileSync } from "node:fs";
 import { privateKeyToAccount } from "viem/accounts";
 import { x402Client } from "@x402/core/client";
 import type { PaymentRequirements } from "@x402/core/types";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
+import { UptoEvmScheme } from "@x402/evm/upto/client";
 import { wrapFetchWithPayment } from "@x402/fetch";
 
 const BASE = (process.argv[3] ?? "eip155:8453") as `${string}:${string}`;
@@ -29,9 +34,12 @@ const pickBase = (_v: number, accepts: PaymentRequirements[]): PaymentRequiremen
 
 const client = new x402Client(pickBase);
 client.register(BASE, new ExactEvmScheme(account));
-// A hard ceiling for this script: a cent, whatever the route claims to cost.
+client.register(BASE, new UptoEvmScheme(account, { 8453: { rpcUrl: process.env.BASE_RPC_URL ?? "https://mainnet.base.org" } }));
+// A hard ceiling for this script: a cent unless MAX_USD says more, whatever the route claims to cost.
 // Arc's USDC is not one of the SDK's default assets yet, so it has to be named, with its own cap in base units.
-client.setSpendControls({ maxAmountPerPayment: "$0.01", allowedAssets: [{ network: "eip155:5042", asset: "0x3600000000000000000000000000000000000000", maxAmountPerPayment: 10_000n }] });
+const maxUsd = process.env.MAX_USD ?? "0.01";
+if (!/^\d+(\.\d{1,6})?$/.test(maxUsd) || Number(maxUsd) > 0.25) throw new Error("MAX_USD is an amount in dollars, at most 0.25");
+client.setSpendControls({ maxAmountPerPayment: `$${maxUsd}`, allowedAssets: [{ network: "eip155:5042", asset: "0x3600000000000000000000000000000000000000", maxAmountPerPayment: "10000" }] });
 
 const paying = wrapFetchWithPayment(globalThis.fetch, client);
 const res = await paying(url);

@@ -22,6 +22,7 @@ import { HTTPFacilitatorClient, type FacilitatorClient, type RouteConfig } from 
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
+import { UptoSvmScheme } from "@x402/svm/upto/server";
 import { bazaarResourceServerExtension, declareDiscoveryExtension, declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import type { Network } from "@x402/core/types";
 import type { Context, MiddlewareHandler } from "hono";
@@ -128,6 +129,8 @@ export interface RouteOptions {
   readonly preview?: unknown;
   /** JSON Schema of the query this route takes, published to the discovery catalogue. */
   readonly inputSchema?: Record<string, unknown>;
+  /** An example of that query, with every required field: the catalogue checks one against the other. */
+  readonly inputExample?: Record<string, unknown>;
   /** An example of what the route answers, published to the discovery catalogue. */
   readonly outputExample?: unknown;
   /**
@@ -170,7 +173,7 @@ export const BASE_MAINNET: Network = "eip155:8453";
 
 export function buildRoutes(cfg: SellerConfig, network: Network, pattern: string, price: string, opts: RouteOptions): RouteConfig {
   const timeout = opts.maxTimeoutSeconds ? { maxTimeoutSeconds: opts.maxTimeoutSeconds } : {};
-  if (opts.upto) return uptoRoute(cfg, network, price, opts);
+  if (opts.upto) return uptoRoute(cfg, network, pattern, price, opts);
   // Settled directly, the amount has to be spelled out in base units with the token's signing domain.
   const arcPrice = cfg.settlement === "direct" ? { ...ARC_USDC_ASSET, amount: parseUsdc6(price.replace("$", "")).toString() } : price;
   const arc = { scheme: "exact", network, payTo: cfg.sellerAddress, price: arcPrice, ...timeout };
@@ -189,6 +192,7 @@ export function buildRoutes(cfg: SellerConfig, network: Network, pattern: string
           // What the catalogue shows about this route: how to call it and what comes back.
           extensions: declareDiscoveryExtension({
             ...(method === "GET" ? {} : { bodyType: "json" as const }),
+            ...(opts.inputExample ? { input: opts.inputExample } : {}),
             ...(opts.inputSchema ? { inputSchema: opts.inputSchema } : {}),
             ...(opts.outputExample !== undefined ? { output: { example: opts.outputExample } } : {}),
           }),
@@ -204,16 +208,40 @@ export function buildRoutes(cfg: SellerConfig, network: Network, pattern: string
 }
 
 /**
- * A route billed by use. The buyer signs a Permit2 authorization for the ceiling, which only our
- * facilitator can settle, and with it an EIP-2612 permit that lets Permit2 move Arc's USDC: no
- * approval transaction first, no gas on the buyer's side. Arc only: the other rails sell set prices.
+ * A route billed by use. On Arc the buyer signs a Permit2 authorization for the ceiling, which only our
+ * facilitator can settle, and with it an EIP-2612 permit that lets Permit2 move Arc's USDC: no approval
+ * transaction first, no gas on the buyer's side. With a discovery rail the same ceiling is offered on Base
+ * (Permit2 again, settled by Coinbase's facilitator) and, with a Solana rail, on Solana (an escrow deposit,
+ * of which only the charge is claimed and the rest refunded). Coinbase catalogues what it settles, so the
+ * route is listed in its Bazaar once someone pays it there.
  */
-function uptoRoute(cfg: SellerConfig, network: Network, ceiling: string, opts: RouteOptions): RouteConfig {
+function uptoRoute(cfg: SellerConfig, network: Network, pattern: string, ceiling: string, opts: RouteOptions): RouteConfig {
   if (cfg.settlement !== "direct") throw new Error('an upto route needs settlement: "direct", a facilitator that settles upto on Arc');
   const amount = parseUsdc6(ceiling.replace("$", "")).toString();
+  const timeout = opts.maxTimeoutSeconds ? { maxTimeoutSeconds: opts.maxTimeoutSeconds } : {};
+  const arc = { scheme: "upto", network, payTo: cfg.sellerAddress, price: { ...ARC_USDC_ASSET, amount }, ...timeout };
+  const rail = cfg.discovery;
+  const accepts = [
+    arc,
+    ...(rail ? [{ scheme: "upto", network: rail.network ?? BASE_MAINNET, payTo: rail.payTo, price: atLeast(ceiling, rail.minPrice), ...timeout }] : []),
+    ...(cfg.solana ? [{ scheme: "upto", network: solanaNetwork(cfg), payTo: cfg.solana.payTo, price: atLeast(ceiling, cfg.solana.minPrice), ...timeout }] : []),
+  ];
+  const method = pattern.split(" ")[0] ?? "GET";
   return {
-    accepts: { scheme: "upto", network, payTo: cfg.sellerAddress, price: { ...ARC_USDC_ASSET, amount }, ...(opts.maxTimeoutSeconds ? { maxTimeoutSeconds: opts.maxTimeoutSeconds } : {}) },
-    extensions: declareEip2612GasSponsoringExtension(),
+    accepts: accepts.length === 1 ? arc : accepts,
+    extensions: {
+      ...declareEip2612GasSponsoringExtension(),
+      ...(rail
+        ? declareDiscoveryExtension({
+            ...(method === "GET" ? {} : { bodyType: "json" as const }),
+            ...(opts.inputExample ? { input: opts.inputExample } : {}),
+            ...(opts.inputSchema ? { inputSchema: opts.inputSchema } : {}),
+            ...(opts.outputExample !== undefined ? { output: { example: opts.outputExample } } : {}),
+          })
+        : {}),
+    },
+    ...(rail?.tags ? { tags: [...rail.tags] } : {}),
+    ...(rail?.iconUrl ? { iconUrl: rail.iconUrl } : {}),
     ...(opts.description ? { description: opts.description } : {}),
     mimeType: opts.mimeType ?? "application/json",
     ...(cfg.serviceName ? { serviceName: cfg.serviceName } : {}),
@@ -254,7 +282,13 @@ export function observed(cfg: Pick<SellerConfig, "onSettlement">, server: x402Re
       .catch(() => {});
   };
   return server
-    .onAfterSettle(async (ctx) => tell(ctx, { outcome: "settled", transaction: ctx.result.transaction || null, reason: null, payer: ctx.result.payer }))
+    .onAfterSettle(async (ctx) => {
+      // An escrow deposit made before the handler runs (upto on Solana) is not a charge, and the settlement of a
+      // cancelled one takes nothing: only what is settled after the answer is reported, once.
+      const phase = (ctx as { phase?: string }).phase;
+      if (phase === "before-handler" || phase === "cancel") return;
+      tell(ctx, { outcome: "settled", transaction: ctx.result.transaction || null, reason: null, payer: ctx.result.payer });
+    })
     .onSettleFailure(async (ctx) => tell(ctx, { outcome: "failed", transaction: null, reason: ctx.error.message.slice(0, 200) }))
     .onVerifiedPaymentCanceled(async (ctx) => tell(ctx, { outcome: "not_charged", transaction: null, reason: ctx.reason }));
 }
@@ -263,7 +297,16 @@ function assembleServer(cfg: SellerConfig, network: Network, facilitatorUrl: str
   // The SDK declares its own structural PaymentPayload/Requirements; identical at runtime, stricter under exactOptionalPropertyTypes.
   if (cfg.settlement === "direct") {
     if (!cfg.facilitatorUrl) throw new Error('settlement: "direct" needs facilitatorUrl, the facilitator that settles the authorizations');
-    return new x402ResourceServer(new HTTPFacilitatorClient({ url: cfg.facilitatorUrl })).register(network, new ExactEvmScheme()).register(network, new UptoEvmScheme());
+    const direct = new HTTPFacilitatorClient({ url: cfg.facilitatorUrl });
+    const rail = cfg.discovery;
+    // The catalogued facilitator goes first so it claims Base (and Solana, when it settles there); Arc stays with the
+    // direct one, the only one that lists it. Without a discovery rail, Solana goes to its own facilitator.
+    const catalogued = rail ? cataloguedClient(rail) : null;
+    const solana = cfg.solana && !rail ? new HTTPFacilitatorClient({ url: cfg.solana.facilitatorUrl ?? PAYAI_FACILITATOR }) : null;
+    const server = new x402ResourceServer([...(catalogued ? [catalogued] : []), ...(solana ? [solana] : []), direct]).register(network, new ExactEvmScheme()).register(network, new UptoEvmScheme());
+    if (rail) server.register(rail.network ?? BASE_MAINNET, new ExactEvmScheme()).register(rail.network ?? BASE_MAINNET, new UptoEvmScheme()).registerExtension(bazaarResourceServerExtension);
+    if (cfg.solana) server.register(solanaNetwork(cfg), new ExactSvmScheme()).register(solanaNetwork(cfg), new UptoSvmScheme());
+    return server;
   }
   const circle = new BatchFacilitatorClient({ url: facilitatorUrl }) as unknown as FacilitatorClient;
   const rail = cfg.discovery;
@@ -273,12 +316,7 @@ function assembleServer(cfg: SellerConfig, network: Network, facilitatorUrl: str
     const payai = new HTTPFacilitatorClient({ url: cfg.solana!.facilitatorUrl ?? PAYAI_FACILITATOR });
     return new x402ResourceServer([payai, circle]).register(network, new GatewayEvmScheme()).register(solanaNetwork(cfg), new ExactSvmScheme());
   }
-  // Credentials when the facilitator wants them, plain HTTP when it is open to anyone.
-  const catalogued = new HTTPFacilitatorClient(
-    rail.cdpKeyId && rail.cdpKeySecret
-      ? createFacilitatorConfig(rail.cdpKeyId, rail.cdpKeySecret)
-      : { url: rail.facilitatorUrl ?? (() => { throw new Error("discovery rail needs either CDP credentials or a facilitatorUrl"); })() },
-  );
+  const catalogued = cataloguedClient(rail);
   // Order matters: the first facilitator that claims a network gets it. Circle claims Base too, so
   // the catalogued one goes first and Arc still lands on Circle, which is the only one that has it.
   const solana = cfg.solana ? new HTTPFacilitatorClient({ url: cfg.solana.facilitatorUrl ?? PAYAI_FACILITATOR }) : null;
@@ -290,6 +328,15 @@ function assembleServer(cfg: SellerConfig, network: Network, facilitatorUrl: str
 }
 
 const solanaNetwork = (cfg: SellerConfig): Network => (cfg.network === "arc" ? SOLANA_MAINNET : SOLANA_DEVNET);
+
+/** The facilitator of a discovery rail: with credentials when it wants them, plain HTTP when it is open to anyone. */
+function cataloguedClient(rail: DiscoveryRail): HTTPFacilitatorClient {
+  return new HTTPFacilitatorClient(
+    rail.cdpKeyId && rail.cdpKeySecret
+      ? createFacilitatorConfig(rail.cdpKeyId, rail.cdpKeySecret)
+      : { url: rail.facilitatorUrl ?? (() => { throw new Error("discovery rail needs either CDP credentials or a facilitatorUrl"); })() },
+  );
+}
 
 export function createSeller(cfg: SellerConfig): Seller {
   const { network, facilitatorUrl } = resolveNetwork(cfg);
