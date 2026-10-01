@@ -190,6 +190,18 @@ footer.site.light a { color: var(--ink-2); }
 .page-head .wrap { position: relative; z-index: 2; }
 .page-head h1 { font-family: var(--mono); font-weight: 400; font-size: clamp(26px, 3.6vw, 40px); margin: 0 0 8px; letter-spacing: -0.02em; }
 .page-head .meta { font-family: var(--mono); font-size: 12px; color: rgba(255, 255, 255, .75); }
+/* Terms and privacy: long text, set for reading. */
+.legal { padding-block: 48px 88px; }
+.legal > * { max-width: 720px; }
+.legal h2 { font-family: var(--mono); font-weight: 500; font-size: 17px; letter-spacing: -0.01em; color: var(--ink); margin: 44px 0 12px; }
+.legal h3 { font-size: 15px; font-weight: 600; color: var(--ink); margin: 26px 0 8px; }
+.legal p, .legal li { color: var(--ink-2); font-size: 15.5px; line-height: 1.65; }
+.legal p { margin: 0 0 14px; }
+.legal ul { margin: 0 0 14px; padding-left: 20px; }
+.legal li + li { margin-top: 8px; }
+.legal b { color: var(--ink); font-weight: 600; }
+.legal a { color: var(--blue-600); }
+.legal code { font-family: var(--mono); font-size: 13.5px; overflow-wrap: anywhere; }
 .net-pill { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; color: rgba(255, 255, 255, .85); border: 1px solid rgba(255, 255, 255, .3); padding: 5px 10px; }
 .nav.solid .net-pill { color: var(--ink-2); border-color: var(--line-strong); }
 .dot { width: 7px; height: 7px; background: var(--muted); display: inline-block; }

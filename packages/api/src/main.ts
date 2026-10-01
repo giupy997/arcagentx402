@@ -18,7 +18,7 @@ import { directPaymentsSummary, directServices } from "./direct-payments.js";
 import { labelsFor, labelsSummary, startLabeler } from "./labels.js";
 import { mountBazaar } from "./bazaar.js";
 import { mountMarket } from "./market.js";
-import { mountPaidRoutes } from "./paid.js";
+import { directPriceOf, mountPaidRoutes } from "./paid.js";
 import { usycReader } from "./usyc.js";
 import { mountThink } from "./think-runs.js";
 
@@ -155,18 +155,6 @@ app.get("/v1/summary", async (c) =>
     }),
   ),
 );
-app.get("/openapi.json", (c) =>
-  c.json(
-    buildOpenApi({
-      origin: new URL(c.req.url).origin,
-      network: NETWORK === "mainnet" ? "eip155:5042" : "eip155:5042002",
-      sellerAddress: process.env.SELLER_ADDRESS ?? null,
-      usdcAddress: "0x3600000000000000000000000000000000000000",
-      version: API_VERSION,
-      upto: process.env.DIRECT_FACILITATOR_URL && process.env.THINK_WORKER_URL ? { ceilingUsdc: THINK_CEILING_USDC, feeUsdc: THINK_FEE_USDC } : null,
-    }),
-  ),
-);
 app.get("/v1/health", async (c) => {
   try {
     const n = await cached("network", 2000, () => networkSummary(db, NETWORK, CHAIN_ID));
@@ -187,6 +175,22 @@ app.get("/v1/usyc", async (c) => {
   }
 });
 const paid = mountPaidRoutes(app, db, NETWORK, log, usyc);
+// Built from the routes and the rails that are on, so it says what the 402 asks, on every network it asks it.
+app.get("/openapi.json", (c) =>
+  c.json(
+    buildOpenApi({
+      origin: new URL(c.req.url).origin,
+      network: NETWORK === "mainnet" ? "eip155:5042" : "eip155:5042002",
+      sellerAddress: process.env.SELLER_ADDRESS ?? null,
+      usdcAddress: "0x3600000000000000000000000000000000000000",
+      version: API_VERSION,
+      upto: process.env.DIRECT_FACILITATOR_URL && process.env.THINK_WORKER_URL ? { ceilingUsdc: THINK_CEILING_USDC, feeUsdc: THINK_FEE_USDC } : null,
+      plain: paid?.plain ?? [],
+      // A route costs its own price on the direct rail, never less than the floor: what a price of zero comes to.
+      direct: paid && process.env.DIRECT_FACILITATOR_URL ? { floorUsdc: directPriceOf("0") } : null,
+    }),
+  ),
+);
 const market = mountMarket(app, db, NETWORK, log, paid ? { ourNetworks: paid.networks, ourPlainNetworks: paid.plainNetworks } : {});
 mountBazaar(app, { catalogue: market.catalogue, network: NETWORK, log });
 mountThink(app, db, cached);
@@ -210,7 +214,7 @@ app.onError((err, c) => {
 
 if (existsSync(WEB_DIR)) {
   const rel = WEB_DIR.startsWith(process.cwd()) ? WEB_DIR.slice(process.cwd().length + 1) : WEB_DIR;
-  app.use("/*", serveStatic({ root: rel, rewriteRequestPath: (p) => (p === "/dashboard" || p === "/network" ? "/dashboard.html" : p === "/token" ? "/token.html" : p === "/try" ? "/try.html" : p === "/status" ? "/status.html" : p === "/factory" ? "/factory.html" : p === "/market" ? "/market.html" : p === "/bazaar" ? "/bazaar.html" : p === "/think" ? "/think.html" : p === "/usyc" ? "/usyc.html" : p === "/lane" ? "/lane.html" : p === "/register" ? "/register.html" : p) }));
+  app.use("/*", serveStatic({ root: rel, rewriteRequestPath: (p) => (p === "/dashboard" || p === "/network" ? "/dashboard.html" : p === "/token" ? "/token.html" : p === "/try" ? "/try.html" : p === "/status" ? "/status.html" : p === "/factory" ? "/factory.html" : p === "/market" ? "/market.html" : p === "/bazaar" ? "/bazaar.html" : p === "/think" ? "/think.html" : p === "/usyc" ? "/usyc.html" : p === "/lane" ? "/lane.html" : p === "/register" ? "/register.html" : p === "/terms" ? "/terms.html" : p === "/privacy" ? "/privacy.html" : p) }));
   log.info({ webDir: WEB_DIR }, "serving web");
 } else {
   log.warn({ webDir: WEB_DIR }, "web dist not found: API only");

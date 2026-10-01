@@ -1,8 +1,9 @@
 import type { Hono } from "hono";
 import { compareUsdc6, formatUsdc6, parseUsdc6 } from "@cra-agent/accounting";
 import type { Logger } from "pino";
-import { createSeller, type SettlementEvent } from "@cra-agent/seller";
+import { BASE_MAINNET, createSeller, SOLANA_MAINNET, type SettlementEvent } from "@cra-agent/seller";
 import type { Db } from "./db.js";
+import type { PlainRail } from "./openapi.js";
 import { deployStats, feeEstimate, feeSummary, fxSummary, marketPrices, recentDeploys, recordSettlement, rpcStatus } from "./queries.js";
 import { PAIRS, resolvePair } from "./pairs.js";
 import { PAID_ROUTES, type QueryParam } from "./routes.js";
@@ -33,11 +34,15 @@ function querySchema(params: readonly QueryParam[]): Record<string, unknown> {
   };
 }
 
+/** USDC on Base and on Solana: what a plain payment there is made in. */
+const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const SOLANA_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
 /**
  * The first paid endpoints on the rail: our own Arc data, priced per call, paid via x402 + Circle Gateway.
  * Enabled only when SELLER_ADDRESS is set; the free /v1 routes stay free.
  */
-export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger, usyc: UsycReader | null = null): { networks: string[]; plainNetworks: string[] } | null {
+export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger, usyc: UsycReader | null = null): { networks: string[]; plainNetworks: string[]; plain: PlainRail[] } | null {
   const sellerAddress = process.env.SELLER_ADDRESS;
   if (!sellerAddress) {
     log.warn("SELLER_ADDRESS not set: paid endpoints disabled");
@@ -230,8 +235,13 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger,
 
   }
 
-  // Every network a /v1/paid route takes: Arc, and Base and Solana when those rails are on.
-  const networks = [seller.network, ...(discovery ? ["eip155:8453"] : []), ...(solanaPayTo ? ["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"] : [])];
+  // Every network a /v1/paid route takes: Arc, and Base and Solana when those rails are on, each with what the
+  // OpenAPI document needs to describe the payment there.
+  const plain: PlainRail[] = [
+    ...(discovery ? [{ network: BASE_MAINNET, name: "Base", asset: BASE_USDC, payTo: basePayTo, ...cdpMin }] : []),
+    ...(solanaPayTo ? [{ network: SOLANA_MAINNET, name: "Solana", asset: SOLANA_USDC, payTo: solanaPayTo, ...cdpMin }] : []),
+  ];
+  const networks = [seller.network, ...plain.map((p) => p.network)];
   app.get("/v1/direct", (c) => c.json(directFacilitator ? { settlement: "direct", network: seller.network, payTo: seller.sellerAddress, asset: "0x3600000000000000000000000000000000000000", note: "Sign an EIP-3009 authorization from your wallet. No deposit, no gas on your side.", routes: PAID_ROUTES.map((r) => ({ route: `GET ${r.path.replace("/v1/paid", "/v1/direct")}`, summary: r.summary, group: r.group, label: r.plain.label, explain: r.plain.explain, priceUsd: directPriceOf(r.price), params: r.params ?? [], alwaysFails: r.alwaysFails === true })) } : { settlement: "off" }));
   // The same self-description the sell command serves, so a directory reads us the way it reads anyone.
   app.get("/.well-known/x402", (c) =>
@@ -253,5 +263,5 @@ export function mountPaidRoutes(app: Hono, db: Db, network: string, log: Logger,
   app.get("/v1/paid", (c) => c.json({ seller: seller.sellerAddress, network: seller.network, facilitator: seller.facilitatorUrl, routes: Object.entries(seller.routes).map(([k, v]) => ({ route: k, price: String((Array.isArray(v.accepts) ? v.accepts[0] : v.accepts)?.price), description: v.description ?? null })) }));
   log.info({ seller: sellerAddress, network: seller.network, routes: Object.keys(seller.routes).length, solana: solanaPayTo ?? "off", discovery: discovery ? `${basePayTo} via ${cdpKeyId && cdpKeySecret ? "coinbase (CDP), which also takes Solana" : discoveryFacilitator}` : "off" }, "paid endpoints mounted");
   // On Arc a /v1/paid route is paid through Circle Gateway; on Base and Solana with a plain transfer.
-  return { networks, plainNetworks: networks.filter((n) => n !== seller.network) };
+  return { networks, plainNetworks: plain.map((p) => p.network), plain };
 }

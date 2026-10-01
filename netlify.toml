@@ -69,3 +69,13 @@
   from = "/usyc"
   to = "/usyc.html"
   status = 200
+
+[[redirects]]
+  from = "/terms"
+  to = "/terms.html"
+  status = 200
+
+[[redirects]]
+  from = "/privacy"
+  to = "/privacy.html"
+  status = 200

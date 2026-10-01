@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRA AGENT — Terms of Service</title>
+<meta name="description" content="The terms for using cra-agent.tech, the CRA AGENT API, its x402 facilitator and its software: prices and payment, the data, acceptable use and liability.">
+<meta name="theme-color" content="#061a42">
+<link rel="canonical" href="https://cra-agent.tech/terms">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="nav" id="nav">
+  <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+  <div class="nav-right">
+    <button class="menu-btn" type="button" data-menu-open aria-label="Open menu" aria-controls="menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+</header>
+<div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="Menu">
+  <div class="menu-top">
+    <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+    <button class="menu-btn" type="button" data-menu-close aria-label="Close menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3.5 3.5l11 11M14.5 3.5l-11 11" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+  <ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="/#how">How it works</a></li>
+    <li><a href="/#install">Install the agent</a></li>
+    <li><a href="/#sell">Sell an endpoint</a></li>
+    <li><a href="/network">Network</a></li>
+    <li><a href="/think">Think</a></li>
+    <li><a href="/bazaar">Bazaar</a></li>
+    <li><a href="/usyc">USYC on Arc</a></li>
+    <li><a href="/market">Market</a></li>
+    <li><a href="/lane">Solana Lane</a></li>
+    <li><a href="/factory">Factory</a></li>
+    <li><a href="/register">Register a seller</a></li>
+    <li><a href="/try">Try it</a></li>
+    <li><a href="/status">Status</a></li>
+    <li><a href="/token">Token</a></li>
+    <li><a href="https://x.com/Craagentarc" rel="noopener">X</a></li>
+    <li><a href="mailto:craagentarc@gmail.com">Email</a></li>
+    <li><a href="https://github.com/giupy997/arcagentx402" rel="noopener">GitHub</a></li>
+  </ul>
+  <div class="menu-foot">x402 · Circle Gateway · USDC on Arc</div>
+</div>
+
+<section class="page-head">
+  <div class="marks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div class="wrap">
+    <p class="kicker" style="color:rgba(255,255,255,.8)">Terms</p>
+    <h1>Terms of Service</h1>
+    <div class="meta">Last updated 1 October 2026</div>
+  </div>
+</section>
+
+<main class="wrap legal">
+  <p>These terms cover the website cra-agent.tech, the API at api.cra-agent.tech, the x402 facilitator we run and the software we publish. “We” and “us” mean CRA AGENT. Using any of them, or paying for a call, means you accept these terms. If you do not accept them, do not use the service.</p>
+
+  <h2>1. What we offer</h2>
+  <ul>
+    <li><b>Data by the call.</b> Routes under <code>/v1/paid</code> and <code>/v1/direct</code> return Arc chain data, executed prices from swaps on Arc and public sources as JSON, for a price per call. Routes under <code>/v1</code> are free.</li>
+    <li><b>The thinking agent</b> at <code>/v1/upto/think</code>, which answers a task by paying for its own model calls and tools.</li>
+    <li><b>An x402 facilitator</b> that settles payments for sellers, on the networks listed at <a href="https://api.cra-agent.tech/facilitator/supported">api.cra-agent.tech/facilitator/supported</a>.</li>
+    <li><b>Open-source software:</b> the CRA AGENT packages on npm and the code at <a href="https://github.com/giupy997/arcagentx402" rel="noopener">github.com/giupy997/arcagentx402</a>, under the MIT licence.</li>
+  </ul>
+  <p>There are no accounts. Agents and people pay per call, in USDC, over x402.</p>
+
+  <h2>2. Prices and payment</h2>
+  <ul>
+    <li>A call costs the price in its 402 response at the moment you pay. Prices are also listed at <a href="https://api.cra-agent.tech/.well-known/x402">/.well-known/x402</a> and in <a href="https://api.cra-agent.tech/openapi.json">openapi.json</a>. We can change prices at any time; a change never applies to a payment you have already signed.</li>
+    <li>You can pay through Circle Gateway on Arc, with a plain x402 payment on Base or Solana settled by Coinbase's facilitator, or directly on Arc. Those networks and services belong to others and come with their own terms.</li>
+    <li>A payment is settled only when the call succeeds. A bad parameter (400), a source that fails (502) or any other error is not charged.</li>
+    <li>On <code>/v1/upto/think</code> you sign for a ceiling, today $0.10, and are charged what the run spent plus a fee, today $0.005, never more than the ceiling. If the run cannot start, nothing is charged.</li>
+    <li>A settled payment is a transfer on a public blockchain, and we cannot reverse it. If you think you were charged for a call that failed, write to us with the transaction and the route. If we got it wrong, we refund the amount to the address that paid.</li>
+    <li>Every payment our routes verify is listed publicly at <a href="/status">cra-agent.tech/status</a>. The <a href="/privacy">Privacy Policy</a> says what that list shows.</li>
+  </ul>
+
+  <h2>3. Data and answers</h2>
+  <ul>
+    <li>The data comes from Arc, from our own collector and from public sources such as Wikipedia, npm, PyPI, OSV, DNS, RDAP and the European Central Bank's reference rates. Every answer names its source, and content keeps its source's licence: Wikipedia text, for example, is CC BY-SA 4.0.</li>
+    <li>Data can be late, incomplete or wrong, and a source can change or go away. We provide it as it is.</li>
+    <li>The thinking agent's answers are written by a language model from what it found, and they can be wrong.</li>
+    <li>Nothing we publish or return is financial, investment, legal or security advice. Prices, yields and rates are information, not a recommendation.</li>
+  </ul>
+
+  <h2>4. Acceptable use</h2>
+  <p>You agree not to:</p>
+  <ul>
+    <li>use the service for anything unlawful, or to harm anyone;</li>
+    <li>use the <code>/web</code> routes to attack, scan or overload a website, or to reach addresses that are not public;</li>
+    <li>get data without paying for it, overload the service, or interfere with its payments;</li>
+    <li>present yourself as us, or as endorsed by us.</li>
+  </ul>
+  <p>You may not use the service if you are subject to sanctions of the United Nations, the European Union, the United Kingdom or the United States, or if you act for someone who is. We can refuse or stop serving any address, wallet or request that we believe breaks these terms.</p>
+
+  <h2>5. Sellers on our facilitator</h2>
+  <p>On Arc, the facilitator settles payments for sellers who registered their payout address by signing a message. It sends the buyer's signed authorisation to the chain and pays the gas; it never holds the buyer's or the seller's funds. We can stop settling for a seller, or stop the facilitator, at any time. Each seller answers for what it sells and for its own terms with its buyers.</p>
+
+  <h2>6. Software</h2>
+  <p>Our packages and code are open source under the MIT licence and come without warranty, as that licence says. When you run them, you are responsible for your keys, your wallets, your spending policy and the payments your agent makes. Commands that move money between networks, such as <code>cra-agent fund</code>, run on your machine at your instruction and go through third parties (Eco and Circle's CCTP).</p>
+
+  <h2>7. The CRA token</h2>
+  <p>You do not need the CRA token to use anything here. Nothing on this site is an offer to buy or sell a token, or advice to do so.</p>
+
+  <h2>8. Availability and changes</h2>
+  <p>We run the service on a best-effort basis, with no promise of uptime. We can change, limit or stop any part of it at any time. We can also change these terms: the date at the top changes when we do, and the new terms apply from that date.</p>
+
+  <h2>9. Liability</h2>
+  <p>To the extent the law allows, the service and the software are provided “as is”, without warranties of any kind. To the same extent, we are not liable for indirect or consequential losses, lost profits, or losses caused by networks, wallets, facilitators or sources we do not control, and our total liability to you is limited to what you paid us in the 30 days before your claim. Nothing in these terms limits a liability that the law does not allow to be limited.</p>
+
+  <h2>10. Contact</h2>
+  <p><a href="mailto:craagentarc@gmail.com">craagentarc@gmail.com</a></p>
+</main>
+
+<footer class="site light">
+  <span>Terms of Service · last updated 1 October 2026</span>
+  <span><a href="/">Home</a> · <a href="/privacy">Privacy</a> · <a href="/status">Status</a></span>
+</footer>
+<script type="module" src="/js/legal.js"></script>
+</body>
+</html>

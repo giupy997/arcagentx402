@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRA AGENT — Privacy Policy</title>
+<meta name="description" content="What CRA AGENT records when you use its website, API and facilitator, what is public, who else sees it and how long it is kept. No accounts, no cookies, no analytics.">
+<meta name="theme-color" content="#061a42">
+<link rel="canonical" href="https://cra-agent.tech/privacy">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="nav" id="nav">
+  <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+  <div class="nav-right">
+    <button class="menu-btn" type="button" data-menu-open aria-label="Open menu" aria-controls="menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+</header>
+<div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="Menu">
+  <div class="menu-top">
+    <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+    <button class="menu-btn" type="button" data-menu-close aria-label="Close menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3.5 3.5l11 11M14.5 3.5l-11 11" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+  <ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="/#how">How it works</a></li>
+    <li><a href="/#install">Install the agent</a></li>
+    <li><a href="/#sell">Sell an endpoint</a></li>
+    <li><a href="/network">Network</a></li>
+    <li><a href="/think">Think</a></li>
+    <li><a href="/bazaar">Bazaar</a></li>
+    <li><a href="/usyc">USYC on Arc</a></li>
+    <li><a href="/market">Market</a></li>
+    <li><a href="/lane">Solana Lane</a></li>
+    <li><a href="/factory">Factory</a></li>
+    <li><a href="/register">Register a seller</a></li>
+    <li><a href="/try">Try it</a></li>
+    <li><a href="/status">Status</a></li>
+    <li><a href="/token">Token</a></li>
+    <li><a href="https://x.com/Craagentarc" rel="noopener">X</a></li>
+    <li><a href="mailto:craagentarc@gmail.com">Email</a></li>
+    <li><a href="https://github.com/giupy997/arcagentx402" rel="noopener">GitHub</a></li>
+  </ul>
+  <div class="menu-foot">x402 · Circle Gateway · USDC on Arc</div>
+</div>
+
+<section class="page-head">
+  <div class="marks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div class="wrap">
+    <p class="kicker" style="color:rgba(255,255,255,.8)">Privacy</p>
+    <h1>Privacy Policy</h1>
+    <div class="meta">Last updated 1 October 2026</div>
+  </div>
+</section>
+
+<main class="wrap legal">
+  <p>This policy explains what CRA AGENT (“we”) records when you use cra-agent.tech, the API at api.cra-agent.tech or our x402 facilitator, what we publish, and who else sees it. We record little: there are no accounts, no cookies and no analytics.</p>
+
+  <h2>What we record</h2>
+  <h3>Payments</h3>
+  <p>When one of our paid routes verifies a payment, we record when it happened, the network, the paying and the receiving address, the amount, the route (its path, without the parameters), how it ended (settled, not charged or failed) and its transaction. This record is public at <a href="/status">cra-agent.tech/status</a> and <a href="https://api.cra-agent.tech/v1/settlements">api.cra-agent.tech/v1/settlements</a>, with payer addresses shortened. The payment itself is public on its blockchain anyway; what we add is the route and how the call ended.</p>
+
+  <h3>Sellers on our facilitator</h3>
+  <p>A seller that registers to use our facilitator gives us its payout address and a signed message, and we keep both. Anyone can check whether an address is registered. For the payments the facilitator settles we keep the same kind of record as above, and for Lightning payments the payment hash, the receiving node and the amount.</p>
+
+  <h3>Names next to addresses</h3>
+  <p>To tell our own payments from everyone else's, and to show who is behind an address when that is already public, we match addresses against public sources: the ERC-8004 agent registry on Arc, Circle's x402 catalogue and the sellers listed on our market.</p>
+
+  <h3>What you send in a request</h3>
+  <p>A request carries parameters: an address, a URL, a domain, a package name, a Wikipedia title, a task for the thinking agent. We use them to answer and pass them to the source that has the answer, listed below. We do not store them. Our web server keeps no access logs, and our application logs record events, such as a source that did not answer or the path of a request that failed, never the query of a request or your IP address.</p>
+
+  <h3>The thinking agent</h3>
+  <p>The task you send to <code>/v1/upto/think</code> goes to the model and search services the agent pays to answer it, today BlockRun and Exa. We do not store your task or the answer; we log how the run ended, how long it took and what it spent. The runs shown on <a href="/think">cra-agent.tech/think</a> are ones we start ourselves, with questions we write.</p>
+
+  <h3>Our market</h3>
+  <p>If you list an API on our market, its URL, name, description, price, networks and payout address are public.</p>
+
+  <h3>Email</h3>
+  <p>If you write to us, we keep your message and your address to reply. Our email is hosted by Google.</p>
+
+  <h3>The website</h3>
+  <p>cra-agent.tech sets no cookies and runs no analytics or trackers. It is hosted by Netlify, which processes your IP address to serve the pages. The pages load fonts from Google Fonts, so your browser also connects to Google. Some pages read data from our API. On pages that use a browser wallet, the signing happens in your wallet; we only receive the signed payment or message.</p>
+
+  <h2>Who else sees data</h2>
+  <ul>
+    <li>Blockchains: payments on Arc, Base and Solana are public.</li>
+    <li>Circle, whose Gateway settles payments on Arc, and Coinbase, whose facilitator settles payments on Base and Solana and lists our routes in its x402 catalogue.</li>
+    <li>The sources that answer a request: Arc's RPC providers, Wikipedia, npm, PyPI, OSV, Google Public DNS, RDAP servers, Frankfurter for the ECB rates and, for the <code>/web</code> routes, the site you ask about. They see our server, not you.</li>
+    <li>BlockRun and Exa, for tasks sent to the thinking agent.</li>
+    <li>Contabo, in Germany, which hosts our server; Netlify, which hosts the website; Google, for fonts and email.</li>
+  </ul>
+  <p>Some of these companies are in the United States and handle data under their own privacy terms.</p>
+
+  <h2>Why we use it</h2>
+  <p>To provide the service you ask and pay for; to keep it working, safe from abuse and honest about its payments, which is why the payment record is public (our legitimate interest); and to answer you when you write.</p>
+
+  <h2>How long we keep it</h2>
+  <ul>
+    <li>Payment records and facilitator registrations: as long as the service runs, since the public record is part of it.</li>
+    <li>Application logs: until they rotate out.</li>
+    <li>Email: as long as the conversation needs.</li>
+  </ul>
+
+  <h2>Your rights</h2>
+  <p>Depending on where you live, including in the EU and the UK, you can ask us for a copy of the data we hold about you, and ask us to correct it, delete it, limit how we use it or stop using it. Write to <a href="mailto:craagentarc@gmail.com">craagentarc@gmail.com</a>. We cannot change or delete what is on a blockchain, but we can remove our own record of a payment from our ledger and our pages, unless we need to keep it to meet a legal obligation or to defend a claim. You can also complain to the data protection authority where you live.</p>
+
+  <h2>Children</h2>
+  <p>The service is not meant for children under 16.</p>
+
+  <h2>Changes</h2>
+  <p>When what we record changes, we update this page, and the date at the top says when.</p>
+
+  <h2>Contact</h2>
+  <p><a href="mailto:craagentarc@gmail.com">craagentarc@gmail.com</a></p>
+</main>
+
+<footer class="site light">
+  <span>Privacy Policy · last updated 1 October 2026</span>
+  <span><a href="/">Home</a> · <a href="/terms">Terms</a> · <a href="/status">Status</a></span>
+</footer>
+<script type="module" src="/js/legal.js"></script>
+</body>
+</html>
