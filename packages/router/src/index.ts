@@ -23,9 +23,11 @@ import { checkLnbtcChallenge, msatToUsd6, payLnbtcChallenge, type PayerAdapter }
 import { createPublicClient, http, type Address, type Hex } from "viem";
 import { CHAINS } from "@cra-agent/identity";
 import { chooseRail, DEFAULT_THRESHOLDS, type RouteDecision, type RouteThresholds } from "./decide.js";
-import { policyHash, spendReceiptDomain, SPEND_RECEIPT_TYPES, toWire, type SignedSpendReceipt, type SpendReceiptMessage } from "./attest.js";
+import { coSignSpendReceipt, policyHash, spendReceiptDomain, SPEND_RECEIPT_TYPES, toWire, type SignedSpendReceipt, type SpendReceiptMessage } from "./attest.js";
+import { signKeyStatement, type PostQuantumKey } from "./pq.js";
 
 export * from "./attest.js";
+export * from "./pq.js";
 
 export { chooseRail, DEFAULT_THRESHOLDS, type RailChoice, type RouteDecision, type RouteInput, type RouteThresholds } from "./decide.js";
 
@@ -46,6 +48,11 @@ export interface RailConfig {
    * their preimages. `rate` is BTC/USD, so a price in sats counts against limits written in dollars.
    */
   readonly lightning?: { readonly payer: PayerAdapter; readonly rate: () => Promise<{ rate: string }> };
+  /**
+   * The agent's SLH-DSA key (pq.ts). With one, every receipt is signed a second time with a signature Arc can
+   * verify on chain; it adds about a second to a payment, after the money has moved.
+   */
+  readonly postQuantum?: PostQuantumKey;
 }
 
 export interface Quote {
@@ -259,6 +266,9 @@ export function createRail(cfg: RailConfig): Rail {
     };
   }
 
+  /** The wallet key vouching for the post-quantum key: the same for every receipt, so signed once. */
+  let keyStatement: Hex | null = null;
+
   /** The receipt's facts, signed. The spent-before figures are the ones the policy decision was made on. */
   async function attest(rec: PaymentRecord, status: string, spent: { today: Usdc6; withSeller: Usdc6 }): Promise<SignedSpendReceipt | null> {
     try {
@@ -270,7 +280,15 @@ export function createRail(cfg: RailConfig): Rail {
       };
       const domain = spendReceiptDomain(CHAINS[cfg.network].id);
       const signature = await cfg.signer.account.signTypedData({ domain, types: SPEND_RECEIPT_TYPES, primaryType: "SpendReceipt", message });
-      return { domain, message: toWire(message), signature };
+      const signed: SignedSpendReceipt = { domain, message: toWire(message), signature };
+      if (!cfg.postQuantum) return signed;
+      try {
+        keyStatement ??= await signKeyStatement(cfg.signer.account, domain, cfg.postQuantum.publicKey);
+        return coSignSpendReceipt(signed, { key: cfg.postQuantum, keyStatement });
+      } catch (err) {
+        log("receipt.post_quantum_unsigned", { ledgerId: rec.id, error: (err as Error).message.slice(0, 120) });
+        return signed; // the wallet's signature stands on its own
+      }
     } catch (err) {
       log("receipt.unsigned", { ledgerId: rec.id, error: (err as Error).message.slice(0, 120) });
       return null; // a receipt without a signature is still a receipt; the payment already happened

@@ -2,7 +2,9 @@
  * @cra-agent/identity — who signs, and who the counterparty is. Two separate concerns, one thin package.
  *
  * Signing: the scheme is an explicit parameter (brief §4.3). One implementation today (secp256k1 / ECDSA
- * via viem). SLH-DSA-SHA2-128s is reserved so nothing else in the repo assumes ECDSA.
+ * via viem). SLH-DSA-SHA2-128s is reserved so nothing else in the repo assumes ECDSA: Arc verifies it on
+ * chain but cannot yet take a transaction signed with it, so a wallet cannot use it. Receipts can already be
+ * signed with it a second time (the router's pq.ts).
  *
  * Counterparty identity: ERC-8004 IdentityRegistry lookup. Fail closed: any error = not verified.
  */
@@ -33,7 +35,7 @@ export function createSigner(opts: CreateSignerOptions): RailSigner {
       return { scheme: "secp256k1", address: account.address, account, privateKey: opts.privateKey };
     }
     case "slh-dsa-sha2-128s":
-      throw new Error("slh-dsa-sha2-128s: post-quantum signing is not implemented yet (Arc beta support; see docs.arc.io/arc/concepts/post-quantum-security)");
+      throw new Error("slh-dsa-sha2-128s cannot sign payments yet: Arc verifies it on chain but has no post-quantum transaction signing (docs.arc.io/arc/concepts/post-quantum-security). Receipts can carry it as a second signature: cra-agent pq-key <file>");
     default:
       throw new Error(`unknown signature scheme ${String((opts as { scheme: string }).scheme)}`);
   }

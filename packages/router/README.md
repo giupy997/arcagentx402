@@ -37,6 +37,22 @@ const { valid, signer, withinStatedLimits } = await verifySpendReceipt(receipt.a
 
 The signature proves the agent's key issued the statement and that nothing was changed since. It is the rail vouching for itself; the settlement on chain is the independent part.
 
+### A second, post-quantum signature
+
+A receipt is meant to be checked years from now, and the wallet's secp256k1 signature is the kind a large quantum computer could forge. So a receipt can be signed a second time with SLH-DSA-SHA2-128s (FIPS 205), the scheme [Arc verifies on chain](https://docs.arc.io/arc/concepts/post-quantum-security) with its PQ Signature Verify precompile. Both signatures are over the same EIP-712 digest, and a receipt that carries both is valid only when both hold.
+
+```ts
+import { createRail, newPostQuantumSeed, postQuantumKey, receiptDigest, verifiedByArc, verifySpendReceipt } from "@cra-agent/router";
+
+const rail = createRail({ ...config, postQuantum: postQuantumKey(seed) }); // seed: 48 bytes, kept like a private key
+const { receipt } = await rail.fetch(url);
+
+await verifySpendReceipt(receipt.attestation, agent, { requirePostQuantum: true }); // offline
+await verifiedByArc(receipt.attestation.postQuantum, receiptDigest(receipt.attestation), rpcUrl); // a read-only call to Arc
+```
+
+What it covers: the receipt, not the payment. A payment on Arc is authorised by the wallet key until Arc has post-quantum transaction signing. The SLH-DSA key is tied to the agent by a statement the wallet key signs, so publish the public key where it gets a date if the tie has to outlive secp256k1. Signing takes about a second and adds 16 KB to a receipt, which is why it is off unless you give the rail a key.
+
 A policy rejection never reaches the signer: it is recorded in the ledger with the rule that stopped it. A seller whose handler fails is recorded as `quoted`, not charged. `chooseRail()` is pure and decides between a nanopayment and ERC-8183 escrow by amount and kind.
 
 The buyer needs a Gateway balance first: `await rail.deposit("1")`.

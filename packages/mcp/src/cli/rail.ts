@@ -7,7 +7,11 @@
  *   cra-agent quote <url> --body '{"query":"x402"}'    the price of that POST: some sellers want the body before they name one
  *   cra-agent deposit <usdc>     cra-agent ledger [n]       cra-agent policy
  *   cra-agent withdraw <usdc> [max fee]    Gateway balance back to the wallet: how a seller collects
- *   cra-agent verify <receipt.json> [agent]    checks a signed receipt; needs no key and no network
+ *   cra-agent verify <receipt.json> [agent] [--require-pq] [--on-arc]   checks a signed receipt; needs no key, and
+ *                                  no network unless --on-arc asks Arc's precompile to verify the post-quantum signature
+ *   cra-agent pq-key <file>      makes the agent's post-quantum key (SLH-DSA-SHA2-128s) and prints its public half;
+ *                                  with CRA_PQ_KEY_FILE set to that file, every receipt is signed a second time
+ *   cra-agent pq-sign <receipt.json>   adds the post-quantum signature to a receipt this agent signed before
  *   cra-agent init [--client …] [--policy …]   makes the key, writes the AI client config; see init.ts
  *   cra-agent find <what you need> [--max <usdc>] [--limit <n>]   what can be bought on Arc; needs no key
  *   cra-agent think "<task>" [--budget 0.10] [--model …] [--steps 8]   an agent that pays for its own thinking, and its tools
@@ -19,10 +23,10 @@
  */
 import { compareUsdc6, formatUsdc6, parseUsdc6, usdc6 } from "@cra-agent/accounting";
 import { describePolicy, parsePolicyString } from "@cra-agent/policy";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import type { Address } from "viem";
-import { EscrowNotImplemented, LightningNotPaid, PolicyRejected, verifySpendReceipt, type SignedSpendReceipt } from "@cra-agent/router";
-import { CAIP2, registerIdentity, type ArcNetwork } from "@cra-agent/identity";
+import { coSignSpendReceipt, EscrowNotImplemented, LightningNotPaid, newPostQuantumSeed, PolicyRejected, postQuantumKey, receiptDigest, signKeyStatement, verifiedByArc, verifySpendReceipt, type SignedSpendReceipt } from "@cra-agent/router";
+import { CAIP2, PUBLIC_RPCS, registerIdentity, type ArcNetwork } from "@cra-agent/identity";
 import { fit, forAgent, NOTHING_SPENT, searchMarket } from "../search.js";
 import { railFromEnv } from "../rail-from-env.js";
 import { runInit } from "./init.js";
@@ -96,12 +100,32 @@ async function main(): Promise<void> {
     // Accept the signed object itself, a receipt that carries one, or the whole output of `pay`.
     const receipt = (raw.receipt as Record<string, unknown> | undefined) ?? raw;
     const signed = ((receipt.attestation as unknown) ?? receipt) as SignedSpendReceipt;
-    const expected = process.argv[4] as Address | undefined;
-    const check = await verifySpendReceipt(signed, expected);
-    out({ ...check, agent: signed.message?.agent, resource: signed.message?.resource, amountBaseUnits: signed.message?.amount, settlementId: signed.message?.settlementId, policyHash: signed.message?.policyHash });
-    process.exit(check.valid && check.withinStatedLimits ? 0 : 1);
+    const rest = process.argv.slice(4);
+    const expected = rest.find((a) => !a.startsWith("--")) as Address | undefined;
+    const check = await verifySpendReceipt(signed, expected, { requirePostQuantum: rest.includes("--require-pq") });
+    // Arc verifies SLH-DSA on chain: the same check, made by the chain instead of this machine. A read-only call.
+    let byArc: { verifiedByArc: boolean } | { arcError: string } | Record<string, never> = {};
+    if (rest.includes("--on-arc") && check.valid && signed.postQuantum) {
+      const rpc = process.env.CRA_RPC_URL?.split(",")[0]?.trim() || PUBLIC_RPCS[signed.domain.chainId === 5042 ? "arc" : "arcTestnet"][0]!;
+      byArc = await verifiedByArc(signed.postQuantum, receiptDigest(signed), rpc).then((ok) => ({ verifiedByArc: ok }), (err: Error) => ({ arcError: err.message.slice(0, 160) }));
+    }
+    out({ ...check, ...byArc, agent: signed.message?.agent, resource: signed.message?.resource, amountBaseUnits: signed.message?.amount, settlementId: signed.message?.settlementId, policyHash: signed.message?.policyHash });
+    process.exit(check.valid && check.withinStatedLimits && !("verifiedByArc" in byArc && !byArc.verifiedByArc) ? 0 : 1);
   }
-  const { rail, ledger, policy, network, agentId, signer, escrow, rpcUrl, close: closeWallet } = await railFromEnv();
+  // The post-quantum key is made here and never shown: the file holds the seed, the screen gets the public half.
+  if (cmd === "pq-key") {
+    if (!arg) throw new Error("usage: pq-key <file>   (a new file; an existing one is never overwritten)");
+    const seed = newPostQuantumSeed();
+    try {
+      writeFileSync(arg, `${Buffer.from(seed).toString("hex")}\n`, { mode: 0o600, flag: "wx" });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") throw new Error(`${arg} already exists and is left as it is: a key that signed receipts must not be replaced by accident`);
+      throw err;
+    }
+    out({ scheme: "slh-dsa-sha2-128s", publicKey: postQuantumKey(seed).publicKey, keyFile: arg, next: `set CRA_PQ_KEY_FILE=${arg}: every receipt is then signed a second time. Keep the file like a private key, and keep a copy: a lost key cannot sign again.` });
+    return;
+  }
+  const { rail, ledger, policy, network, agentId, signer, escrow, rpcUrl, postQuantum, close: closeWallet } = await railFromEnv();
   switch (cmd) {
     case "quote": {
       const { positional, method, body } = callOptions(process.argv.slice(3));
@@ -365,6 +389,18 @@ async function main(): Promise<void> {
       out(proofs.length ? proofs : { message: "no new on-chain settlement matched yet; batched settlement can take a while" });
       break;
     }
+    case "pq-sign": {
+      if (!arg) throw new Error("usage: pq-sign <receipt.json | - for stdin>");
+      if (!postQuantum) throw new Error("no post-quantum key: make one with `cra-agent pq-key <file>` and set CRA_PQ_KEY_FILE");
+      const raw = JSON.parse(readFileSync(arg === "-" ? 0 : arg, "utf8")) as Record<string, unknown>;
+      const inner = (raw.receipt as Record<string, unknown> | undefined) ?? raw;
+      const signed = ((inner.attestation as unknown) ?? inner) as SignedSpendReceipt;
+      // Only our own receipts: the second signature says the same agent stands behind the same statement.
+      const first = await verifySpendReceipt(signed, signer.address);
+      if (!first.valid) throw new Error(`not a receipt this agent signed: ${first.reason}`);
+      out(coSignSpendReceipt(signed, { key: postQuantum, keyStatement: await signKeyStatement(signer.account, signed.domain, postQuantum.publicKey) }));
+      break;
+    }
     case "identity-register": {
       if (!arg) throw new Error("usage: identity-register <agentURI>");
       const r = await registerIdentity({ network, signer, agentURI: arg, rpcUrl });
@@ -383,7 +419,7 @@ async function main(): Promise<void> {
       break;
     }
     default:
-      console.error("usage: cra-agent <init|find|think|quote|pay|balance|fund|deposit|withdraw|ledger|policy|proof|verify|selftest> [arg]");
+      console.error("usage: cra-agent <init|find|think|quote|pay|balance|fund|deposit|withdraw|ledger|policy|proof|verify|pq-key|pq-sign|selftest> [arg]");
       process.exit(2);
   }
   await ledger.close();

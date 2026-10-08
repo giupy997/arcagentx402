@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { CHAIN_IDS, PUBLIC_RPCS, createErc8004Resolver, createSigner, mergeRpcLists, parseRpcList, pickRpcUrl, redactRpcUrl, type ArcNetwork } from "@cra-agent/identity";
 import { MemoryLedger, PgLedger, type Ledger } from "@cra-agent/ledger";
 import { DEFAULT_POLICY, parsePolicyString, type SpendPolicy } from "@cra-agent/policy";
-import { createRail, type Rail } from "@cra-agent/router";
+import { createRail, parsePostQuantumSeed, postQuantumKey, type PostQuantumKey, type Rail } from "@cra-agent/router";
 import { createEscrowClient, type EscrowClient } from "@cra-agent/escrow";
 import { btcUsdRate, LNBTC_MAINNET, LNBTC_TESTNET, nwcPayer, readConnection } from "@cra-agent/lightning";
 import type { Address } from "viem";
@@ -22,8 +22,10 @@ import type { Hex } from "viem";
  *   CRA_EVALUATOR         optional address that evaluates ERC-8183 jobs this agent creates (default: the agent)
  *   CRA_NWC_PAY_FILE      optional file holding a Nostr Wallet Connect string that can pay: the agent can then pay
  *                         sellers in bitcoin over Lightning (x402 exact on lnbtc), and its policy allows that network
+ *   CRA_PQ_KEY_FILE       optional file holding the agent's post-quantum key (made by `cra-agent pq-key <file>`):
+ *                         every receipt is then signed a second time with SLH-DSA-SHA2-128s, which Arc verifies on chain
  */
-export interface RailFromEnv { rail: Rail; ledger: Ledger; policy: SpendPolicy; network: ArcNetwork; agentId: string; signer: ReturnType<typeof createSigner>; escrow: () => EscrowClient; /** The endpoint picked at startup, for anything that talks to the chain outside the rail. */ rpcUrl: string; /** Closes the Lightning wallet's relay connections, when there is one. */ close: () => void }
+export interface RailFromEnv { rail: Rail; ledger: Ledger; policy: SpendPolicy; network: ArcNetwork; agentId: string; signer: ReturnType<typeof createSigner>; escrow: () => EscrowClient; /** The endpoint picked at startup, for anything that talks to the chain outside the rail. */ rpcUrl: string; /** The agent's post-quantum key, when CRA_PQ_KEY_FILE names one. */ postQuantum: PostQuantumKey | null; /** Closes the Lightning wallet's relay connections, when there is one. */ close: () => void }
 
 /** Accept the pre-rename ARCRAIL_* variables so existing setups keep working. */
 function withLegacyNames(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -74,7 +76,10 @@ export async function railFromEnv(rawEnv: NodeJS.ProcessEnv = process.env): Prom
   const payer = env.CRA_NWC_PAY_FILE ? nwcPayer(readConnection(env.CRA_NWC_PAY_FILE)) : null;
   const lnbtc = network === "arc" ? LNBTC_MAINNET : LNBTC_TESTNET;
   const limits = payer && !policy.allowedNetworks.includes(lnbtc) ? { ...policy, allowedNetworks: [...policy.allowedNetworks, lnbtc] } : policy;
-  const rail = createRail({ network, signer, policy: limits, ledger, identity, agentId, rpcUrl, log: (e, d) => console.error(JSON.stringify({ event: e, ...d })), ...(payer ? { lightning: { payer, rate: btcUsdRate() } } : {}) });
+  // A second signature on every receipt, for whoever made a post-quantum key. A file that is set but wrong stops
+  // the agent here: signing once in silence is not what its owner asked for.
+  const postQuantum = env.CRA_PQ_KEY_FILE ? postQuantumKey(parsePostQuantumSeed(readFileSync(env.CRA_PQ_KEY_FILE, "utf8"))) : null;
+  const rail = createRail({ network, signer, policy: limits, ledger, identity, agentId, rpcUrl, log: (e, d) => console.error(JSON.stringify({ event: e, ...d })), ...(payer ? { lightning: { payer, rate: btcUsdRate() } } : {}), ...(postQuantum ? { postQuantum } : {}) });
   const escrow = () => createEscrowClient({ network, signer, rpcUrl, ...(env.CRA_EVALUATOR ? { evaluator: env.CRA_EVALUATOR as Address } : {}) });
-  return { rail, ledger, policy: limits, network, agentId, signer, escrow, rpcUrl, close: () => payer?.close() };
+  return { rail, ledger, policy: limits, network, agentId, signer, escrow, rpcUrl, postQuantum, close: () => payer?.close() };
 }

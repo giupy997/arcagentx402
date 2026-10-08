@@ -85,6 +85,8 @@ cra-agent pay   https://api.exa.ai/search 0.007 --body '{"query":"x402 on Arc"}'
 cra-agent think "What is x402, in two sentences?" --budget 0.10              # an agent that pays for its own thinking
 cra-agent proof
 cra-agent verify receipt.json      # needs no key and no network
+cra-agent pq-key ~/.cra-agent/pq.key           # a post-quantum key for receipts; prints only its public half
+cra-agent verify receipt.json --require-pq --on-arc   # the second signature too, and Arc's own verdict on it
 ```
 
 Every receipt carries the limits the payment passed under and is signed with the agent's key, so someone who was not there can check it. The signature proves the agent issued the statement and nobody changed it; the settlement on chain is the independent half.
@@ -100,6 +102,7 @@ Every receipt carries the limits the payment passed under and is signed with the
 | `CRA_RPC_STRICT` | `1` to never fall back to a public endpoint. |
 | `CRA_BASE_RPC_URL` / `SOLANA_RPC_URL` | Optional, for `fund`: the Base and Solana endpoints. Public ones by default. |
 | `DATABASE_URL` | Optional Postgres for the ledger. Without it the ledger lives in memory. |
+| `CRA_PQ_KEY_FILE` | Optional, the file `cra-agent pq-key` made. Every receipt is then signed a second time with SLH-DSA-SHA2-128s, the post-quantum scheme Arc verifies on chain. It covers the receipt, not the payment, and adds about a second to each one. |
 
 Two things worth knowing. A payment is settled only after the seller's handler succeeds, so a failing endpoint costs nothing: `https://api.cra-agent.tech/v1/paid/selftest/fail` always answers 500 so you can check. And `identity=required` pays only sellers with an ERC-8004 identity on Arc: the address that gets paid must own an agent in the registry, or be the wallet an agent declared for payments. It proves an identity exists, not that the seller is honest; registering costs only gas.
 
