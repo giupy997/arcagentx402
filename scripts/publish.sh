@@ -18,8 +18,12 @@ fi
 who="$(npm whoami 2>/dev/null)" || { echo "not logged in: run 'npm login', or put a token in $token_file"; exit 1; }
 [ "$who" = "cra-agent" ] || { echo "logged in to npm as $who: these packages are published only as cra-agent"; exit 1; }
 
+packages="accounting policy ledger identity lightning lane router escrow seller mcp"
+# Built from nothing: a file whose source was moved or deleted stays in dist until someone removes it, and npm
+# ships whatever is there (the seller carried the old lane.js for three releases after it became its own package).
+for p in $packages; do rm -rf "packages/$p/dist" "packages/$p/tsconfig.tsbuildinfo"; done
 npm run -s build
-for p in accounting policy ledger identity lightning lane router escrow seller mcp; do
+for p in $packages; do
   v="$(node -p "require('./packages/$p/package.json').version")"
   if [ "$(npm view "@cra-agent/$p@$v" version 2>/dev/null || true)" = "$v" ]; then
     echo "==> @cra-agent/$p@$v is already on npm, skipped"
