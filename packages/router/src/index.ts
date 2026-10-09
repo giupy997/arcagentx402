@@ -26,8 +26,7 @@ import { chooseRail, DEFAULT_THRESHOLDS, type RouteDecision, type RouteThreshold
 import { coSignSpendReceipt, policyHash, spendReceiptDomain, SPEND_RECEIPT_TYPES, toWire, type SignedSpendReceipt, type SpendReceiptMessage } from "./attest.js";
 import { signKeyStatement, type PostQuantumKey } from "./pq.js";
 
-export * from "./attest.js";
-export * from "./pq.js";
+export * from "./receipt.js";
 
 export { chooseRail, DEFAULT_THRESHOLDS, type RailChoice, type RouteDecision, type RouteInput, type RouteThresholds } from "./decide.js";
 

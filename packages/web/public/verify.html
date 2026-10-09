@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRA AGENT — Check a receipt</title>
+<meta name="description" content="Check a CRA AGENT spend receipt in your browser: the wallet signature, the limits it was paid under, and the post-quantum signature, which Arc verifies on chain. Nothing is sent to us.">
+<meta name="theme-color" content="#061a42">
+<link rel="canonical" href="https://cra-agent.tech/verify">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="nav" id="nav">
+  <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+  <div class="nav-right">
+    <button class="menu-btn" type="button" data-menu-open aria-label="Open menu" aria-controls="menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+</header>
+<div class="menu" id="menu" role="dialog" aria-modal="true" aria-label="Menu">
+  <div class="menu-top">
+    <a class="brand" href="/"><img class="logo" src="/brand/logo.webp" alt="" width="32" height="32">CRA AGENT</a>
+    <button class="menu-btn" type="button" data-menu-close aria-label="Close menu"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M3.5 3.5l11 11M14.5 3.5l-11 11" stroke="currentColor" stroke-width="1.5"/></svg></button>
+  </div>
+  <ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="/#how">How it works</a></li>
+    <li><a href="/#install">Install the agent</a></li>
+    <li><a href="/#sell">Sell an endpoint</a></li>
+    <li><a href="/network">Network</a></li>
+    <li><a href="/think">Think</a></li>
+    <li><a href="/bazaar">Bazaar</a></li>
+    <li><a href="/usyc">USYC on Arc</a></li>
+    <li><a href="/market">Market</a></li>
+    <li><a href="/lane">Solana Lane</a></li>
+    <li><a href="/factory">Factory</a></li>
+    <li><a href="/register">Register a seller</a></li>
+    <li><a href="/try">Try it</a></li>
+    <li><a href="/status">Status</a></li>
+    <li><a href="/verify">Verify a receipt</a></li>
+    <li><a href="/token">Token</a></li>
+    <li><a href="https://x.com/Craagentarc" rel="noopener">X</a></li>
+    <li><a href="mailto:craagentarc@gmail.com">Email</a></li>
+    <li><a href="https://github.com/giupy997/arcagentx402" rel="noopener">GitHub</a></li>
+  </ul>
+  <div class="menu-foot">x402 · Circle Gateway · USDC on Arc</div>
+</div>
+
+<section class="page-head">
+  <div class="marks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div class="wrap">
+    <p class="kicker" style="color:rgba(255,255,255,.8)">Verify</p>
+    <h1>Check a receipt yourself</h1>
+    <div class="meta">Both signatures checked in your browser · the post-quantum one also by Arc · the receipt is never sent to us</div>
+  </div>
+</section>
+
+<main class="wrap dash try">
+  <div class="chart-card wide">
+    <div class="head"><div><h2>1. The receipt</h2><div class="sub">Paste a signed receipt, or the whole output of <code>cra-agent pay</code>. The sample is signed by keys made for this page and thrown away: there is no wallet and no payment behind it.</div></div></div>
+    <p><textarea id="v-input" class="json" spellcheck="false" rows="7" style="width:100%;box-sizing:border-box;border:0;resize:vertical" aria-label="Receipt JSON" placeholder='{ "domain": …, "message": …, "signature": "0x…", "postQuantum": … }'></textarea></p>
+    <p><button class="btn" id="v-check" type="button">Check it</button> <button class="btn" id="v-sample" type="button">Load the sample</button> <span class="sub" id="v-status" role="status"></span></p>
+  </div>
+
+  <div class="chart-card wide hidden" id="v-result">
+    <div class="head"><div><h2>2. What holds</h2><div class="sub">Each check on its own, so you see which part stands.</div></div></div>
+    <p class="mono" id="v-verdict" style="font-size:15px;font-weight:500"></p>
+    <ul class="steps" id="v-checks" style="list-style:none;padding-left:0"></ul>
+  </div>
+
+  <div class="chart-card wide hidden" id="v-facts-card">
+    <div class="head"><div><h2>3. What it says</h2><div class="sub">The statement the signatures are over: what was bought, for how much, and under which limits the agent was allowed to pay.</div></div></div>
+    <div class="tbl-wrap" id="v-facts"></div>
+  </div>
+
+  <div class="chart-card wide">
+    <div class="head"><div><h2>What is being checked</h2></div></div>
+    <p class="sub">A CRA AGENT receipt is a statement signed by the agent's wallet key: what it paid for, how much, to whom, and the spending limits in force when it paid. Anyone can check it without asking us.</p>
+    <p class="sub">The wallet's signature is secp256k1, the kind a large enough quantum computer could forge. So a receipt can be signed a second time with SLH-DSA-SHA2-128s, a post-quantum scheme that <a href="https://docs.arc.io/arc/concepts/post-quantum-security" rel="noopener">Arc verifies on chain</a>. This page checks that second signature here, then asks Arc's precompile the same question with a read-only call from your browser. A receipt that carries both is valid only when both hold.</p>
+    <div class="callout"><b>What it covers.</b> The receipt, not the payment: a payment on Arc is authorised by the wallet key until Arc has post-quantum transaction signing. The signature is the agent vouching for its own statement; the settlement on chain is the independent part.</div>
+    <p class="sub">To sign your agent's receipts twice: <code>cra-agent pq-key ~/.cra-agent/pq.key</code>, then set <code>CRA_PQ_KEY_FILE</code> to that file. From a terminal the same check is <code>cra-agent verify receipt.json --require-pq --on-arc</code>.</p>
+  </div>
+</main>
+
+<footer class="site light">
+  <span>Checked in your browser · Arc is asked directly, at 0x1800000000000000000000000000000000000004</span>
+  <span><a href="/">Home</a> · <a href="/status">Status</a> · <a href="/receipt-sample.json">receipt-sample.json</a></span>
+</footer>
+<script type="module" src="/js/verify.js"></script>
+</body>
+</html>

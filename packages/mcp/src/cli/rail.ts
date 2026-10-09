@@ -25,7 +25,7 @@ import { compareUsdc6, formatUsdc6, parseUsdc6, usdc6 } from "@cra-agent/account
 import { describePolicy, parsePolicyString } from "@cra-agent/policy";
 import { readFileSync, writeFileSync } from "node:fs";
 import type { Address } from "viem";
-import { coSignSpendReceipt, EscrowNotImplemented, LightningNotPaid, newPostQuantumSeed, PolicyRejected, postQuantumKey, receiptDigest, signKeyStatement, verifiedByArc, verifySpendReceipt, type SignedSpendReceipt } from "@cra-agent/router";
+import { coSignSpendReceipt, EscrowNotImplemented, findSignedReceipt, LightningNotPaid, newPostQuantumSeed, PolicyRejected, postQuantumKey, receiptDigest, signKeyStatement, verifiedByArc, verifySpendReceipt, type SignedSpendReceipt } from "@cra-agent/router";
 import { CAIP2, PUBLIC_RPCS, registerIdentity, type ArcNetwork } from "@cra-agent/identity";
 import { fit, forAgent, NOTHING_SPENT, searchMarket } from "../search.js";
 import { railFromEnv } from "../rail-from-env.js";
@@ -96,10 +96,9 @@ async function main(): Promise<void> {
   // Checking someone else's receipt needs no key, no network and no ledger, so it runs before any of that.
   if (cmd === "verify") {
     if (!arg) throw new Error("usage: verify <receipt.json | - for stdin> [expected agent address]");
-    const raw = JSON.parse(readFileSync(arg === "-" ? 0 : arg, "utf8")) as Record<string, unknown>;
     // Accept the signed object itself, a receipt that carries one, or the whole output of `pay`.
-    const receipt = (raw.receipt as Record<string, unknown> | undefined) ?? raw;
-    const signed = ((receipt.attestation as unknown) ?? receipt) as SignedSpendReceipt;
+    const signed = findSignedReceipt(JSON.parse(readFileSync(arg === "-" ? 0 : arg, "utf8")));
+    if (!signed) throw new Error("no signed receipt in that file: it needs a domain, a message and a signature");
     const rest = process.argv.slice(4);
     const expected = rest.find((a) => !a.startsWith("--")) as Address | undefined;
     const check = await verifySpendReceipt(signed, expected, { requirePostQuantum: rest.includes("--require-pq") });
@@ -392,9 +391,8 @@ async function main(): Promise<void> {
     case "pq-sign": {
       if (!arg) throw new Error("usage: pq-sign <receipt.json | - for stdin>");
       if (!postQuantum) throw new Error("no post-quantum key: make one with `cra-agent pq-key <file>` and set CRA_PQ_KEY_FILE");
-      const raw = JSON.parse(readFileSync(arg === "-" ? 0 : arg, "utf8")) as Record<string, unknown>;
-      const inner = (raw.receipt as Record<string, unknown> | undefined) ?? raw;
-      const signed = ((inner.attestation as unknown) ?? inner) as SignedSpendReceipt;
+      const signed = findSignedReceipt(JSON.parse(readFileSync(arg === "-" ? 0 : arg, "utf8")));
+      if (!signed) throw new Error("no signed receipt in that file: it needs a domain, a message and a signature");
       // Only our own receipts: the second signature says the same agent stands behind the same statement.
       const first = await verifySpendReceipt(signed, signer.address);
       if (!first.valid) throw new Error(`not a receipt this agent signed: ${first.reason}`);

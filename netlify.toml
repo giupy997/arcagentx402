@@ -79,3 +79,8 @@
   from = "/privacy"
   to = "/privacy.html"
   status = 200
+
+[[redirects]]
+  from = "/verify"
+  to = "/verify.html"
+  status = 200

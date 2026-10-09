@@ -214,7 +214,7 @@ app.onError((err, c) => {
 
 if (existsSync(WEB_DIR)) {
   const rel = WEB_DIR.startsWith(process.cwd()) ? WEB_DIR.slice(process.cwd().length + 1) : WEB_DIR;
-  app.use("/*", serveStatic({ root: rel, rewriteRequestPath: (p) => (p === "/dashboard" || p === "/network" ? "/dashboard.html" : p === "/token" ? "/token.html" : p === "/try" ? "/try.html" : p === "/status" ? "/status.html" : p === "/factory" ? "/factory.html" : p === "/market" ? "/market.html" : p === "/bazaar" ? "/bazaar.html" : p === "/think" ? "/think.html" : p === "/usyc" ? "/usyc.html" : p === "/lane" ? "/lane.html" : p === "/register" ? "/register.html" : p === "/terms" ? "/terms.html" : p === "/privacy" ? "/privacy.html" : p) }));
+  app.use("/*", serveStatic({ root: rel, rewriteRequestPath: (p) => (p === "/dashboard" || p === "/network" ? "/dashboard.html" : p === "/token" ? "/token.html" : p === "/try" ? "/try.html" : p === "/status" ? "/status.html" : p === "/factory" ? "/factory.html" : p === "/market" ? "/market.html" : p === "/bazaar" ? "/bazaar.html" : p === "/think" ? "/think.html" : p === "/usyc" ? "/usyc.html" : p === "/lane" ? "/lane.html" : p === "/register" ? "/register.html" : p === "/terms" ? "/terms.html" : p === "/privacy" ? "/privacy.html" : p === "/verify" ? "/verify.html" : p) }));
   log.info({ webDir: WEB_DIR }, "serving web");
 } else {
   log.warn({ webDir: WEB_DIR }, "web dist not found: API only");
