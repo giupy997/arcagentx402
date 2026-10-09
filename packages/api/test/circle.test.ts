@@ -72,15 +72,15 @@ const stockQuote = entry({
 
 describe("Circle's catalogue, read as things an agent can buy on Arc", () => {
   it("keeps what the call needs: method, price on Arc, payee, and where each parameter goes", () => {
-    const item = circleItem(contents, ARC, NOW)!;
+    const item = circleItem(contents, ARC)!;
     expect(item).toMatchObject({ url: "https://api.exa.ai/contents", method: "POST", priceUsd: "0.001", name: "Exa", label: "Retrieve clean content from URLs", payTo: PAY_TO.toLowerCase(), host: "api.exa.ai", network: ARC, source: "circle", online: true, direct: null });
     // Our router takes the batched option when both are offered, so that is the rail the agent will use.
     expect(item.rail).toBe("gateway");
     expect(item.networks).toEqual([ARC]);
     // One of its two Arc accepts is a plain USDC transfer: any x402 client can pay it there.
     expect(item.plainNetworks).toEqual([ARC]);
-    expect(circleItem(webSearch, ARC, NOW)!.networks).toEqual([ARC, "eip155:8453"]);
-    expect(circleItem(webSearch, ARC, NOW)!.plainNetworks).toEqual([]);
+    expect(circleItem(webSearch, ARC)!.networks).toEqual([ARC, "eip155:8453"]);
+    expect(circleItem(webSearch, ARC)!.plainNetworks).toEqual([]);
     expect(item.params.map((p) => p.name)).toEqual(["urls", "text", "livecrawl"]);
     expect(item.params[0]).toMatchObject({ in: "body", required: true, type: "array of string", example: ["https://arxiv.org/pdf/2307.06435"] });
     expect(item.params[1]!.type).toBe("boolean or object");
@@ -90,37 +90,41 @@ describe("Circle's catalogue, read as things an agent can buy on Arc", () => {
   });
 
   it("builds no body when the seller gave no example, and still says what is required", () => {
-    const item = circleItem(webSearch, ARC, NOW)!;
+    const item = circleItem(webSearch, ARC)!;
     expect(item.body).toBeNull();
     expect(item.params.find((p) => p.name === "query")).toMatchObject({ in: "body", required: true });
   });
 
   it("puts examples in the address and leaves a {placeholder} it has no value for", () => {
-    const item = circleItem(candles, ARC, NOW)!;
+    const item = circleItem(candles, ARC)!;
     expect(item.url).toBe("https://nano.blockrun.ai/api/v1/pm/polymarket/candlesticks/{hash}?interval=1h");
     expect(item.params[0]).toMatchObject({ name: "hash", in: "path", required: true, example: null });
     expect(item.body).toBeNull();
   });
 
   it("leaves out what an agent could not buy as listed", () => {
-    expect(circleItem(entry({ method: "DELETE" }), ARC, NOW)).toBeNull();
-    expect(circleItem(entry({ amount: "0" }), ARC, NOW)).toBeNull();
-    expect(circleItem(entry({ payTo: "0x123" }), ARC, NOW)).toBeNull();
-    expect(circleItem(entry({ resource: "http://api.exa.ai/search" }), ARC, NOW)).toBeNull();
-    expect(circleItem(entry({ resource: "not a url" }), ARC, NOW)).toBeNull();
-    expect(circleItem(entry({ accepts: [{ scheme: "exact", network: "eip155:8453", amount: "7000", payTo: PAY_TO }] }), ARC, NOW)).toBeNull();
-    expect(circleItem(entry(), "eip155:5042002", NOW)).toBeNull();
-    expect(circleItem(null, ARC, NOW)).toBeNull();
-    expect(circleItem({ resource: 42 }, ARC, NOW)).toBeNull();
+    expect(circleItem(entry({ method: "DELETE" }), ARC)).toBeNull();
+    expect(circleItem(entry({ amount: "0" }), ARC)).toBeNull();
+    expect(circleItem(entry({ payTo: "0x123" }), ARC)).toBeNull();
+    expect(circleItem(entry({ resource: "http://api.exa.ai/search" }), ARC)).toBeNull();
+    expect(circleItem(entry({ resource: "not a url" }), ARC)).toBeNull();
+    expect(circleItem(entry({ accepts: [{ scheme: "exact", network: "eip155:8453", amount: "7000", payTo: PAY_TO }] }), ARC)).toBeNull();
+    expect(circleItem(entry(), "eip155:5042002")).toBeNull();
+    expect(circleItem(null, ARC)).toBeNull();
+    expect(circleItem({ resource: 42 }, ARC)).toBeNull();
   });
 
-  it("marks an entry Circle has not touched in a week as not answering", () => {
-    expect(circleItem(entry({ lastUpdated: "2026-09-10T00:00:00Z" }), ARC, NOW)!.online).toBe(false);
-    expect(circleItem(entry({ lastUpdated: "whenever" }), ARC, NOW)!.online).toBe(false);
+  it("shows an entry for as long as Circle lists it, however old the date Circle stamped on it", () => {
+    // Circle stamps its entries in bulk, weeks apart. Taking a week-old stamp for a dead endpoint hid the whole
+    // catalogue from search on 7 October 2026, and the thinking agent could no longer find its model there.
+    const old = circleItem(entry({ resource: "https://nano.blockrun.ai/api/v1/chat/completions", method: "POST", description: "Chat completions with 33+ AI models", lastUpdated: "2026-06-01T00:00:00Z" }), ARC)!;
+    expect(old.online).toBe(true);
+    expect(circleItem(entry({ lastUpdated: "whenever" }), ARC)!.online).toBe(true);
+    expect(search([old], "chat completions llm").map((r) => r.url)).toEqual(["https://nano.blockrun.ai/api/v1/chat/completions"]);
   });
 
   it("keeps a stranger's text to bounded lines", () => {
-    const item = circleItem(entry({ description: `Search\n\n${"x".repeat(500)}`, provider: { name: "  Exa\t", description: 7 } }), ARC, NOW)!;
+    const item = circleItem(entry({ description: `Search\n\n${"x".repeat(500)}`, provider: { name: "  Exa\t", description: 7 } }), ARC)!;
     expect(item.label).toHaveLength(200);
     expect(item.label!.startsWith("Search x")).toBe(true);
     expect(item.name).toBe("Exa");
@@ -129,7 +133,7 @@ describe("Circle's catalogue, read as things an agent can buy on Arc", () => {
 
   it("counts each call once, and adds the path to a label the seller gave to many of them", () => {
     const proxy = (path: string) => entry({ resource: `https://np.orthogonal.com${path}`, description: "agentmail endpoint via Orthogonal nanopayment proxy", provider: { name: "Orthogonal", description: "Email infrastructure for AI agents" } });
-    const items = circleItems([proxy("/agentmail/v0/inboxes"), proxy("/agentmail/v0/inboxes/{inbox_id}/drafts"), proxy("/agentmail/v0/domains"), proxy("/agentmail/v0/domains"), contents], ARC, NOW);
+    const items = circleItems([proxy("/agentmail/v0/inboxes"), proxy("/agentmail/v0/inboxes/{inbox_id}/drafts"), proxy("/agentmail/v0/domains"), proxy("/agentmail/v0/domains"), contents], ARC);
     expect(items).toHaveLength(4);
     expect(items.map((i) => i.label)).toEqual([
       "agentmail endpoint via Orthogonal nanopayment proxy: /agentmail/v0/inboxes",
@@ -142,7 +146,7 @@ describe("Circle's catalogue, read as things an agent can buy on Arc", () => {
 
 describe("searching Circle's catalogue next to our routes", () => {
   const own = ownItems(PAID_ROUTES, { origin: "https://api.cra-agent.tech", payTo: "0x33b37c6d7a98b58da3Ccb3F36A4b578053d0Ea74", network: ARC, directPrice: null });
-  const circle = circleItems([contents, webSearch, candles, stockQuote], ARC, NOW);
+  const circle = circleItems([contents, webSearch, candles, stockQuote], ARC);
   const all = [...own, ...circle];
 
   it("finds a seller we do not know, for what we do not sell", () => {
@@ -159,14 +163,14 @@ describe("searching Circle's catalogue next to our routes", () => {
   });
 
   it("offers a call the agent can make now before one that needs an id it may not have", () => {
-    const ready = { ...circleItem(candles, ARC, NOW)!, url: "https://nano.blockrun.ai/api/v1/pm/polymarket/candlesticks/latest", priceUsd: "0.002" };
-    const results = search([circleItem(candles, ARC, NOW)!, ready], "polymarket candlestick");
+    const ready = { ...circleItem(candles, ARC)!, url: "https://nano.blockrun.ai/api/v1/pm/polymarket/candlesticks/latest", priceUsd: "0.002" };
+    const results = search([circleItem(candles, ARC)!, ready], "polymarket candlestick");
     expect(results.map((r) => r.url)).toEqual([ready.url, "https://nano.blockrun.ai/api/v1/pm/polymarket/candlesticks/{hash}?interval=1h"]);
   });
 
   it("does not count a word twice through its synonym", () => {
-    const finder = circleItem(entry({ resource: "https://np.orthogonal.com/tomba/v1/email-finder", method: "GET", description: "Find the email address of a person", provider: { name: "Orthogonal", description: "Email finder and verifier" } }), ARC, NOW)!;
-    const inbox = circleItem(entry({ resource: "https://api.aisa.one/apis/v2/agentmail/inboxes", description: "Create Inbox", provider: { name: "AIsa API", description: "Email inboxes, threads, and sending for autonomous agents" } }), ARC, NOW)!;
+    const finder = circleItem(entry({ resource: "https://np.orthogonal.com/tomba/v1/email-finder", method: "GET", description: "Find the email address of a person", provider: { name: "Orthogonal", description: "Email finder and verifier" } }), ARC)!;
+    const inbox = circleItem(entry({ resource: "https://api.aisa.one/apis/v2/agentmail/inboxes", description: "Create Inbox", provider: { name: "AIsa API", description: "Email inboxes, threads, and sending for autonomous agents" } }), ARC)!;
     expect(search([finder, inbox], "email inbox").map((r) => r.host)).toEqual(["api.aisa.one", "np.orthogonal.com"]);
   });
 

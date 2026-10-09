@@ -16,8 +16,6 @@ export const CIRCLE_DISCOVERY = "https://api.circle.com/v2/x402/discovery/resour
 const PAGE = 100;
 const MAX_PAGES = 30;
 const MAX_PARAMS = 16;
-/** Circle refreshes its entries every day or so; one it has not touched in a week is not shown. */
-const STALE_MS = 7 * 86_400_000;
 /** Tags every entry carries, which say nothing about what it sells. */
 const NOISE_TAGS = new Set(["x402", "paid-api", "orthogonal-proxy", "agentic-markets", "data-apis"]);
 
@@ -179,7 +177,7 @@ function siteOf(v: unknown): string | null {
 const usd = (units: string): string => (Number(units) / 1e6).toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
 
 /** One entry as a search item, or null when an agent on this network could not buy it as listed. */
-export function circleItem(entry: unknown, network: string, now: number): SearchItem | null {
+export function circleItem(entry: unknown, network: string): SearchItem | null {
   if (!isObject(entry)) return null;
   const e = entry as CircleEntry;
   if (typeof e.resource !== "string" || e.resource.length > 400) return null;
@@ -212,7 +210,6 @@ export function circleItem(entry: unknown, network: string, now: number): Search
   const tags = (Array.isArray(provider.tags) ? provider.tags : []).filter((t): t is string => typeof t === "string").map((t) => t.toLowerCase()).filter((t) => !NOISE_TAGS.has(t)).slice(0, 20);
   const category = typeof provider.category === "string" ? provider.category.toLowerCase().replace(/_/g, " ") : "";
   const readableCategory = typeof provider.category === "string" ? (CATEGORY[provider.category] ?? clean(provider.category.toLowerCase().replace(/_/g, " "), 40)) : null;
-  const seen = typeof e.lastUpdated === "string" ? Date.parse(e.lastUpdated) : Number.NaN;
   return {
     url: callUrl(e.resource, params),
     method,
@@ -233,7 +230,10 @@ export function circleItem(entry: unknown, network: string, now: number): Search
     networks: [network, ...new Set((e.accepts as unknown[]).flatMap((a) => (isObject(a) && typeof a.network === "string" && a.network !== network && a.network.length <= 64 ? [a.network] : [])))].slice(0, 12),
     // An exact accept that is not Gateway's batched one is a plain transfer any x402 client can sign.
     plainNetworks: [...new Set((e.accepts as unknown[]).flatMap((a) => (isObject(a) && a.scheme === "exact" && typeof a.network === "string" && a.network.length <= 64 && !(isObject(a.extra) && a.extra.name === "GatewayWalletBatched") ? [a.network] : [])))].slice(0, 12),
-    online: Number.isFinite(seen) && now - seen < STALE_MS,
+    // Listed is what we know. The list is read again every hour, so an entry Circle drops is gone with the next
+    // read; its lastUpdated is no sign of life (Circle stamps entries in bulk, weeks apart), and hiding the ones
+    // older than a week once hid all of Circle's catalogue from search.
+    online: true,
     keywords: clean(`${tags.join(" ")} ${category} ${readable(url.pathname).replace(/[/_{}:.-]+/g, " ")}`, 600) ?? "",
   };
 }
@@ -242,11 +242,11 @@ export function circleItem(entry: unknown, network: string, now: number): Search
  * The whole catalogue as search items: one per method and address. A label a seller gave to many of
  * its entries says nothing about any one of them, so those get the call itself added to it.
  */
-export function circleItems(entries: readonly unknown[], network: string, now: number): SearchItem[] {
+export function circleItems(entries: readonly unknown[], network: string): SearchItem[] {
   const items: SearchItem[] = [];
   const seen = new Set<string>();
   for (const entry of entries) {
-    const item = circleItem(entry, network, now);
+    const item = circleItem(entry, network);
     const key = item ? `${item.method} ${item.url}` : "";
     if (!item || seen.has(key)) continue;
     seen.add(key);
@@ -320,7 +320,7 @@ export function circleCatalogue(opts: { network: string; url?: string; fetchImpl
   const read = async (): Promise<boolean> => {
     try {
       const entries = await fetchCircleCatalogue(opts.network, { ...(opts.url ? { url: opts.url } : {}), ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}), ...(opts.sleep ? { sleep: opts.sleep } : {}) });
-      const next = circleItems(entries, opts.network, now());
+      const next = circleItems(entries, opts.network);
       // A list of hundreds that comes back empty is more likely a hiccup on their side than the end of it.
       if (next.length === 0 && items.length > 0) throw new Error("Circle's catalogue came back empty");
       items = next;
@@ -346,8 +346,7 @@ export function circleCatalogue(opts: { network: string; url?: string; fetchImpl
     if (!opts.store || readAt !== null) return false;
     const saved = await opts.store.load().catch(() => null);
     if (!saved || readAt !== null) return false;
-    // Entries are kept as Circle sent them, so the week-old ones still drop out by today's date.
-    items = circleItems(saved.entries, opts.network, now());
+    items = circleItems(saved.entries, opts.network);
     readAt = saved.readAt;
     opts.log?.info({ kept: items.length, readAt: new Date(saved.readAt).toISOString() }, "circle catalogue restored from the last copy");
     return items.length > 0;
