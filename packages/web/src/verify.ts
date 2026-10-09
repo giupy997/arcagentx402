@@ -76,7 +76,7 @@ function facts(signed: Signed): void {
     ["Spent before this", `${usdc(m.spentTodayBefore)} that day · ${usdc(m.spentWithSellerBefore)} with this seller`],
     ["Issued", /^\d+$/.test(m.issuedAt ?? "") ? new Date(Number(m.issuedAt) * 1000).toISOString().replace(".000Z", " UTC").replace("T", " ") : "?"],
   ];
-  const table = el("table", undefined, "data");
+  const table = el("table", undefined, "data rows");
   for (const [k, v, href] of rows) {
     const tr = el("tr");
     const td = el("td", undefined, "mono");
@@ -86,8 +86,9 @@ function facts(signed: Signed): void {
       a.rel = "noopener";
       td.append(a);
     } else td.textContent = v;
-    td.style.wordBreak = "break-all";
-    tr.append(el("th", k), td);
+    const th = el("th", k);
+    th.scope = "row";
+    tr.append(th, td);
     table.append(tr);
   }
   $("v-facts").replaceChildren(table);

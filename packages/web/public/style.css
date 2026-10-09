@@ -246,6 +246,10 @@ table.data td.num, table.data th.num { text-align: right; }
 table.data td.mono { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
 table.data tr:last-child td { border-bottom: 0; }
 .tbl-wrap { overflow-x: auto; }
+/* A table read across: the label of each row is its first cell, ruled like the value beside it. */
+table.data.rows th { width: 190px; border-bottom: 1px solid var(--grid); vertical-align: top; padding: 9px 8px; }
+table.data.rows td.mono { white-space: normal; word-break: break-all; }
+table.data.rows tr:last-child th { border-bottom: 0; }
 .status { display: inline-flex; align-items: center; gap: 7px; }
 .tag { display: inline-block; font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; padding: 1px 6px; background: var(--paper-2); color: var(--ink-2); border: 1px solid var(--line); }
 .empty { color: var(--muted); font-family: var(--mono); font-size: 12.5px; padding: 24px 0; text-align: center; }
